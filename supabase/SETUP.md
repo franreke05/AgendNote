@@ -1,0 +1,40 @@
+# Supabase Setup (AgendNote)
+
+## 0) Seguridad (importante)
+- No compartas `service_role` ni passwords en el chat.
+- Si ya los compartiste, regenera las keys en Supabase.
+
+## 1) Crear tablas y RLS
+1. Supabase Dashboard -> SQL Editor -> New query.
+2. Pega y ejecuta `supabase/schema.sql`.
+3. Pega y ejecuta `supabase/policies.sql`.
+
+## 2) Storage para fondos
+1. Dashboard -> Storage -> Create bucket -> `backgrounds`.
+2. Marca el bucket como **public** (para usar URL directa).
+3. Sube una imagen y copia su URL publica.
+
+## 3) Secrets para Edge Functions
+Dashboard -> Edge Functions -> Secrets -> Add:
+- `SB_URL` = `https://pdcxxhnybykfbbvnnzki.supabase.co` (si no tienes `SUPABASE_URL` disponible)
+- `SB_SERVICE_ROLE_KEY` = (tu service_role)
+- `APP_SECRET` = (cadena que elijas)
+
+## 4) Desplegar Functions (CLI)
+1. Instala CLI si no lo tienes: https://supabase.com/docs/guides/cli
+2. Login: `supabase login`
+3. Link: `supabase link --project-ref pdcxxhnybykfbbvnnzki`
+4. Deploy:
+   - `supabase functions deploy api-labels --no-verify-jwt`
+   - `supabase functions deploy api-tasks --no-verify-jwt`
+   - `supabase functions deploy api-settings --no-verify-jwt`
+   - Alternativa rapida: `./supabase/deploy.sh`
+
+## 5) App config
+En `composeApp/src/commonMain/kotlin/com/franciscor/agendnote/data/AppConfig.kt`:
+- `API_BASE_URL` = `https://pdcxxhnybykfbbvnnzki.functions.supabase.co`
+- `BACKGROUND_URL` = URL publica de la imagen (opcional).
+
+APP_SECRET se lee por plataforma:
+- Android: agrega `APP_SECRET=tu_valor` en `local.properties`.
+- iOS: agrega `APP_SECRET=tu_valor` en `iosApp/Configuration/Config.xcconfig` (Info.plist lo usa).
