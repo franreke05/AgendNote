@@ -30,6 +30,13 @@ Dashboard -> Edge Functions -> Secrets -> Add:
    - `supabase functions deploy api-settings --no-verify-jwt`
    - Alternativa rapida: `./supabase/deploy.sh`
 
+## 4.1) Contrato de tareas con Portfolio
+- `GET /api-tasks?day=YYYY-MM-DD` es la via que usa la agenda para traer tareas ya creadas por dia.
+- Cuando `portfolio` crea una tarea espejo, envia `title`, `body` y `day` a `POST /api-tasks`.
+- Supabase genera `tasks.id` al insertar la fila; `portfolio` no envia ese `id`.
+- `POST /api-tasks` y `PATCH /api-tasks` deben devolver `task.id`, `task.title`, `task.body` y `task.day`.
+- El portfolio guarda ese `task.id` en `mirrored_task_id` y AgendNote vuelve a leer la tarea con `fetchTasks(day)`.
+
 ## 5) App config
 En `composeApp/src/commonMain/kotlin/com/franciscor/agendnote/data/AppConfig.kt`:
 - `API_BASE_URL` = `https://pdcxxhnybykfbbvnnzki.functions.supabase.co`

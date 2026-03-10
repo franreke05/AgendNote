@@ -9,6 +9,8 @@ data class LabelDto(
     val color_hex: String,
 )
 
+// Shared task payload returned by api-tasks. For tasks mirrored from the portfolio,
+// the response contract must include id, title, body, and day.
 @Serializable
 data class TaskDto(
     val id: String,
@@ -37,6 +39,7 @@ data class LabelResponse(
     val label: LabelDto,
 )
 
+// The agenda screen loads its day view through GET /api-tasks?day=YYYY-MM-DD.
 @Serializable
 data class TasksResponse(
     val tasks: List<TaskDto> = emptyList(),
@@ -53,6 +56,8 @@ data class CreateLabelRequest(
     val color_hex: String,
 )
 
+// Portfolio mirroring sends title/body/day here. The API creates the row in Supabase
+// and generates the task id before returning TaskResponse.
 @Serializable
 data class CreateTaskRequest(
     val title: String,

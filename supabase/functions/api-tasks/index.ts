@@ -63,6 +63,8 @@ serve(async (req) => {
       const from = parseDateParam(url.searchParams.get("from"));
       const to = parseDateParam(url.searchParams.get("to"));
 
+      // The app reads existing tasks per day through GET /api-tasks?day=YYYY-MM-DD,
+      // including tasks mirrored from the portfolio into the same agenda day.
       let query = supabase
         .from("tasks")
         .select(TASK_SELECT)
@@ -91,6 +93,8 @@ serve(async (req) => {
       if (!title) return errorResponse("title is required", 400);
       if (!parseDateParam(day)) return errorResponse("day is required (YYYY-MM-DD)", 400);
 
+      // Portfolio-created tasks send title/body/day. The insert generates id in Postgres
+      // and the response returns task.id/title/body/day for mirrored_task_id persistence.
       const insertPayload = {
         title,
         body: body?.body ?? null,

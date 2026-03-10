@@ -55,6 +55,8 @@ class AgendaApiClient(
         return response.label
     }
 
+    // The daily agenda uses GET /api-tasks?day=YYYY-MM-DD to load all tasks,
+    // including tasks mirrored from the portfolio into the same day.
     suspend fun fetchTasks(day: String): List<TaskDto> {
         val response: TasksResponse = client
             .get("$normalizedBaseUrl/api-tasks") {
@@ -65,6 +67,8 @@ class AgendaApiClient(
         return response.tasks
     }
 
+    // POST /api-tasks inserts the task server-side. Supabase generates the id and
+    // returns task.id/title/body/day, which the portfolio uses to persist mirrored_task_id.
     suspend fun createTask(request: CreateTaskRequest): TaskDto {
         val response: TaskResponse = client
             .post("$normalizedBaseUrl/api-tasks") {
