@@ -1,4 +1,4 @@
-package com.franciscor.agendnote.Inicio
+﻿package com.franciscor.agendnote.Inicio
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -1187,6 +1187,12 @@ private fun TaskCard(
     modifier: Modifier = Modifier,
 ) {
     val alpha = if (task.isDone) 0.6f else 1f
+    val isPortfolioBooking = task.source == "portfolio_booking"
+    val clientLine = listOfNotNull(
+        task.clientEmail?.takeIf { it.isNotBlank() },
+        task.clientPhone?.takeIf { it.isNotBlank() },
+    ).joinToString(" · ")
+
     GlassSurface(
         modifier = modifier
             .fillMaxWidth()
@@ -1213,6 +1219,31 @@ private fun TaskCard(
                 }
             }
 
+            if (isPortfolioBooking) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BookingMetaChip(
+                        text = "Cita cliente",
+                        color = Color(0xFF3DA9FC),
+                    )
+                    BookingMetaChip(
+                        text = bookingStatusLabel(task.bookingStatus),
+                        color = bookingStatusColor(task.bookingStatus),
+                    )
+                }
+                if (clientLine.isNotBlank()) {
+                    Text(
+                        text = clientLine,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = GlassTheme.tokens.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+
             Text(
                 text = task.title,
                 style = MaterialTheme.typography.titleMedium,
@@ -1232,6 +1263,37 @@ private fun TaskCard(
             }
         }
     }
+}
+
+@Composable
+private fun BookingMetaChip(
+    text: String,
+    color: Color,
+) {
+    GlassSurface(
+        shape = RoundedCornerShape(14.dp),
+        tint = color.copy(alpha = 0.18f),
+        strokeColor = color.copy(alpha = 0.42f),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            color = GlassTheme.tokens.textPrimary,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+        )
+    }
+}
+
+private fun bookingStatusLabel(status: String?): String = when (status?.lowercase()) {
+    "confirmed" -> "Confirmada"
+    "cancelled" -> "Cancelada"
+    else -> "Pendiente"
+}
+
+private fun bookingStatusColor(status: String?): Color = when (status?.lowercase()) {
+    "confirmed" -> Color(0xFF39D98A)
+    "cancelled" -> Color(0xFFE06B6B)
+    else -> Color(0xFFFFC857)
 }
 
 @Composable
@@ -3070,3 +3132,4 @@ private fun colorFromHex(hex: String): Color {
     }
     return Color(argb)
 }
+

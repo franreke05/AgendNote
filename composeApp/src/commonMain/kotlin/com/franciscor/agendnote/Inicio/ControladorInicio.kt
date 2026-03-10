@@ -1,4 +1,4 @@
-package com.franciscor.agendnote.Inicio
+﻿package com.franciscor.agendnote.Inicio
 
 import androidx.compose.runtime.Immutable
 import kotlinx.datetime.LocalTime
@@ -18,6 +18,12 @@ data class TaskItem(
     val time: LocalTime?,
     val labels: List<LabelTag>,
     val isDone: Boolean = false,
+    val source: String? = null,
+    val bookingStatus: String? = null,
+    val appointmentId: String? = null,
+    val clientName: String? = null,
+    val clientEmail: String? = null,
+    val clientPhone: String? = null,
 )
 
 @Immutable

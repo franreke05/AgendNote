@@ -1,4 +1,4 @@
--- AgendNote schema
+﻿-- AgendNote schema
 -- Notes, tasks, labels, and settings.
 
 create extension if not exists "pgcrypto";
@@ -94,3 +94,15 @@ begin
       for each row execute function set_updated_at();
   end if;
 end $$;
+
+alter table if exists tasks
+  add column if not exists source text not null default 'manual',
+  add column if not exists booking_status text,
+  add column if not exists appointment_id uuid,
+  add column if not exists client_name text,
+  add column if not exists client_email text,
+  add column if not exists client_phone text;
+
+create unique index if not exists idx_tasks_appointment_id
+  on tasks(appointment_id)
+  where appointment_id is not null;

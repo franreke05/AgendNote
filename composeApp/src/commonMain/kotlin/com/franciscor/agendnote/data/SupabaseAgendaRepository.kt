@@ -1,4 +1,4 @@
-package com.franciscor.agendnote.data
+﻿package com.franciscor.agendnote.data
 
 import com.franciscor.agendnote.Inicio.LabelTag
 import com.franciscor.agendnote.Inicio.TaskDraft
@@ -84,7 +84,6 @@ class SupabaseAgendaRepository(
     suspend fun deleteAllLabels(): Boolean {
         return api.deleteAllLabels()
     }
-
 }
 
 private fun LabelDto.toLabelTag(): LabelTag = LabelTag(
@@ -102,6 +101,12 @@ private fun TaskDto.toTaskItem(timeZone: TimeZone): TaskItem {
         time = time,
         labels = labels.map { it.toLabelTag() },
         isDone = is_done,
+        source = source,
+        bookingStatus = booking_status,
+        appointmentId = appointment_id,
+        clientName = client_name,
+        clientEmail = client_email,
+        clientPhone = client_phone,
     )
 }
 

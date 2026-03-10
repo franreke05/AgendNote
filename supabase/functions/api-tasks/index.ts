@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+﻿import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { errorResponse, jsonResponse } from "../_shared/response.ts";
@@ -6,6 +6,7 @@ import { requireAppSecret } from "../_shared/auth.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("SB_URL");
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SERVICE_ROLE_KEY");
+const TASK_SELECT = "id,title,body,day,due_at,is_done,order_index,created_at,updated_at,notified_at,source,booking_status,appointment_id,client_name,client_email,client_phone";
 
 if (!supabaseUrl || !serviceKey) {
   throw new Error("Missing SUPABASE_URL/SB_URL or SUPABASE_SERVICE_ROLE_KEY/SB_SERVICE_ROLE_KEY");
@@ -64,7 +65,7 @@ serve(async (req) => {
 
       let query = supabase
         .from("tasks")
-        .select("id,title,body,day,due_at,is_done,order_index,created_at,updated_at,notified_at")
+        .select(TASK_SELECT)
         .order("day", { ascending: true })
         .order("order_index", { ascending: true })
         .order("due_at", { ascending: true });
@@ -102,7 +103,7 @@ serve(async (req) => {
       const { data, error } = await supabase
         .from("tasks")
         .insert(insertPayload)
-        .select("id,title,body,day,due_at,is_done,order_index,created_at,updated_at,notified_at")
+        .select(TASK_SELECT)
         .single();
 
       if (error) return errorResponse(error.message, 500);
@@ -142,7 +143,7 @@ serve(async (req) => {
         .from("tasks")
         .update(updates)
         .eq("id", id)
-        .select("id,title,body,day,due_at,is_done,order_index,created_at,updated_at,notified_at")
+        .select(TASK_SELECT)
         .single();
 
       if (error) return errorResponse(error.message, 500);
