@@ -3,9 +3,11 @@ This is a Kotlin Multiplatform project targeting Android, iOS.
 ## Portfolio task contract
 
 - The agenda loads daily tasks through `GET /api-tasks?day=YYYY-MM-DD`.
-- When `portfolio` mirrors a booking into AgendNote, it sends `title`, `body`, and `day` to `POST /api-tasks`.
+- `POST /api-tasks` still accepts the legacy payload `title`, `body`, and `day`.
+- Booking mirrors can also send `source`, `booking_status`, `appointment_id`, `client_name`, `client_email`, `client_phone`, `due_at`, `slot_end_at`, `label_names`, and `label_ids`.
+- `POST /api-tasks` is idempotent when `appointment_id` is provided: it updates the mirrored task instead of creating duplicates.
 - Supabase generates `tasks.id`; the portfolio does not send that id on create.
-- `POST /api-tasks` and `PATCH /api-tasks` must return `task.id`, `task.title`, `task.body`, and `task.day`.
+- `POST /api-tasks` and `PATCH /api-tasks` return the full task payload, including booking metadata and labels.
 - The portfolio stores the returned id as `mirrored_task_id`, and AgendNote shows that task later through `fetchTasks(day)`.
 
 * [/composeApp](./composeApp/src) is for code that will be shared across your Compose Multiplatform applications.

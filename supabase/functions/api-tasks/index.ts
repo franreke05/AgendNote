@@ -1,4 +1,4 @@
-﻿import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { errorResponse, jsonResponse } from "../_shared/response.ts";
@@ -6,7 +6,8 @@ import { requireAppSecret } from "../_shared/auth.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("SB_URL");
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SERVICE_ROLE_KEY");
-const TASK_SELECT = "id,title,body,day,due_at,is_done,order_index,created_at,updated_at,notified_at,source,booking_status,appointment_id,client_name,client_email,client_phone";
+const TASK_SELECT = "id,title,body,day,due_at,slot_end_at,is_done,order_index,created_at,updated_at,notified_at,source,booking_status,appointment_id,client_name,client_email,client_phone";
+const DEFAULT_LABEL_COLOR = "#8C94A6";
 
 if (!supabaseUrl || !serviceKey) {
   throw new Error("Missing SUPABASE_URL/SB_URL or SUPABASE_SERVICE_ROLE_KEY/SB_SERVICE_ROLE_KEY");
@@ -20,6 +21,125 @@ function parseDateParam(value: string | null) {
   if (!value) return null;
   const trimmed = value.trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : null;
+}
+
+function hasField(body: unknown, field: string) {
+  return typeof body === "object" && body !== null && field in body;
+}
+
+function normalizeOptionalString(value: unknown) {
+  if (value == null) return null;
+  const trimmed = String(value).trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeRequiredString(value: unknown, field: string) {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) {
+    throw new Error(`${field} is required`);
+  }
+  return normalized;
+}
+
+function normalizeRequiredDay(value: unknown) {
+  const day = parseDateParam(String(value ?? "").trim());
+  if (!day) {
+    throw new Error("day is required (YYYY-MM-DD)");
+  }
+  return day;
+}
+
+function normalizeStringArray(value: unknown) {
+  if (!Array.isArray(value)) return null;
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+
+  for (const item of value) {
+    const trimmed = normalizeOptionalString(item);
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    normalized.push(trimmed);
+  }
+
+  return normalized;
+}
+
+function resolveSource(body: Record<string, unknown>, appointmentId: string | null) {
+  if (hasField(body, "source")) {
+    return normalizeOptionalString(body.source) ?? "manual";
+  }
+  if (appointmentId) return "portfolio_booking";
+  return null;
+}
+
+function buildInsertPayload(body: Record<string, unknown>) {
+  const appointmentId = normalizeOptionalString(body.appointment_id);
+  return {
+    title: normalizeRequiredString(body.title, "title"),
+    body: normalizeOptionalString(body.body),
+    day: normalizeRequiredDay(body.day),
+    due_at: normalizeOptionalString(body.due_at),
+    slot_end_at: normalizeOptionalString(body.slot_end_at),
+    is_done: Boolean(body.is_done ?? false),
+    order_index: Number(body.order_index ?? 0),
+    source: resolveSource(body, appointmentId) ?? "manual",
+    booking_status: normalizeOptionalString(body.booking_status),
+    appointment_id: appointmentId,
+    client_name: normalizeOptionalString(body.client_name),
+    client_email: normalizeOptionalString(body.client_email),
+    client_phone: normalizeOptionalString(body.client_phone),
+  };
+}
+
+function buildUpdatePayload(body: Record<string, unknown>, options: { inferBookingSource?: boolean } = {}) {
+  const updates: Record<string, unknown> = {};
+  const appointmentId = normalizeOptionalString(body.appointment_id);
+
+  if (hasField(body, "title")) {
+    updates.title = normalizeRequiredString(body.title, "title");
+  }
+  if (hasField(body, "body")) {
+    updates.body = normalizeOptionalString(body.body);
+  }
+  if (hasField(body, "day")) {
+    const parsedDay = parseDateParam(String(body.day ?? "").trim());
+    if (!parsedDay) throw new Error("day must be YYYY-MM-DD");
+    updates.day = parsedDay;
+  }
+  if (hasField(body, "due_at")) {
+    updates.due_at = normalizeOptionalString(body.due_at);
+  }
+  if (hasField(body, "slot_end_at")) {
+    updates.slot_end_at = normalizeOptionalString(body.slot_end_at);
+  }
+  if (hasField(body, "is_done")) {
+    updates.is_done = Boolean(body.is_done);
+  }
+  if (hasField(body, "order_index")) {
+    updates.order_index = Number(body.order_index);
+  }
+  if (hasField(body, "source")) {
+    updates.source = resolveSource(body, appointmentId) ?? "manual";
+  } else if (options.inferBookingSource && appointmentId) {
+    updates.source = "portfolio_booking";
+  }
+  if (hasField(body, "booking_status")) {
+    updates.booking_status = normalizeOptionalString(body.booking_status);
+  }
+  if (hasField(body, "appointment_id")) {
+    updates.appointment_id = appointmentId;
+  }
+  if (hasField(body, "client_name")) {
+    updates.client_name = normalizeOptionalString(body.client_name);
+  }
+  if (hasField(body, "client_email")) {
+    updates.client_email = normalizeOptionalString(body.client_email);
+  }
+  if (hasField(body, "client_phone")) {
+    updates.client_phone = normalizeOptionalString(body.client_phone);
+  }
+
+  return updates;
 }
 
 async function attachLabels(tasks: Array<Record<string, unknown>>) {
@@ -48,6 +168,106 @@ async function attachLabels(tasks: Array<Record<string, unknown>>) {
   }));
 }
 
+async function fetchTaskByAppointmentId(appointmentId: string) {
+  const { data, error } = await supabase
+    .from("tasks")
+    .select(TASK_SELECT)
+    .eq("appointment_id", appointmentId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data as Record<string, unknown> | null;
+}
+
+async function fetchTaskById(taskId: string) {
+  const { data, error } = await supabase
+    .from("tasks")
+    .select(TASK_SELECT)
+    .eq("id", taskId)
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as Record<string, unknown>;
+}
+
+async function resolveLabelIds(labelIds: unknown, labelNames: unknown) {
+  const normalizedIds = normalizeStringArray(labelIds) ?? [];
+  const normalizedNames: string[] = [];
+  const seenNames = new Set<string>();
+  for (const name of normalizeStringArray(labelNames) ?? []) {
+    const key = name.toLowerCase();
+    if (seenNames.has(key)) continue;
+    seenNames.add(key);
+    normalizedNames.push(name);
+  }
+  const combinedIds = new Set(normalizedIds);
+
+  if (normalizedNames.length === 0) {
+    return Array.from(combinedIds);
+  }
+
+  const { data: existingLabels, error: labelsError } = await supabase
+    .from("labels")
+    .select("id,name");
+
+  if (labelsError) throw new Error(labelsError.message);
+
+  const labelIdByName = new Map<string, string>();
+  for (const label of existingLabels ?? []) {
+    const name = normalizeOptionalString(label.name);
+    const id = normalizeOptionalString(label.id);
+    if (!name || !id) continue;
+    labelIdByName.set(name.toLowerCase(), id);
+  }
+
+  const missingNames = normalizedNames.filter((name) => !labelIdByName.has(name.toLowerCase()));
+  if (missingNames.length > 0) {
+    const rows = missingNames.map((name) => ({
+      name,
+      color_hex: DEFAULT_LABEL_COLOR,
+    }));
+    const { data: createdLabels, error: createError } = await supabase
+      .from("labels")
+      .insert(rows)
+      .select("id,name");
+
+    if (createError) throw new Error(createError.message);
+
+    for (const label of createdLabels ?? []) {
+      const name = normalizeOptionalString(label.name);
+      const id = normalizeOptionalString(label.id);
+      if (!name || !id) continue;
+      labelIdByName.set(name.toLowerCase(), id);
+    }
+  }
+
+  for (const name of normalizedNames) {
+    const labelId = labelIdByName.get(name.toLowerCase());
+    if (labelId) combinedIds.add(labelId);
+  }
+
+  return Array.from(combinedIds);
+}
+
+async function syncTaskLabels(taskId: string, labelIds: unknown, labelNames: unknown) {
+  const resolvedLabelIds = await resolveLabelIds(labelIds, labelNames);
+
+  const { error: deleteError } = await supabase
+    .from("task_labels")
+    .delete()
+    .eq("task_id", taskId);
+  if (deleteError) throw new Error(deleteError.message);
+
+  if (resolvedLabelIds.length === 0) return;
+
+  const rows = resolvedLabelIds.map((labelId) => ({
+    task_id: taskId,
+    label_id: labelId,
+  }));
+  const { error: insertError } = await supabase.from("task_labels").insert(rows);
+  if (insertError) throw new Error(insertError.message);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -63,8 +283,6 @@ serve(async (req) => {
       const from = parseDateParam(url.searchParams.get("from"));
       const to = parseDateParam(url.searchParams.get("to"));
 
-      // The app reads existing tasks per day through GET /api-tasks?day=YYYY-MM-DD,
-      // including tasks mirrored from the portfolio into the same agenda day.
       let query = supabase
         .from("tasks")
         .select(TASK_SELECT)
@@ -87,23 +305,33 @@ serve(async (req) => {
 
     if (req.method === "POST") {
       const body = await req.json();
-      const title = String(body?.title ?? "").trim();
-      const day = String(body?.day ?? "").trim();
+      normalizeRequiredString(body?.title, "title");
+      normalizeRequiredDay(body?.day);
+      const appointmentId = normalizeOptionalString(body?.appointment_id);
+      const hasLabelSync = hasField(body, "label_ids") || hasField(body, "label_names");
 
-      if (!title) return errorResponse("title is required", 400);
-      if (!parseDateParam(day)) return errorResponse("day is required (YYYY-MM-DD)", 400);
+      if (appointmentId) {
+        const existingTask = await fetchTaskByAppointmentId(appointmentId);
+        if (existingTask) {
+          const updates = buildUpdatePayload(body, { inferBookingSource: true });
+          const { data, error } = await supabase
+            .from("tasks")
+            .update(updates)
+            .eq("id", String(existingTask.id))
+            .select(TASK_SELECT)
+            .single();
 
-      // Portfolio-created tasks send title/body/day. The insert generates id in Postgres
-      // and the response returns task.id/title/body/day for mirrored_task_id persistence.
-      const insertPayload = {
-        title,
-        body: body?.body ?? null,
-        day,
-        due_at: body?.due_at ?? null,
-        is_done: Boolean(body?.is_done ?? false),
-        order_index: Number(body?.order_index ?? 0),
-      };
+          if (error) return errorResponse(error.message, 500);
+          if (hasLabelSync) {
+            await syncTaskLabels(String(existingTask.id), body?.label_ids, body?.label_names);
+          }
 
+          const tasksWithLabels = await attachLabels([data as Record<string, unknown>]);
+          return jsonResponse({ task: tasksWithLabels[0] });
+        }
+      }
+
+      const insertPayload = buildInsertPayload(body);
       const { data, error } = await supabase
         .from("tasks")
         .insert(insertPayload)
@@ -111,15 +339,8 @@ serve(async (req) => {
         .single();
 
       if (error) return errorResponse(error.message, 500);
-
-      const labelIds: string[] = Array.isArray(body?.label_ids) ? body.label_ids : [];
-      if (labelIds.length > 0) {
-        const rows = labelIds.map((labelId) => ({
-          task_id: data.id,
-          label_id: labelId,
-        }));
-        const { error: labelError } = await supabase.from("task_labels").insert(rows);
-        if (labelError) return errorResponse(labelError.message, 500);
+      if (hasLabelSync) {
+        await syncTaskLabels(String(data.id), body?.label_ids, body?.label_names);
       }
 
       const tasksWithLabels = await attachLabels([data as Record<string, unknown>]);
@@ -128,49 +349,38 @@ serve(async (req) => {
 
     if (req.method === "PATCH") {
       const body = await req.json();
-      const id = String(body?.id ?? "").trim();
-      if (!id) return errorResponse("id is required", 400);
-
-      const updates: Record<string, unknown> = {};
-      if (body?.title != null) updates.title = String(body.title).trim();
-      if (body?.body != null) updates.body = body.body;
-      if (body?.day != null) {
-        const parsedDay = parseDateParam(String(body.day));
-        if (!parsedDay) return errorResponse("day must be YYYY-MM-DD", 400);
-        updates.day = parsedDay;
-      }
-      if (body?.due_at !== undefined) updates.due_at = body.due_at;
-      if (body?.is_done !== undefined) updates.is_done = Boolean(body.is_done);
-      if (body?.order_index !== undefined) updates.order_index = Number(body.order_index);
-
-      const { data, error } = await supabase
-        .from("tasks")
-        .update(updates)
-        .eq("id", id)
-        .select(TASK_SELECT)
-        .single();
-
-      if (error) return errorResponse(error.message, 500);
-
-      if (Array.isArray(body?.label_ids)) {
-        const labelIds: string[] = body.label_ids;
-        const { error: deleteError } = await supabase
-          .from("task_labels")
-          .delete()
-          .eq("task_id", id);
-        if (deleteError) return errorResponse(deleteError.message, 500);
-
-        if (labelIds.length > 0) {
-          const rows = labelIds.map((labelId) => ({
-            task_id: id,
-            label_id: labelId,
-          }));
-          const { error: labelError } = await supabase.from("task_labels").insert(rows);
-          if (labelError) return errorResponse(labelError.message, 500);
+      let taskId = normalizeOptionalString(body?.id);
+      if (!taskId) {
+        const appointmentId = normalizeOptionalString(body?.appointment_id);
+        if (appointmentId) {
+          const existingTask = await fetchTaskByAppointmentId(appointmentId);
+          taskId = existingTask ? String(existingTask.id) : null;
         }
       }
+      if (!taskId) return errorResponse("id is required", 400);
 
-      const tasksWithLabels = await attachLabels([data as Record<string, unknown>]);
+      const updates = buildUpdatePayload(body);
+      let task = Object.keys(updates).length > 0
+        ? null
+        : await fetchTaskById(taskId);
+
+      if (Object.keys(updates).length > 0) {
+        const { data, error } = await supabase
+          .from("tasks")
+          .update(updates)
+          .eq("id", taskId)
+          .select(TASK_SELECT)
+          .single();
+
+        if (error) return errorResponse(error.message, 500);
+        task = data as Record<string, unknown>;
+      }
+
+      if (hasField(body, "label_ids") || hasField(body, "label_names")) {
+        await syncTaskLabels(taskId, body?.label_ids, body?.label_names);
+      }
+
+      const tasksWithLabels = await attachLabels([task as Record<string, unknown>]);
       return jsonResponse({ task: tasksWithLabels[0] });
     }
 
