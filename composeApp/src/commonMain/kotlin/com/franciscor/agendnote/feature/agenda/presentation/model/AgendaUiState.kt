@@ -8,4 +8,5 @@ data class AgendaUiState(
     val tasksByDate: Map<LocalDate, List<TaskItem>> = emptyMap(),
     val loadingByDate: Map<LocalDate, Boolean> = emptyMap(),
     val errorByDate: Map<LocalDate, String?> = emptyMap(),
+    val isRemoteAvailable: Boolean = true,
 )

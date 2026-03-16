@@ -48,5 +48,5 @@ En `composeApp/src/commonMain/kotlin/com/franciscor/agendnote/core/network/AppCo
 
 APP_SECRET se lee por plataforma:
 - Android: agrega `APP_SECRET=tu_valor` en `local.properties`.
-- iOS: agrega `APP_SECRET=tu_valor` en `iosApp/Configuration/Config.xcconfig` (Info.plist lo usa).
+- iOS: copia `iosApp/Configuration/Config.local.xcconfig.example` a `iosApp/Configuration/Config.local.xcconfig` y agrega ahi `APP_SECRET=tu_valor` (Info.plist lo usa via `Config.xcconfig`).
 - No dejes `APP_SECRET` hardcodeado en archivos versionados antes de desplegar.

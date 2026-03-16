@@ -7,6 +7,7 @@ import com.franciscor.agendnote.feature.agenda.domain.AgendaTaskRepository
 import com.franciscor.agendnote.feature.agenda.presentation.viewmodel.AgendaViewModel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -19,6 +20,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class AgendaViewModelTest {
     private val timeZone = TimeZone.UTC
     private val baseDate = LocalDate(2026, 3, 11)
@@ -200,6 +202,40 @@ class AgendaViewModelTest {
         viewModel.clearLabelsFromTasks()
 
         assertTrue(viewModel.uiState.tasksByDate[baseDate].orEmpty().all { it.labels.isEmpty() })
+    }
+
+    @Test
+    fun `loadTasksForDate without remote repository exposes config error`() = runTest {
+        val viewModel = AgendaViewModel(
+            repository = null,
+            timeZone = timeZone,
+            remoteUnavailableMessage = "Falta APP_SECRET",
+            initialDate = baseDate,
+        )
+
+        viewModel.loadTasksForDate(baseDate)
+
+        assertEquals("Falta APP_SECRET", viewModel.dayUiState(baseDate).errorMessage)
+        assertFalse(viewModel.uiState.isRemoteAvailable)
+    }
+
+    @Test
+    fun `saveTask without remote repository does not mutate local state`() = runTest {
+        val viewModel = AgendaViewModel(
+            repository = null,
+            timeZone = timeZone,
+            remoteUnavailableMessage = "Falta APP_SECRET",
+            initialDate = baseDate,
+        )
+
+        val result = viewModel.saveTask(
+            date = baseDate,
+            draft = TaskDraft(title = "Nueva", details = null, time = null, labels = emptyList()),
+        )
+
+        assertFalse(result.success)
+        assertEquals("Falta APP_SECRET", result.errorMessage)
+        assertTrue(viewModel.uiState.tasksByDate[baseDate].isNullOrEmpty())
     }
 
     private fun task(

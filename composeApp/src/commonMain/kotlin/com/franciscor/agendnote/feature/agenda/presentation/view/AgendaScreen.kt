@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.franciscor.agendnote.core.model.LabelTag
+import com.franciscor.agendnote.core.model.TaskItem
 import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.feature.agenda.presentation.controller.AgendaController
 import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaAction
@@ -39,14 +40,17 @@ fun AgendaScreen(
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
+    val contentInset = layout.width(24.dp, 20.dp)
     val scope = rememberCoroutineScope()
     val uiState = viewModel.uiState
+    val isEditingEnabled = uiState.isRemoteAvailable
     val dayUiState = viewModel.selectedDayUiState()
     val selectedDate = uiState.selectedDate
     val sourceTasks = dayUiState.tasks
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var showCalendar by remember { mutableStateOf(false) }
     var showTaskSheet by remember { mutableStateOf(false) }
+    var showTaskDetails by remember { mutableStateOf<TaskItem?>(null) }
     var pendingDelete by remember { mutableStateOf<PendingDelete?>(null) }
     var dragOffset by remember { mutableFloatStateOf(0f) }
     val swipeThreshold = layout.width(72.dp, 56.dp)
@@ -59,12 +63,16 @@ fun AgendaScreen(
     val filteredTasks = remember(sourceTasks, searchQuery) {
         filterTasks(sourceTasks, searchQuery)
     }
-    val blurRadius = if (showTaskSheet || showCalendar) layout.size(18.dp, 14.dp) else 0.dp
+    val blurRadius = if (showTaskSheet || showCalendar || showTaskDetails != null) layout.size(18.dp, 14.dp) else 0.dp
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(
+                    horizontal = contentInset,
+                    vertical = layout.height(12.dp, 10.dp),
+                )
                 .blur(blurRadius),
             verticalArrangement = Arrangement.spacedBy(layout.height(16.dp, 14.dp)),
         ) {
@@ -93,6 +101,7 @@ fun AgendaScreen(
                 isLoading = dayUiState.isLoading,
                 errorMessage = dayUiState.errorMessage,
                 searchQuery = searchQuery,
+                isEditingEnabled = isEditingEnabled,
                 onToggleDone = { task, done ->
                     scope.launch {
                         controller.toggleTaskDone(selectedDate, task, done)
@@ -100,6 +109,9 @@ fun AgendaScreen(
                 },
                 onRequestDelete = { task ->
                     pendingDelete = PendingDelete(selectedDate, task)
+                },
+                onTaskSelected = { task ->
+                    showTaskDetails = task
                 },
                 modifier = Modifier
                     .weight(1f)
@@ -142,9 +154,10 @@ fun AgendaScreen(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(
-                    end = layout.width(20.dp, 18.dp),
+                    end = layout.width(20.dp, 18.dp) + contentInset,
                     bottom = layout.height(98.dp, 88.dp),
                 ),
+            enabled = isEditingEnabled,
             onClick = { showTaskSheet = true },
         )
 
@@ -186,6 +199,23 @@ fun AgendaScreen(
                     scope.launch {
                         controller.deleteTask(target.date, target.task)
                     }
+                },
+            )
+        }
+
+        showTaskDetails?.let { task ->
+            TaskDetailsOverlay(
+                task = task,
+                onDismiss = { showTaskDetails = null },
+                onToggleDone = { done ->
+                    showTaskDetails = null
+                    scope.launch {
+                        controller.toggleTaskDone(selectedDate, task, done)
+                    }
+                },
+                onRequestDelete = {
+                    showTaskDetails = null
+                    pendingDelete = PendingDelete(selectedDate, task)
                 },
             )
         }

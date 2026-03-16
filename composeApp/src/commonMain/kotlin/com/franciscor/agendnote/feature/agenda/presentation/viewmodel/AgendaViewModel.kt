@@ -5,24 +5,39 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.franciscor.agendnote.core.model.TaskDraft
 import com.franciscor.agendnote.core.model.TaskItem
+import com.franciscor.agendnote.core.notifications.NotificationServiceProvider
+import com.franciscor.agendnote.core.platform.currentTimeMillis
 import com.franciscor.agendnote.feature.agenda.domain.AgendaTaskRepository
 import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaDayUiState
 import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaUiState
 import com.franciscor.agendnote.feature.agenda.presentation.model.SaveResult
 import io.ktor.client.plugins.ResponseException
-import kotlinx.datetime.Clock
 import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.plus
-import kotlinx.datetime.todayIn
+import kotlinx.datetime.toLocalDateTime
 
 class AgendaViewModel(
     private val repository: AgendaTaskRepository?,
     private val timeZone: TimeZone = TimeZone.currentSystemDefault(),
-    initialDate: LocalDate = Clock.System.todayIn(timeZone),
+    private val remoteUnavailableMessage: String? = null,
+    initialDate: LocalDate = currentDate(timeZone),
 ) {
-    var uiState by mutableStateOf(AgendaUiState(selectedDate = initialDate))
+    private val hasRemoteAccess = repository != null
+    private val remoteErrorMessage = remoteUnavailableMessage
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?: "Configuracion remota incompleta. No se puede conectar con la BD."
+    private val notificationService = NotificationServiceProvider.getNotificationService()
+
+    var uiState by mutableStateOf(
+        AgendaUiState(
+            selectedDate = initialDate,
+            isRemoteAvailable = hasRemoteAccess,
+        ),
+    )
         private set
 
     private var nextLoadToken: Long = 0
@@ -40,7 +55,7 @@ class AgendaViewModel(
 
     fun selectedDayUiState(): AgendaDayUiState = dayUiState(uiState.selectedDate)
 
-    fun today(): LocalDate = Clock.System.todayIn(timeZone)
+    fun today(): LocalDate = currentDate(timeZone)
 
     fun dayUiState(date: LocalDate): AgendaDayUiState {
         return AgendaDayUiState(
@@ -53,7 +68,30 @@ class AgendaViewModel(
     }
 
     fun setTasks(date: LocalDate, tasks: List<TaskItem>) {
-        uiState = uiState.copy(tasksByDate = uiState.tasksByDate + (date to orderTasks(tasks)))
+        val orderedTasks = orderTasks(tasks)
+        uiState = uiState.copy(tasksByDate = uiState.tasksByDate + (date to orderedTasks))
+        
+        // Schedule notifications for tasks with time
+        for (task in orderedTasks) {
+            if (task.time != null) {
+                try {
+                    scheduleNotificationAsync(task, date)
+                } catch (e: Exception) {
+                    println("Error scheduling notification: ${e.message}")
+                }
+            }
+        }
+    }
+    
+    private fun scheduleNotificationAsync(task: TaskItem, date: LocalDate) {
+        // Note: This runs synchronously on iOS, which is fine for local notifications
+        try {
+            kotlinx.coroutines.runBlocking {
+                notificationService.scheduleTaskNotification(task, date)
+            }
+        } catch (e: Exception) {
+            println("Error in notification scheduling: ${e.message}")
+        }
     }
 
     fun clearTasks(date: LocalDate) {
@@ -77,7 +115,10 @@ class AgendaViewModel(
     }
 
     suspend fun loadTasksForDate(date: LocalDate) {
-        val repository = repository ?: return
+        val repository = repository ?: run {
+            setError(date, remoteErrorMessage)
+            return
+        }
 
         val targetDate = date
         val token = ++nextLoadToken
@@ -109,97 +150,79 @@ class AgendaViewModel(
     suspend fun saveTask(date: LocalDate, draft: TaskDraft): SaveResult {
         val trimmedTitle = draft.title.trim()
         if (trimmedTitle.isEmpty()) return SaveResult(false, "Titulo requerido")
-        val repository = repository
-
-        return if (repository == null) {
-            val task = TaskItem(
-                id = "task-${Clock.System.now().toEpochMilliseconds()}",
-                title = trimmedTitle,
-                details = draft.details?.trim()?.ifBlank { null },
-                time = draft.time,
-                labels = draft.labels,
-            )
-            setTasks(date, tasksFor(date) + task)
-            setError(date, null)
-            SaveResult(true)
-        } else {
-            runCatching { repository.createTask(date, draft.copy(title = trimmedTitle)) }
-                .onSuccess { created ->
-                    setTasks(date, tasksFor(date) + created)
-                    setError(date, null)
-                }
-                .onFailure { error ->
-                    setError(date, resolveServerError(error))
-                }
-                .fold(
-                    onSuccess = { SaveResult(true) },
-                    onFailure = { SaveResult(false, resolveServerError(it)) },
-                )
+        val repository = repository ?: run {
+            setError(date, remoteErrorMessage)
+            return SaveResult(false, remoteErrorMessage)
         }
+
+        return runCatching { repository.createTask(date, draft.copy(title = trimmedTitle)) }
+            .onSuccess { created ->
+                setTasks(date, tasksFor(date) + created)
+                setError(date, null)
+            }
+            .onFailure { error ->
+                setError(date, resolveServerError(error))
+            }
+            .fold(
+                onSuccess = { SaveResult(true) },
+                onFailure = { SaveResult(false, resolveServerError(it)) },
+            )
     }
 
     suspend fun toggleTaskDone(date: LocalDate, task: TaskItem, isDone: Boolean): Boolean {
-        val repository = repository
-        return if (repository == null) {
-            replaceTask(date, task.copy(isDone = isDone))
-            setError(date, null)
-            true
-        } else {
-            runCatching { repository.updateTaskDone(task.id, isDone) }
-                .onSuccess { updated ->
-                    replaceTask(date, updated)
-                    setError(date, null)
-                }
-                .onFailure {
-                    setError(date, "No se pudo actualizar la tarea")
-                }
-                .isSuccess
+        val repository = repository ?: run {
+            setError(date, remoteErrorMessage)
+            return false
         }
+        return runCatching { repository.updateTaskDone(task.id, isDone) }
+            .onSuccess { updated ->
+                replaceTask(date, updated)
+                setError(date, null)
+            }
+            .onFailure {
+                setError(date, "No se pudo actualizar la tarea")
+            }
+            .isSuccess
     }
 
     suspend fun deleteTask(date: LocalDate, task: TaskItem): Boolean {
-        val repository = repository
-        return if (repository == null) {
-            removeTask(date, task.id)
-            setError(date, null)
-            true
-        } else {
-            runCatching { repository.deleteTask(task.id) }
-                .onSuccess { success ->
-                    if (success) {
-                        removeTask(date, task.id)
-                        setError(date, null)
-                    } else {
-                        setError(date, "No se pudo eliminar la tarea")
-                    }
-                }
-                .onFailure {
+        val repository = repository ?: run {
+            setError(date, remoteErrorMessage)
+            return false
+        }
+        return runCatching { repository.deleteTask(task.id) }
+            .onSuccess { success ->
+                if (success) {
+                    removeTask(date, task.id)
+                    setError(date, null)
+                } else {
                     setError(date, "No se pudo eliminar la tarea")
                 }
-                .getOrDefault(false)
-        }
+            }
+            .onFailure {
+                setError(date, "No se pudo eliminar la tarea")
+            }
+            .getOrDefault(false)
     }
 
     suspend fun deleteAllTasks(): Boolean {
         val selectedDate = uiState.selectedDate
-        val repository = repository
-        return if (repository == null) {
-            clearAllTasks()
-            true
-        } else {
-            runCatching { repository.deleteAllTasks() }
-                .onSuccess { success ->
-                    if (success) {
-                        clearAllTasks()
-                    } else {
-                        setError(selectedDate, "No se pudieron borrar las notas")
-                    }
-                }
-                .onFailure {
+        val repository = repository ?: run {
+            setError(selectedDate, remoteErrorMessage)
+            return false
+        }
+        return runCatching { repository.deleteAllTasks() }
+            .onSuccess { success ->
+                if (success) {
+                    clearAllTasks()
+                } else {
                     setError(selectedDate, "No se pudieron borrar las notas")
                 }
-                .getOrDefault(false)
-        }
+            }
+            .onFailure {
+                setError(selectedDate, "No se pudieron borrar las notas")
+            }
+            .getOrDefault(false)
     }
 
     fun clearAllTasks() {
@@ -248,6 +271,13 @@ private fun resolveServerError(error: Throwable): String {
         error.message?.takeIf { it.isNotBlank() }?.let { return it }
     }
     return error.message?.takeIf { it.isNotBlank() } ?: "No se pudo guardar la tarea"
+}
+
+private fun currentDate(timeZone: TimeZone): LocalDate {
+    return Instant
+        .fromEpochMilliseconds(currentTimeMillis())
+        .toLocalDateTime(timeZone)
+        .date
 }
 
 private fun orderTasks(tasks: List<TaskItem>): List<TaskItem> {

@@ -6,4 +6,5 @@ data class LabelsUiState(
     val labels: List<LabelTag> = emptyList(),
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
+    val isRemoteAvailable: Boolean = true,
 )

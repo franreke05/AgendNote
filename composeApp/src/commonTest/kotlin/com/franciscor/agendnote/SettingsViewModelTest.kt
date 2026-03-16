@@ -48,6 +48,34 @@ class SettingsViewModelTest {
 
         assertEquals("fallback-background", viewModel.uiState.backgroundUrl)
     }
+
+    @Test
+    fun `loadSettings without remote repository exposes config error`() = runTest {
+        val viewModel = SettingsViewModel(
+            repository = null,
+            fallbackBackgroundUrl = "",
+            remoteUnavailableMessage = "Falta APP_SECRET",
+        )
+
+        viewModel.loadSettings()
+
+        assertEquals("Falta APP_SECRET", viewModel.uiState.errorMessage)
+        assertFalse(viewModel.uiState.isRemoteAvailable)
+    }
+
+    @Test
+    fun `setTheme without remote repository does not mutate theme`() = runTest {
+        val viewModel = SettingsViewModel(
+            repository = null,
+            fallbackBackgroundUrl = "",
+            remoteUnavailableMessage = "Falta APP_SECRET",
+        )
+
+        viewModel.setTheme(true)
+
+        assertFalse(viewModel.uiState.isDarkMode)
+        assertEquals("Falta APP_SECRET", viewModel.uiState.errorMessage)
+    }
 }
 
 private class FakeSettingsRepository(

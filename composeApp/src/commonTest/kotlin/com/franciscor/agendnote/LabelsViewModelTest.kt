@@ -8,6 +8,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class LabelsViewModelTest {
     @Test
@@ -62,6 +63,33 @@ class LabelsViewModelTest {
 
         assertEquals(emptyList(), viewModel.uiState.labels)
         assertNull(viewModel.uiState.errorMessage)
+    }
+
+    @Test
+    fun `loadLabels without remote repository exposes config error`() = runTest {
+        val viewModel = LabelsViewModel(
+            repository = null,
+            remoteUnavailableMessage = "Falta APP_SECRET",
+        )
+
+        viewModel.loadLabels()
+
+        assertEquals("Falta APP_SECRET", viewModel.uiState.errorMessage)
+        assertFalse(viewModel.uiState.isRemoteAvailable)
+    }
+
+    @Test
+    fun `createLabel without remote repository does not append labels`() = runTest {
+        val viewModel = LabelsViewModel(
+            repository = null,
+            remoteUnavailableMessage = "Falta APP_SECRET",
+        )
+
+        val created = viewModel.createLabel("Importante", "#FFAA00")
+
+        assertEquals(null, created)
+        assertTrue(viewModel.uiState.labels.isEmpty())
+        assertEquals("Falta APP_SECRET", viewModel.uiState.errorMessage)
     }
 }
 

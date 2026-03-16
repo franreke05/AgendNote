@@ -18,6 +18,9 @@ data class AppLayoutMetrics(
     val heightScale: Float,
     val contentScale: Float,
 ) {
+    val globalInset: Dp
+        get() = size(5.dp, 4.dp)
+
     fun width(base: Dp, min: Dp = 0.dp): Dp = (base.value * widthScale).dp.coerceAtLeast(min)
 
     fun height(base: Dp, min: Dp = 0.dp): Dp = (base.value * heightScale).dp.coerceAtLeast(min)
