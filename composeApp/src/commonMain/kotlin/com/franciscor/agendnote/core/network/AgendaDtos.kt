@@ -20,12 +20,6 @@ data class TaskDto(
     val is_done: Boolean = false,
     val order_index: Int = 0,
     val labels: List<LabelDto> = emptyList(),
-    val source: String? = null,
-    val booking_status: String? = null,
-    val appointment_id: String? = null,
-    val client_name: String? = null,
-    val client_email: String? = null,
-    val client_phone: String? = null,
 )
 
 @Serializable
@@ -65,12 +59,6 @@ data class CreateTaskRequest(
     val order_index: Int = 0,
     val label_ids: List<String> = emptyList(),
     val label_names: List<String> = emptyList(),
-    val source: String? = null,
-    val booking_status: String? = null,
-    val appointment_id: String? = null,
-    val client_name: String? = null,
-    val client_email: String? = null,
-    val client_phone: String? = null,
 )
 
 @Serializable
@@ -85,12 +73,6 @@ data class UpdateTaskRequest(
     val order_index: Int? = null,
     val label_ids: List<String>? = null,
     val label_names: List<String>? = null,
-    val source: String? = null,
-    val booking_status: String? = null,
-    val appointment_id: String? = null,
-    val client_name: String? = null,
-    val client_email: String? = null,
-    val client_phone: String? = null,
 )
 
 @Serializable

@@ -19,12 +19,6 @@ data class TaskItem(
     val labels: List<LabelTag>,
     val endTime: LocalTime? = null,
     val isDone: Boolean = false,
-    val source: String? = null,
-    val bookingStatus: String? = null,
-    val appointmentId: String? = null,
-    val clientName: String? = null,
-    val clientEmail: String? = null,
-    val clientPhone: String? = null,
 )
 
 @Immutable

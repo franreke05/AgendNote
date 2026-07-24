@@ -65,12 +65,6 @@ private fun TaskDto.toTaskItem(timeZone: TimeZone): TaskItem {
         endTime = endTime,
         labels = labels.map { it.toLabelTag() },
         isDone = is_done,
-        source = source,
-        bookingStatus = booking_status,
-        appointmentId = appointment_id,
-        clientName = client_name,
-        clientEmail = client_email,
-        clientPhone = client_phone,
     )
 }
 
