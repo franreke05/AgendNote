@@ -169,15 +169,6 @@ internal fun DayAgenda(
     searchQuery: String,
     onToggleDone: (TaskItem, Boolean) -> Unit,
     onRequestDelete: (TaskItem) -> Unit,
-    // Tasks mirrored from the external booking system (task.source == "portfolio_booking")
-    // must not be deleted/toggled directly: the containing screen should show a distinct
-    // confirmation before proceeding. Defaults delegate to the normal action so existing
-    // call sites that don't pass these explicitly keep compiling and behaving as before.
-    // TODO(AgendaScreen.kt): pass real implementations that show a GlassConfirmDialog with
-    // booking-specific copy (e.g. "Esta cita proviene de una reserva. ¿Eliminarla igualmente?")
-    // instead of relying on these defaults.
-    onRequestDeleteBooking: (TaskItem) -> Unit = onRequestDelete,
-    onRequestToggleBooking: (TaskItem, Boolean) -> Unit = onToggleDone,
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
@@ -300,15 +291,10 @@ internal fun DayAgenda(
             }
         } else {
             items(tasks, key = { it.id }) { task ->
-                val isBookingTask = task.source == "portfolio_booking"
                 SwipeableTaskCard(
                     task = task,
-                    onRequestDelete = {
-                        if (isBookingTask) onRequestDeleteBooking(task) else onRequestDelete(task)
-                    },
-                    onToggleDone = { done ->
-                        if (isBookingTask) onRequestToggleBooking(task, done) else onToggleDone(task, done)
-                    },
+                    onRequestDelete = { onRequestDelete(task) },
+                    onToggleDone = { done -> onToggleDone(task, done) },
                 )
             }
         }
@@ -470,21 +456,6 @@ private fun TaskCard(
 ) {
     val layout = AppLayout.metrics
     val alpha = if (task.isDone) 0.6f else 1f
-    val isPortfolioBooking = task.source == "portfolio_booking"
-    val primaryTitle = if (isPortfolioBooking) {
-        task.clientName?.takeIf { it.isNotBlank() } ?: task.title
-    } else {
-        task.title
-    }
-    val secondaryTitle = if (isPortfolioBooking) {
-        task.title.takeIf { it.isNotBlank() && it != primaryTitle }
-    } else {
-        null
-    }
-    val clientLine = listOfNotNull(
-        task.clientEmail?.takeIf { it.isNotBlank() },
-        task.clientPhone?.takeIf { it.isNotBlank() },
-    ).joinToString(" · ")
 
     GlassSurface(
         modifier = modifier
@@ -516,66 +487,30 @@ private fun TaskCard(
                 }
             }
 
-            if (isPortfolioBooking) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    BookingMetaChip(
-                        text = "Cita cliente",
-                        color = Color(0xFF3DA9FC),
-                    )
-                    BookingMetaChip(
-                        text = bookingStatusLabel(task.bookingStatus),
-                        color = bookingStatusColor(task.bookingStatus),
-                    )
-                }
-                if (clientLine.isNotBlank()) {
-                    Text(
-                        text = clientLine,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = GlassTheme.tokens.textSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-
             Text(
-                text = primaryTitle,
+                text = task.title,
                 style = MaterialTheme.typography.titleLarge.copy(
                     fontSize = layout.text(19.sp, 17.sp),
                     lineHeight = layout.text(21.sp, 19.sp),
                 ),
                 color = GlassTheme.tokens.textPrimary,
-                maxLines = if (isPortfolioBooking) 2 else 1,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-
-            if (!secondaryTitle.isNullOrBlank()) {
-                Text(
-                    text = secondaryTitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = GlassTheme.tokens.textSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
 
             if (!task.details.isNullOrBlank()) {
                 Text(
                     text = task.details,
                     style = MaterialTheme.typography.bodyLarge,
                     color = GlassTheme.tokens.textSecondary,
-                    maxLines = if (isPortfolioBooking) 3 else 2,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
 
             // Always-visible, non-gestural alternative to the swipe-to-complete /
             // swipe-to-delete actions above, for screen reader users and anyone who
-            // cannot reliably perform a drag gesture. Mirrors the same callbacks the
-            // swipe gestures use, so booking-task guarding (see DayAgenda) applies here too.
+            // cannot reliably perform a drag gesture.
             TaskCardActions(
                 isDone = task.isDone,
                 onToggleDone = onToggleDone,
@@ -638,29 +573,6 @@ private fun TaskCardActions(
                 modifier = Modifier.size(layout.size(20.dp, 18.dp)),
             )
         }
-    }
-}
-
-@Composable
-private fun BookingMetaChip(
-    text: String,
-    color: Color,
-) {
-    val layout = AppLayout.metrics
-    GlassSurface(
-        shape = RoundedCornerShape(layout.size(14.dp, 12.dp)),
-        tint = color.copy(alpha = 0.18f),
-        strokeColor = color.copy(alpha = 0.42f),
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelMedium,
-            color = GlassTheme.tokens.textPrimary,
-            modifier = Modifier.padding(
-                horizontal = layout.width(10.dp, 8.dp),
-                vertical = layout.height(6.dp, 6.dp),
-            ),
-        )
     }
 }
 
@@ -756,18 +668,6 @@ internal fun FloatingAddButton(
     }
 }
 
-private fun bookingStatusLabel(status: String?): String = when (status?.lowercase()) {
-    "confirmed" -> "Confirmada"
-    "cancelled", "canceled" -> "Cancelada"
-    else -> "Pendiente"
-}
-
-private fun bookingStatusColor(status: String?): Color = when (status?.lowercase()) {
-    "confirmed" -> Color(0xFF39D98A)
-    "cancelled", "canceled" -> Color(0xFFE06B6B)
-    else -> Color(0xFFFFC857)
-}
-
 private fun formatFullDate(date: LocalDate): String {
     return "${dayName(date.dayOfWeek)}, ${date.dayOfMonth} de ${monthName(date.month)}"
 }
@@ -785,10 +685,6 @@ internal fun filterTasks(tasks: List<TaskItem>, query: String): List<TaskItem> {
     return tasks.filter { task ->
         task.title.lowercase().contains(needle) ||
             (task.details?.lowercase()?.contains(needle) == true) ||
-            (task.clientName?.lowercase()?.contains(needle) == true) ||
-            (task.clientEmail?.lowercase()?.contains(needle) == true) ||
-            (task.clientPhone?.lowercase()?.contains(needle) == true) ||
-            (task.bookingStatus?.lowercase()?.contains(needle) == true) ||
             task.labels.any { it.name.lowercase().contains(needle) }
     }
 }

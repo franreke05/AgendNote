@@ -89,16 +89,10 @@ internal fun ConfirmDeleteDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val isSyncedBooking = task.source == "portfolio_booking"
     GlassConfirmDialog(
         visible = true,
         title = "Eliminar tarea?",
-        message = if (isSyncedBooking) {
-            "\"${task.title}\" es una cita sincronizada desde tu sistema de reservas. " +
-                "Eliminarla aqui no cancela la reserva externa."
-        } else {
-            "Se borrara \"${task.title}\""
-        },
+        message = "Se borrara \"${task.title}\"",
         onConfirm = onConfirm,
         onDismiss = onDismiss,
         confirmText = "Eliminar",

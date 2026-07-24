@@ -99,19 +99,6 @@ fun AgendaScreen(
                 onRequestDelete = { task ->
                     pendingDeleteTaskId = task.id
                 },
-                onRequestDeleteBooking = { task ->
-                    // Reuse the same pending-delete state: ConfirmDeleteDialog already
-                    // tailors its message when task.source == "portfolio_booking", so a
-                    // second parallel state/dialog would just duplicate that logic.
-                    pendingDeleteTaskId = task.id
-                },
-                onRequestToggleBooking = { task, done ->
-                    // Toggling completion on a synced booking is lower-risk than deleting
-                    // it (no data loss, easily reversible), so we apply it directly instead
-                    // of adding a second confirmation flow. The delete-confirmation fix
-                    // above covers the actual data-loss risk.
-                    controller.toggleTaskDoneAsync(selectedDate, task, done)
-                },
                 modifier = Modifier
                     .weight(1f)
                     .pointerInput(selectedDate, swipeThreshold, swipeEdgeGuard) {
