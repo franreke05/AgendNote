@@ -56,7 +56,9 @@ fun LabelsScreen(
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
+    val contentInset = layout.width(24.dp, 20.dp)
     val uiState = viewModel.uiState
+    val isEditingEnabled = uiState.isRemoteAvailable
     val palette = labelColorPalette()
     val usedColors = uiState.labels.map { it.colorHex.lowercase() }.toSet()
     val colorOptions = palette
@@ -77,9 +79,14 @@ fun LabelsScreen(
 
     Box(modifier = modifier) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = contentInset),
             verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
-            contentPadding = PaddingValues(bottom = layout.height(140.dp, 110.dp)),
+            contentPadding = PaddingValues(
+                bottom = layout.height(140.dp, 110.dp),
+                top = layout.height(12.dp, 10.dp),
+            ),
         ) {
             item {
                 GlassSurface(
@@ -104,7 +111,7 @@ fun LabelsScreen(
                             )
                             GlassActionButton(
                                 text = "Agregar",
-                                enabled = newLabelName.isNotBlank() && !uiState.isLoading,
+                                enabled = isEditingEnabled && newLabelName.isNotBlank() && !uiState.isLoading,
                                 tint = GlassTheme.tokens.glassFillStrong,
                                 textColor = GlassTheme.tokens.textPrimary,
                                 onClick = {
@@ -202,6 +209,7 @@ fun LabelsScreen(
                 items(uiState.labels, key = { it.id }) { label ->
                     LabelRow(
                         label = label,
+                        enabled = isEditingEnabled,
                         onDelete = { labelPendingDelete = label },
                     )
                 }
@@ -231,6 +239,7 @@ fun LabelsScreen(
 @Composable
 private fun LabelRow(
     label: LabelTag,
+    enabled: Boolean,
     onDelete: () -> Unit,
 ) {
     val layout = AppLayout.metrics
@@ -269,6 +278,7 @@ private fun LabelRow(
                 modifier = Modifier
                     .clip(RoundedCornerShape(layout.size(14.dp, 12.dp)))
                     .clickable(
+                        enabled = enabled,
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = onDelete,
@@ -285,12 +295,12 @@ private fun LabelRow(
                     Icon(
                         imageVector = Icons.Rounded.Delete,
                         contentDescription = "Eliminar",
-                        tint = GlassTheme.tokens.textSecondary,
+                        tint = if (enabled) GlassTheme.tokens.textSecondary else GlassTheme.tokens.textSecondary.copy(alpha = 0.55f),
                     )
                     Text(
                         text = "Eliminar",
                         style = MaterialTheme.typography.labelMedium,
-                        color = GlassTheme.tokens.textSecondary,
+                        color = if (enabled) GlassTheme.tokens.textSecondary else GlassTheme.tokens.textSecondary.copy(alpha = 0.55f),
                     )
                 }
             }

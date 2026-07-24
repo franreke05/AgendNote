@@ -6,4 +6,5 @@ data class SettingsUiState(
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
     val pendingBulkAction: SettingsBulkAction? = null,
+    val isRemoteAvailable: Boolean = true,
 )

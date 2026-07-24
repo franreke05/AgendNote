@@ -167,8 +167,10 @@ internal fun DayAgenda(
     isLoading: Boolean,
     errorMessage: String?,
     searchQuery: String,
+    isEditingEnabled: Boolean,
     onToggleDone: (TaskItem, Boolean) -> Unit,
     onRequestDelete: (TaskItem) -> Unit,
+    onTaskSelected: (TaskItem) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
@@ -293,8 +295,10 @@ internal fun DayAgenda(
             items(tasks, key = { it.id }) { task ->
                 SwipeableTaskCard(
                     task = task,
+                    isEditingEnabled = isEditingEnabled,
                     onRequestDelete = { onRequestDelete(task) },
                     onToggleDone = { done -> onToggleDone(task, done) },
+                    onTaskSelected = { onTaskSelected(task) },
                 )
             }
         }
@@ -304,8 +308,10 @@ internal fun DayAgenda(
 @Composable
 private fun SwipeableTaskCard(
     task: TaskItem,
+    isEditingEnabled: Boolean,
     onRequestDelete: () -> Unit,
     onToggleDone: (Boolean) -> Unit,
+    onTaskSelected: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
@@ -329,6 +335,52 @@ private fun SwipeableTaskCard(
     val isSwipeRight = animatedOffset >= 0f
     val progress = (abs(animatedOffset) / maxOffset).coerceIn(0f, 1f)
 
+    val swipeModifier = if (isEditingEnabled) {
+        Modifier.pointerInput(task.id, isPerformingAction) {
+            if (isPerformingAction) return@pointerInput
+            detectHorizontalDragGestures(
+                onHorizontalDrag = { _, dragAmount ->
+                    if (isPerformingAction) return@detectHorizontalDragGestures
+                    isDragging = true
+                    offsetX = (offsetX + dragAmount).coerceIn(-maxOffset, maxOffset)
+                },
+                onDragEnd = {
+                    if (isPerformingAction) return@detectHorizontalDragGestures
+                    isDragging = false
+                    when {
+                        offsetX > threshold -> {
+                            if (task.isDone) {
+                                offsetX = 0f
+                            } else {
+                                offsetX = maxOffset
+                                scope.launch {
+                                    isPerformingAction = true
+                                    onToggleDone(true)
+                                    isPerformingAction = false
+                                    offsetX = 0f
+                                }
+                            }
+                        }
+
+                        offsetX < -threshold -> {
+                            offsetX = 0f
+                            onRequestDelete()
+                        }
+
+                        else -> offsetX = 0f
+                    }
+                },
+                onDragCancel = {
+                    if (isPerformingAction) return@detectHorizontalDragGestures
+                    isDragging = false
+                    offsetX = 0f
+                },
+            )
+        }
+    } else {
+        Modifier
+    }
+
     Box(modifier = modifier.fillMaxWidth()) {
         SwipeActionBackground(
             isSwipeRight = isSwipeRight,
@@ -339,49 +391,10 @@ private fun SwipeableTaskCard(
             task = task,
             onToggleDone = onToggleDone,
             onRequestDelete = onRequestDelete,
+            onTaskSelected = onTaskSelected,
             modifier = Modifier
                 .offset { IntOffset(animatedOffset.roundToInt(), 0) }
-                .pointerInput(task.id, isPerformingAction) {
-                    if (isPerformingAction) return@pointerInput
-                    detectHorizontalDragGestures(
-                        onHorizontalDrag = { _, dragAmount ->
-                            if (isPerformingAction) return@detectHorizontalDragGestures
-                            isDragging = true
-                            offsetX = (offsetX + dragAmount).coerceIn(-maxOffset, maxOffset)
-                        },
-                        onDragEnd = {
-                            if (isPerformingAction) return@detectHorizontalDragGestures
-                            isDragging = false
-                            when {
-                                offsetX > threshold -> {
-                                    if (task.isDone) {
-                                        offsetX = 0f
-                                    } else {
-                                        offsetX = maxOffset
-                                        scope.launch {
-                                            isPerformingAction = true
-                                            onToggleDone(true)
-                                            isPerformingAction = false
-                                            offsetX = 0f
-                                        }
-                                    }
-                                }
-
-                                offsetX < -threshold -> {
-                                    offsetX = 0f
-                                    onRequestDelete()
-                                }
-
-                                else -> offsetX = 0f
-                            }
-                        },
-                        onDragCancel = {
-                            if (isPerformingAction) return@detectHorizontalDragGestures
-                            isDragging = false
-                            offsetX = 0f
-                        },
-                    )
-                },
+                .then(swipeModifier),
         )
     }
 }
@@ -452,6 +465,7 @@ private fun TaskCard(
     task: TaskItem,
     onToggleDone: (Boolean) -> Unit,
     onRequestDelete: () -> Unit,
+    onTaskSelected: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
@@ -461,7 +475,12 @@ private fun TaskCard(
         modifier = modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = layout.height(112.dp, 96.dp))
-            .alpha(alpha),
+            .alpha(alpha)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onTaskSelected,
+            ),
         shape = RoundedCornerShape(layout.size(28.dp, 24.dp)),
     ) {
         Column(
@@ -636,32 +655,36 @@ private fun LabelChip(label: com.franciscor.agendnote.core.model.LabelTag) {
 @Composable
 internal fun FloatingAddButton(
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     val layout = AppLayout.metrics
+    val tint = if (enabled) GlassTheme.tokens.glassFillStrong else GlassTheme.tokens.glassFill
+    val iconTint = if (enabled) GlassTheme.tokens.textPrimary else GlassTheme.tokens.textSecondary
     GlassSurface(
         modifier = modifier
             .size(layout.size(64.dp, 58.dp))
             .clip(CircleShape)
             .clickable(
+                enabled = enabled,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick,
             ),
         shape = CircleShape,
-        tint = GlassTheme.tokens.glassFillStrong,
+        tint = tint,
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .clip(CircleShape)
-                .background(GlassTheme.tokens.glassFillStrong),
+                .background(tint),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = Icons.Rounded.Add,
                 contentDescription = "Nueva tarea",
-                tint = GlassTheme.tokens.textPrimary,
+                tint = iconTint,
                 modifier = Modifier.size(layout.size(28.dp, 24.dp)),
             )
         }

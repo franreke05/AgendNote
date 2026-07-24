@@ -1,6 +1,8 @@
 package com.franciscor.agendnote.app.navigation
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeContentPadding
@@ -16,6 +18,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.franciscor.agendnote.app.di.AppServices
+import com.franciscor.agendnote.core.network.RemoteConfigStatus
 import com.franciscor.agendnote.core.ui.components.GlassBackground
 import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.feature.agenda.presentation.controller.AgendaController
@@ -33,13 +36,25 @@ import com.franciscor.agendnote.feature.settings.presentation.viewmodel.Settings
 fun AppNavHost(
     settingsViewModel: SettingsViewModel,
     settingsController: SettingsController,
+    remoteConfigStatus: RemoteConfigStatus,
 ) {
     val navController = rememberNavController()
-    val agendaViewModel = remember { AgendaViewModel(AppServices.agendaTaskRepository) }
+    val agendaViewModel = remember(remoteConfigStatus) {
+        AgendaViewModel(
+            repository = AppServices.agendaTaskRepository,
+            remoteUnavailableMessage = remoteConfigStatus.message,
+        )
+    }
     val agendaController = remember(agendaViewModel) { AgendaController(agendaViewModel) }
-    val labelsViewModel = remember { LabelsViewModel(AppServices.labelRepository) }
+    val labelsViewModel = remember(remoteConfigStatus) {
+        LabelsViewModel(
+            repository = AppServices.labelRepository,
+            remoteUnavailableMessage = remoteConfigStatus.message,
+        )
+    }
     val labelsController = remember(labelsViewModel) { LabelsController(labelsViewModel) }
     val layout = AppLayout.metrics
+    val globalInset = layout.globalInset
     val currentBackStackEntry = navController.currentBackStackEntryAsState()
     val selectedTab = MainTab.fromRoute(currentBackStackEntry.value?.destination?.route) ?: MainTab.AGENDA
 
@@ -80,41 +95,52 @@ fun AppNavHost(
                 ),
             contentAlignment = Alignment.TopCenter,
         ) {
-            NavHost(
-                navController = navController,
-                startDestination = AppRoute.Agenda.route,
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .widthIn(max = contentMaxWidth),
+                verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
             ) {
-                composable(AppRoute.Agenda.route) {
-                    AgendaRoute(
-                        agendaViewModel = agendaViewModel,
-                        agendaController = agendaController,
-                        labelsViewModel = labelsViewModel,
-                        labelsController = labelsController,
-                    )
+                remoteConfigStatus.message?.let { message ->
+                    RemoteStatusBanner(message = message)
                 }
-                composable(AppRoute.Labels.route) {
-                    LabelsRoute(
-                        labelsViewModel = labelsViewModel,
-                        labelsController = labelsController,
-                        agendaController = agendaController,
-                    )
-                }
-                composable(AppRoute.Settings.route) {
-                    SettingsRoute(
-                        settingsViewModel = settingsViewModel,
-                        settingsController = settingsController,
-                        onDeleteAllNotes = { agendaController.deleteAllTasks() },
-                        onDeleteAllLabels = {
-                            val success = labelsController.deleteAllLabels()
-                            if (success) {
-                                agendaController.clearLabelsFromTasks()
-                            }
-                            success
-                        },
-                    )
+
+                Box(modifier = Modifier.weight(1f)) {
+                    NavHost(
+                        navController = navController,
+                        startDestination = AppRoute.Agenda.route,
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        composable(AppRoute.Agenda.route) {
+                            AgendaRoute(
+                                agendaViewModel = agendaViewModel,
+                                agendaController = agendaController,
+                                labelsViewModel = labelsViewModel,
+                                labelsController = labelsController,
+                            )
+                        }
+                        composable(AppRoute.Labels.route) {
+                            LabelsRoute(
+                                labelsViewModel = labelsViewModel,
+                                labelsController = labelsController,
+                                agendaController = agendaController,
+                            )
+                        }
+                        composable(AppRoute.Settings.route) {
+                            SettingsRoute(
+                                settingsViewModel = settingsViewModel,
+                                settingsController = settingsController,
+                                onDeleteAllNotes = { agendaController.deleteAllTasks() },
+                                onDeleteAllLabels = {
+                                    val success = labelsController.deleteAllLabels()
+                                    if (success) {
+                                        agendaController.clearLabelsFromTasks()
+                                    }
+                                    success
+                                },
+                            )
+                        }
+                    }
                 }
             }
         }

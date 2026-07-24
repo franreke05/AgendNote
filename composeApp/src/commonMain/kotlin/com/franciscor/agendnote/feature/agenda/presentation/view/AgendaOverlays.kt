@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.sp
 import com.franciscor.agendnote.core.model.LabelTag
 import com.franciscor.agendnote.core.model.TaskDraft
 import com.franciscor.agendnote.core.model.TaskItem
+import com.franciscor.agendnote.core.platform.currentTimeMillis
 import com.franciscor.agendnote.core.ui.components.GlassActionButton
 import com.franciscor.agendnote.core.ui.components.GlassConfirmDialog
 import com.franciscor.agendnote.core.ui.components.GlassIconButton
@@ -72,16 +73,16 @@ import com.franciscor.agendnote.core.ui.components.labelColorPalette
 import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
 import com.franciscor.agendnote.feature.agenda.presentation.model.SaveResult
-import kotlin.math.abs
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.Month
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
-import kotlinx.datetime.todayIn
+import kotlin.math.abs
 
 @Composable
 internal fun ConfirmDeleteDialog(
@@ -109,7 +110,7 @@ internal fun NewTaskSheet(
 ) {
     val layout = AppLayout.metrics
     val timeZone = remember { TimeZone.currentSystemDefault() }
-    val today = remember { kotlin.time.Clock.System.todayIn(timeZone) }
+    val today = remember { currentDate(timeZone) }
     val palette = remember { labelColorPalette() }
     val usedColors = labels.map { it.colorHex.lowercase() }.toSet()
     val colorOptions = palette
@@ -539,7 +540,7 @@ private fun DatePickerOverlay(
 ) {
     val layout = AppLayout.metrics
     val timeZone = remember { TimeZone.currentSystemDefault() }
-    val today = remember { kotlin.time.Clock.System.todayIn(timeZone) }
+    val today = remember { currentDate(timeZone) }
     var visibleMonth by remember(selectedDate) {
         mutableStateOf(LocalDate(selectedDate.year, selectedDate.monthNumber, 1))
     }
@@ -693,7 +694,7 @@ private fun TimePickerOverlay(
     var minuteIndex by remember { mutableStateOf(0) }
 
     LaunchedEffect(initialTime) {
-        val base = initialTime ?: kotlin.time.Clock.System.now().toLocalDateTime(timeZone).time
+        val base = initialTime ?: currentTime(timeZone)
         hourIndex = base.hour
         minuteIndex = base.minute
     }
@@ -972,7 +973,7 @@ internal fun CalendarOverlay(
 ) {
     val layout = AppLayout.metrics
     val timeZone = remember { TimeZone.currentSystemDefault() }
-    val today = remember { kotlin.time.Clock.System.todayIn(timeZone) }
+    val today = remember { currentDate(timeZone) }
     var visibleMonth by remember(selectedDate) {
         mutableStateOf(LocalDate(selectedDate.year, selectedDate.monthNumber, 1))
     }
@@ -1405,6 +1406,169 @@ private fun ColorSwatch(
                 onClick = onClick,
             ),
     )
+}
+
+@Composable
+internal fun TaskDetailsOverlay(
+    task: TaskItem,
+    onDismiss: () -> Unit,
+    onToggleDone: (Boolean) -> Unit,
+    onRequestDelete: () -> Unit,
+) {
+    val layout = AppLayout.metrics
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0x660B1117))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onDismiss,
+            ),
+    ) {
+        GlassSurface(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(
+                    start = layout.width(18.dp, 16.dp),
+                    end = layout.width(18.dp, 16.dp),
+                    top = layout.height(16.dp, 14.dp),
+                    bottom = layout.height(120.dp, 102.dp),
+                )
+                .fillMaxWidth(),
+            shape = RoundedCornerShape(layout.size(28.dp, 24.dp)),
+            tint = GlassTheme.tokens.glassFillStrong,
+            shadowElevation = 0.dp,
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(layout.size(18.dp, 16.dp))
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
+            ) {
+                Text(
+                    text = task.title,
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontSize = layout.text(20.sp, 18.sp),
+                    ),
+                    color = GlassTheme.tokens.textPrimary,
+                )
+
+                if (!task.details.isNullOrBlank()) {
+                    Text(
+                        text = task.details,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = GlassTheme.tokens.textSecondary,
+                    )
+                }
+
+                if (task.time != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Schedule,
+                            contentDescription = "Hora",
+                            tint = GlassTheme.tokens.textSecondary,
+                            modifier = Modifier.size(layout.size(18.dp, 16.dp)),
+                        )
+                        val timeText = when {
+                            task.time != null && task.endTime != null ->
+                                "${formatTime(task.time)}-${formatTime(task.endTime)}"
+                            task.time != null -> formatTime(task.time)
+                            else -> ""
+                        }
+                        Text(
+                            text = timeText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = GlassTheme.tokens.textSecondary,
+                        )
+                    }
+                }
+
+                if (task.labels.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(layout.height(6.dp, 4.dp))) {
+                        Text(
+                            text = "Etiquetas",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = GlassTheme.tokens.textSecondary,
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 4.dp)),
+                        ) {
+                            task.labels.forEach { label ->
+                                GlassSurface(
+                                    modifier = Modifier.padding(vertical = layout.height(2.dp, 2.dp)),
+                                    shape = RoundedCornerShape(layout.size(14.dp, 12.dp)),
+                                    tint = colorFromHex(label.colorHex).copy(alpha = 0.18f),
+                                    strokeColor = colorFromHex(label.colorHex).copy(alpha = 0.42f),
+                                ) {
+                                    Text(
+                                        text = label.name,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = GlassTheme.tokens.textPrimary,
+                                        modifier = Modifier.padding(
+                                            horizontal = layout.width(10.dp, 8.dp),
+                                            vertical = layout.height(6.dp, 6.dp),
+                                        ),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(layout.height(12.dp, 10.dp)))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp)),
+                ) {
+                    GlassActionButton(
+                        text = if (task.isDone) "Marcar como pendiente" else "Marcar como hecho",
+                        modifier = Modifier.weight(1f),
+                        tint = GlassTheme.tokens.glassFill,
+                        textColor = GlassTheme.tokens.textPrimary,
+                        onClick = { onToggleDone(!task.isDone) },
+                    )
+                    GlassActionButton(
+                        text = "Eliminar",
+                        modifier = Modifier.weight(1f),
+                        tint = Color(0xFFE06B6B),
+                        onClick = onRequestDelete,
+                    )
+                }
+
+                GlassActionButton(
+                    text = "Cerrar",
+                    modifier = Modifier.fillMaxWidth(),
+                    tint = GlassTheme.tokens.glassFillStrong,
+                    textColor = GlassTheme.tokens.textPrimary,
+                    onClick = onDismiss,
+                )
+            }
+        }
+    }
+}
+
+private fun currentDate(timeZone: TimeZone): LocalDate {
+    return Instant
+        .fromEpochMilliseconds(currentTimeMillis())
+        .toLocalDateTime(timeZone)
+        .date
+}
+
+private fun currentTime(timeZone: TimeZone): LocalTime {
+    return Instant
+        .fromEpochMilliseconds(currentTimeMillis())
+        .toLocalDateTime(timeZone)
+        .time
 }
 
 private fun formatShortDateWithYear(date: LocalDate): String {

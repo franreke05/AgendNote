@@ -37,12 +37,19 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
+    val contentInset = layout.width(24.dp, 20.dp)
     val uiState = viewModel.uiState
+    val isEditingEnabled = uiState.isRemoteAvailable
 
     LazyColumn(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = contentInset),
         verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
-        contentPadding = PaddingValues(bottom = layout.height(140.dp, 110.dp)),
+        contentPadding = PaddingValues(
+            bottom = layout.height(140.dp, 110.dp),
+            top = layout.height(12.dp, 10.dp),
+        ),
     ) {
         item {
             GlassSurface(
@@ -69,12 +76,14 @@ fun SettingsScreen(
                         ModeToggleButton(
                             text = "Claro",
                             selected = !uiState.isDarkMode,
+                            enabled = isEditingEnabled,
                             onClick = { controller.handle(SettingsAction.SetTheme(false)) },
                             modifier = Modifier.weight(1f),
                         )
                         ModeToggleButton(
                             text = "Oscuro",
                             selected = uiState.isDarkMode,
+                            enabled = isEditingEnabled,
                             onClick = { controller.handle(SettingsAction.SetTheme(true)) },
                             modifier = Modifier.weight(1f),
                         )
@@ -104,6 +113,7 @@ fun SettingsScreen(
                     )
                     GlassActionButton(
                         text = "Borrar todas las notas",
+                        enabled = isEditingEnabled,
                         tint = Color(0xFFE06B6B),
                         onClick = {
                             controller.handle(
@@ -114,6 +124,7 @@ fun SettingsScreen(
                     )
                     GlassActionButton(
                         text = "Borrar todas las etiquetas",
+                        enabled = isEditingEnabled,
                         tint = Color(0xFFE06B6B),
                         onClick = {
                             controller.handle(
@@ -162,16 +173,26 @@ fun SettingsScreen(
 private fun ModeToggleButton(
     text: String,
     selected: Boolean,
+    enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
-    val tint = if (selected) GlassTheme.tokens.accent else GlassTheme.tokens.glassFillStrong
-    val textColor = if (selected) Color.White else GlassTheme.tokens.textPrimary
+    val tint = when {
+        !enabled -> GlassTheme.tokens.glassFill
+        selected -> GlassTheme.tokens.accent
+        else -> GlassTheme.tokens.glassFillStrong
+    }
+    val textColor = when {
+        !enabled -> GlassTheme.tokens.textSecondary
+        selected -> Color.White
+        else -> GlassTheme.tokens.textPrimary
+    }
     GlassSurface(
         modifier = modifier
             .clip(androidx.compose.foundation.shape.RoundedCornerShape(layout.size(16.dp, 16.dp)))
             .clickable(
+                enabled = enabled,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick,

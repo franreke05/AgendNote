@@ -17,11 +17,20 @@ import kotlinx.coroutines.launch
 class SettingsViewModel(
     private val repository: SettingsRepository?,
     private val fallbackBackgroundUrl: String = AppConfig.BACKGROUND_URL.trim(),
+    private val remoteUnavailableMessage: String? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val hasRemoteAccess = repository != null
+    private val remoteErrorMessage = remoteUnavailableMessage
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?: "Configuracion remota incompleta. No se puede conectar con la BD."
 
     var uiState by mutableStateOf(
-        SettingsUiState(backgroundUrl = fallbackBackgroundUrl),
+        SettingsUiState(
+            backgroundUrl = fallbackBackgroundUrl,
+            isRemoteAvailable = hasRemoteAccess,
+        ),
     )
         private set
 
@@ -29,7 +38,10 @@ class SettingsViewModel(
         uiState = uiState.copy(isLoading = true, errorMessage = null)
 
         val repository = repository ?: run {
-            uiState = uiState.copy(isLoading = false)
+            uiState = uiState.copy(
+                isLoading = false,
+                errorMessage = remoteErrorMessage,
+            )
             return
         }
 
@@ -54,9 +66,12 @@ class SettingsViewModel(
     }
 
     fun setTheme(isDark: Boolean) {
-        uiState = uiState.copy(isDarkMode = isDark, errorMessage = null)
+        val repository = repository ?: run {
+            uiState = uiState.copy(errorMessage = remoteErrorMessage)
+            return
+        }
 
-        val repository = repository ?: return
+        uiState = uiState.copy(isDarkMode = isDark, errorMessage = null)
 
         scope.launch {
             val result = runCatching { repository.updateThemeMode(isDark) }
@@ -67,6 +82,13 @@ class SettingsViewModel(
     }
 
     fun requestBulkAction(action: SettingsBulkAction) {
+        if (repository == null) {
+            uiState = uiState.copy(
+                pendingBulkAction = null,
+                errorMessage = remoteErrorMessage,
+            )
+            return
+        }
         uiState = uiState.copy(pendingBulkAction = action, errorMessage = null)
     }
 
