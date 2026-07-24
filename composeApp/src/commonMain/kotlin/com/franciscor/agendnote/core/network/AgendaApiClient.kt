@@ -147,4 +147,45 @@ class AgendaApiClient(
             .body()
         return response.success
     }
+
+    suspend fun fetchTaskSeries(): List<TaskSeriesDto> {
+        val response: TaskSeriesListResponse = client
+            .get("$normalizedBaseUrl/api-task-series") {
+                withAuth(this)
+            }
+            .body()
+        return response.series
+    }
+
+    suspend fun createTaskSeries(request: CreateTaskSeriesRequest): TaskSeriesDto {
+        val response: TaskSeriesResponse = client
+            .post("$normalizedBaseUrl/api-task-series") {
+                withAuth(this)
+                contentType(ContentType.Application.Json)
+                setBody(request)
+            }
+            .body()
+        return response.series
+    }
+
+    suspend fun updateTaskSeries(request: UpdateTaskSeriesRequest): TaskSeriesDto {
+        val response: TaskSeriesResponse = client
+            .patch("$normalizedBaseUrl/api-task-series") {
+                withAuth(this)
+                contentType(ContentType.Application.Json)
+                setBody(request)
+            }
+            .body()
+        return response.series
+    }
+
+    suspend fun deleteTaskSeries(id: String): Boolean {
+        val response: SuccessResponse = client
+            .delete("$normalizedBaseUrl/api-task-series") {
+                withAuth(this)
+                parameter("id", id)
+            }
+            .body()
+        return response.success
+    }
 }

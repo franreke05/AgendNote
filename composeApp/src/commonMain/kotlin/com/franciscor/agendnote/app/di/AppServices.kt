@@ -4,7 +4,9 @@ import com.franciscor.agendnote.core.network.AgendaApiClient
 import com.franciscor.agendnote.core.network.AppConfig
 import com.franciscor.agendnote.core.network.RemoteConfigStatus
 import com.franciscor.agendnote.feature.agenda.data.SupabaseAgendaTaskRepository
+import com.franciscor.agendnote.feature.agenda.data.SupabaseTaskSeriesRepository
 import com.franciscor.agendnote.feature.agenda.domain.AgendaTaskRepository
+import com.franciscor.agendnote.feature.agenda.domain.TaskSeriesRepository
 import com.franciscor.agendnote.feature.labels.data.SupabaseLabelRepository
 import com.franciscor.agendnote.feature.labels.domain.LabelRepository
 import com.franciscor.agendnote.feature.settings.data.SupabaseSettingsRepository
@@ -24,6 +26,10 @@ object AppServices {
 
     val agendaTaskRepository: AgendaTaskRepository? by lazy(LazyThreadSafetyMode.NONE) {
         if (remoteConfigStatus.isEnabled) SupabaseAgendaTaskRepository(apiClient) else null
+    }
+
+    val taskSeriesRepository: TaskSeriesRepository? by lazy(LazyThreadSafetyMode.NONE) {
+        if (remoteConfigStatus.isEnabled) SupabaseTaskSeriesRepository(apiClient) else null
     }
 
     val labelRepository: LabelRepository? by lazy(LazyThreadSafetyMode.NONE) {

@@ -37,6 +37,7 @@ class SupabaseAgendaTaskRepository(
             is_done = false,
             order_index = 0,
             label_ids = draft.labels.map { it.id },
+            series_id = draft.seriesId,
         )
         return api.createTask(request).toTaskItem(timeZone)
     }
@@ -65,6 +66,7 @@ private fun TaskDto.toTaskItem(timeZone: TimeZone): TaskItem {
         endTime = endTime,
         labels = labels.map { it.toLabelTag() },
         isDone = is_done,
+        seriesId = series_id,
     )
 }
 
