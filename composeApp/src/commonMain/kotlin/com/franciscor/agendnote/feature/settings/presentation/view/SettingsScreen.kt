@@ -136,8 +136,7 @@ fun SettingsScreen(
             "Borrar todas las etiquetas?"
         },
         message = if (pendingBulkAction == SettingsBulkAction.DELETE_NOTES) {
-            "Esta accion elimina todas las notas guardadas, incluidas las tareas o citas " +
-                "sincronizadas desde el sistema de reservas, si las hay."
+            "Esta accion elimina todas las notas guardadas."
         } else {
             "Esta accion elimina todas las etiquetas creadas."
         },
