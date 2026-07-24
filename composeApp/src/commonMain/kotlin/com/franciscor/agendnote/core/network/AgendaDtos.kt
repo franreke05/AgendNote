@@ -20,6 +20,7 @@ data class TaskDto(
     val is_done: Boolean = false,
     val order_index: Int = 0,
     val labels: List<LabelDto> = emptyList(),
+    val series_id: String? = null,
 )
 
 @Serializable
@@ -59,6 +60,7 @@ data class CreateTaskRequest(
     val order_index: Int = 0,
     val label_ids: List<String> = emptyList(),
     val label_names: List<String> = emptyList(),
+    val series_id: String? = null,
 )
 
 @Serializable
@@ -100,4 +102,48 @@ data class UpdateSettingRequest(
 @Serializable
 data class SuccessResponse(
     val success: Boolean = false,
+)
+
+@Serializable
+data class TaskSeriesDto(
+    val id: String,
+    val title: String,
+    val body: String? = null,
+    val time: String? = null,
+    val recurrence_type: String,
+    val days_of_week: List<Int>? = null,
+    val day_of_month: Int? = null,
+    val label_ids: List<String> = emptyList(),
+    val start_date: String,
+    val is_active: Boolean = true,
+    val materialized_until: String,
+)
+
+@Serializable
+data class CreateTaskSeriesRequest(
+    val title: String,
+    val body: String? = null,
+    val time: String? = null,
+    val recurrence_type: String,
+    val days_of_week: List<Int>? = null,
+    val day_of_month: Int? = null,
+    val label_ids: List<String> = emptyList(),
+    val start_date: String,
+)
+
+@Serializable
+data class UpdateTaskSeriesRequest(
+    val id: String,
+    val materialized_until: String? = null,
+    val is_active: Boolean? = null,
+)
+
+@Serializable
+data class TaskSeriesResponse(
+    val series: TaskSeriesDto,
+)
+
+@Serializable
+data class TaskSeriesListResponse(
+    val series: List<TaskSeriesDto> = emptyList(),
 )
