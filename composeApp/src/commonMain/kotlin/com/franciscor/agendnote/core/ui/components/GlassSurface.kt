@@ -1,5 +1,6 @@
 package com.franciscor.agendnote.core.ui.components
 
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -75,14 +76,15 @@ fun GlassIconButton(
     onClick: () -> Unit,
 ) {
     val layout = AppLayout.metrics
-    val buttonSize = layout.size(50.dp, 44.dp)
+    val buttonSize = layout.size(50.dp, 48.dp)
     val iconSize = layout.size(24.dp, 20.dp)
+    val indication = LocalIndication.current
     GlassSurface(
         modifier = modifier
             .size(buttonSize)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
-                indication = null,
+                indication = indication,
                 onClick = onClick,
             ),
         shape = CircleShape,

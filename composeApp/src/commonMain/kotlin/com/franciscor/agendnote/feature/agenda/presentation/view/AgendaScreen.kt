@@ -14,7 +14,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -28,7 +27,6 @@ import com.franciscor.agendnote.feature.agenda.presentation.controller.AgendaCon
 import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaAction
 import com.franciscor.agendnote.feature.agenda.presentation.model.PendingDelete
 import com.franciscor.agendnote.feature.agenda.presentation.viewmodel.AgendaViewModel
-import kotlinx.coroutines.launch
 
 @Composable
 fun AgendaScreen(
@@ -39,21 +37,23 @@ fun AgendaScreen(
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
-    val scope = rememberCoroutineScope()
     val uiState = viewModel.uiState
     val dayUiState = viewModel.selectedDayUiState()
     val selectedDate = uiState.selectedDate
     val sourceTasks = dayUiState.tasks
     var searchQuery by rememberSaveable { mutableStateOf("") }
-    var showCalendar by remember { mutableStateOf(false) }
-    var showTaskSheet by remember { mutableStateOf(false) }
-    var pendingDelete by remember { mutableStateOf<PendingDelete?>(null) }
+    var showCalendar by rememberSaveable { mutableStateOf(false) }
+    var showTaskSheet by rememberSaveable { mutableStateOf(false) }
+    var pendingDeleteTaskId by rememberSaveable { mutableStateOf<String?>(null) }
+    val pendingDelete = pendingDeleteTaskId?.let { id ->
+        sourceTasks.find { it.id == id }?.let { task -> PendingDelete(selectedDate, task) }
+    }
     var dragOffset by remember { mutableFloatStateOf(0f) }
     val swipeThreshold = layout.width(72.dp, 56.dp)
     val swipeEdgeGuard = layout.width(24.dp, 18.dp)
 
     LaunchedEffect(Unit) {
-        controller.handle(AgendaAction.RefreshSelectedDate)
+        controller.handleAsync(AgendaAction.RefreshSelectedDate)
     }
 
     val filteredTasks = remember(sourceTasks, searchQuery) {
@@ -72,10 +72,10 @@ fun AgendaScreen(
                 selectedDate = selectedDate,
                 isToday = selectedDate == viewModel.today(),
                 onPreviousDay = {
-                    scope.launch { controller.handle(AgendaAction.MoveDay(-1)) }
+                    controller.handleAsync(AgendaAction.MoveDay(-1))
                 },
                 onNextDay = {
-                    scope.launch { controller.handle(AgendaAction.MoveDay(1)) }
+                    controller.handleAsync(AgendaAction.MoveDay(1))
                 },
                 onOpenCalendar = { showCalendar = true },
             )
@@ -94,12 +94,23 @@ fun AgendaScreen(
                 errorMessage = dayUiState.errorMessage,
                 searchQuery = searchQuery,
                 onToggleDone = { task, done ->
-                    scope.launch {
-                        controller.toggleTaskDone(selectedDate, task, done)
-                    }
+                    controller.toggleTaskDoneAsync(selectedDate, task, done)
                 },
                 onRequestDelete = { task ->
-                    pendingDelete = PendingDelete(selectedDate, task)
+                    pendingDeleteTaskId = task.id
+                },
+                onRequestDeleteBooking = { task ->
+                    // Reuse the same pending-delete state: ConfirmDeleteDialog already
+                    // tailors its message when task.source == "portfolio_booking", so a
+                    // second parallel state/dialog would just duplicate that logic.
+                    pendingDeleteTaskId = task.id
+                },
+                onRequestToggleBooking = { task, done ->
+                    // Toggling completion on a synced booking is lower-risk than deleting
+                    // it (no data loss, easily reversible), so we apply it directly instead
+                    // of adding a second confirmation flow. The delete-confirmation fix
+                    // above covers the actual data-loss risk.
+                    controller.toggleTaskDoneAsync(selectedDate, task, done)
                 },
                 modifier = Modifier
                     .weight(1f)
@@ -118,13 +129,11 @@ fun AgendaScreen(
                             },
                             onDragEnd = {
                                 when {
-                                    dragOffset > swipeThreshold.toPx() -> scope.launch {
-                                        controller.handle(AgendaAction.MoveDay(-1))
-                                    }
+                                    dragOffset > swipeThreshold.toPx() ->
+                                        controller.handleAsync(AgendaAction.MoveDay(-1))
 
-                                    dragOffset < -swipeThreshold.toPx() -> scope.launch {
-                                        controller.handle(AgendaAction.MoveDay(1))
-                                    }
+                                    dragOffset < -swipeThreshold.toPx() ->
+                                        controller.handleAsync(AgendaAction.MoveDay(1))
                                 }
                                 dragOffset = 0f
                                 allowSwipe = false
@@ -155,7 +164,7 @@ fun AgendaScreen(
                 onDismiss = { showCalendar = false },
                 onSelectDate = { date ->
                     showCalendar = false
-                    scope.launch { controller.handle(AgendaAction.SelectDate(date)) }
+                    controller.handleAsync(AgendaAction.SelectDate(date))
                 },
             )
         }
@@ -178,14 +187,11 @@ fun AgendaScreen(
 
         pendingDelete?.let { state ->
             ConfirmDeleteDialog(
-                taskTitle = state.task.title,
-                onDismiss = { pendingDelete = null },
+                task = state.task,
+                onDismiss = { pendingDeleteTaskId = null },
                 onConfirm = {
-                    val target = pendingDelete ?: return@ConfirmDeleteDialog
-                    pendingDelete = null
-                    scope.launch {
-                        controller.deleteTask(target.date, target.task)
-                    }
+                    pendingDeleteTaskId = null
+                    controller.deleteTaskAsync(state.date, state.task)
                 },
             )
         }

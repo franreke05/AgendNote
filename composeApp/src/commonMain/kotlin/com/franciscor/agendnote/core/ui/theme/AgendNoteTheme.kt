@@ -5,7 +5,9 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -28,11 +30,21 @@ data class GlassTokens(
     val glassStroke: Color,
     val glassHighlight: Color,
     val accent: Color,
+    /**
+     * Darker accent variant that keeps the same hue but meets WCAG AA (>=4.5:1) contrast when
+     * white/light text sits on top of it (e.g. [GlassActionButton]'s filled background).
+     * Do not use this in place of [accent] for contexts where [accent] already has adequate
+     * contrast (icons, borders, accent text on light glass surfaces, etc).
+     */
+    val accentOnLight: Color,
     val textPrimary: Color,
     val textSecondary: Color,
     val divider: Color,
     val shadowAmbient: Color,
     val shadowSpot: Color,
+    val error: Color,
+    val onError: Color,
+    val scrim: Color,
 )
 
 private val LightGlassTokens = GlassTokens(
@@ -43,11 +55,15 @@ private val LightGlassTokens = GlassTokens(
     glassStroke = Color(0x80FFFFFF),
     glassHighlight = Color(0xCCFFFFFF),
     accent = Color(0xFFFF8A5B),
+    accentOnLight = Color(0xFFB34A1E),
     textPrimary = Color(0xFF142230),
     textSecondary = Color(0xFF516173),
     divider = Color(0x33FFFFFF),
     shadowAmbient = Color(0x22000000),
     shadowSpot = Color(0x33000000),
+    error = Color(0xFFB53B3B),
+    onError = Color.White,
+    scrim = Color(0x59000000),
 )
 
 private val DarkGlassTokens = GlassTokens(
@@ -58,18 +74,27 @@ private val DarkGlassTokens = GlassTokens(
     glassStroke = Color(0x3AFFFFFF),
     glassHighlight = Color(0x2FFFFFFF),
     accent = Color(0xFFFF8A5B),
+    accentOnLight = Color(0xFFB34A1E),
     textPrimary = Color(0xFFF3F6FB),
     textSecondary = Color(0xFFB6C1CE),
     divider = Color(0x26FFFFFF),
     shadowAmbient = Color(0x66000000),
     shadowSpot = Color(0x88000000),
+    error = Color(0xFFCC3333),
+    onError = Color.White,
+    scrim = Color(0x660B1117),
 )
 
-private var currentGlassTokens: GlassTokens = LightGlassTokens
+/**
+ * Backing CompositionLocal for [GlassTheme.tokens]. Using `staticCompositionLocalOf` instead of a
+ * top-level `var` makes theme switches trigger a proper recomposition of every reader (e.g.
+ * LazyColumn rows) instead of leaving them painted with stale colors.
+ */
+private val LocalGlassTokens = staticCompositionLocalOf { LightGlassTokens }
 
 object GlassTheme {
     val tokens: GlassTokens
-        @Composable get() = currentGlassTokens
+        @Composable get() = LocalGlassTokens.current
 }
 
 @OptIn(ExperimentalResourceApi::class)
@@ -103,6 +128,11 @@ fun AgendNoteTheme(
             fontWeight = FontWeight.SemiBold,
             fontSize = layout.text(16.sp, 15.sp),
         ),
+        titleSmall = TextStyle(
+            fontFamily = manrope,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = layout.text(14.sp, 13.sp),
+        ),
         bodyLarge = TextStyle(
             fontFamily = manrope,
             fontWeight = FontWeight.Normal,
@@ -113,10 +143,21 @@ fun AgendNoteTheme(
             fontWeight = FontWeight.Normal,
             fontSize = layout.text(13.sp, 12.sp),
         ),
+        bodySmall = TextStyle(
+            fontFamily = manrope,
+            fontWeight = FontWeight.Normal,
+            fontSize = layout.text(11.sp, 10.sp),
+        ),
         labelMedium = TextStyle(
             fontFamily = manrope,
             fontWeight = FontWeight.SemiBold,
             fontSize = layout.text(11.sp, 10.sp),
+            letterSpacing = (0.2f * layout.contentScale).sp,
+        ),
+        labelSmall = TextStyle(
+            fontFamily = manrope,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = layout.text(10.sp, 9.sp),
             letterSpacing = (0.2f * layout.contentScale).sp,
         ),
     )
@@ -141,10 +182,11 @@ fun AgendNoteTheme(
         )
     }
 
-    currentGlassTokens = tokens
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = typography,
-        content = content,
-    )
+    CompositionLocalProvider(LocalGlassTokens provides tokens) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = typography,
+            content = content,
+        )
+    }
 }

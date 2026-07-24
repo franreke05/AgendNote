@@ -1,5 +1,6 @@
 package com.franciscor.agendnote.core.ui.components
 
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -87,12 +88,16 @@ fun GlassActionButton(
     text: String,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    tint: Color = if (enabled) GlassTheme.tokens.accent else GlassTheme.tokens.glassFillStrong,
+    // Uses accentOnLight (not accent) as the fill: white text on the raw #FF8A5B accent only
+    // reaches ~2.3:1 contrast, well below WCAG AA's 4.5:1. accentOnLight is a darkened variant
+    // of the same hue that keeps white text legible.
+    tint: Color = if (enabled) GlassTheme.tokens.accentOnLight else GlassTheme.tokens.glassFillStrong,
     textColor: Color = if (enabled) Color.White else GlassTheme.tokens.textSecondary,
     onClick: () -> Unit,
 ) {
     val layout = AppLayout.metrics
     val radius = layout.size(18.dp, 16.dp)
+    val indication = LocalIndication.current
     GlassSurface(
         modifier = modifier
             .defaultMinSize(
@@ -103,7 +108,7 @@ fun GlassActionButton(
             .clickable(
                 enabled = enabled,
                 interactionSource = remember { MutableInteractionSource() },
-                indication = null,
+                indication = indication,
                 onClick = onClick,
             ),
         shape = RoundedCornerShape(radius),
@@ -183,7 +188,7 @@ fun GlassSearchBar(
                     tint = tokens.textSecondary,
                     modifier = Modifier.clickable(
                         interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
+                        indication = LocalIndication.current,
                         onClick = { onValueChange("") },
                     ),
                 )

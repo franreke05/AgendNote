@@ -64,10 +64,8 @@ import com.franciscor.agendnote.core.ui.components.colorFromHex
 import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
 import kotlinx.coroutines.launch
-import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
-import kotlinx.datetime.Month
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -171,6 +169,15 @@ internal fun DayAgenda(
     searchQuery: String,
     onToggleDone: (TaskItem, Boolean) -> Unit,
     onRequestDelete: (TaskItem) -> Unit,
+    // Tasks mirrored from the external booking system (task.source == "portfolio_booking")
+    // must not be deleted/toggled directly: the containing screen should show a distinct
+    // confirmation before proceeding. Defaults delegate to the normal action so existing
+    // call sites that don't pass these explicitly keep compiling and behaving as before.
+    // TODO(AgendaScreen.kt): pass real implementations that show a GlassConfirmDialog with
+    // booking-specific copy (e.g. "Esta cita proviene de una reserva. ¿Eliminarla igualmente?")
+    // instead of relying on these defaults.
+    onRequestDeleteBooking: (TaskItem) -> Unit = onRequestDelete,
+    onRequestToggleBooking: (TaskItem, Boolean) -> Unit = onToggleDone,
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
@@ -245,7 +252,7 @@ internal fun DayAgenda(
                     Text(
                         text = errorMessage,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFFB53B3B),
+                        color = GlassTheme.tokens.error,
                         modifier = Modifier.padding(
                             horizontal = layout.width(16.dp, 14.dp),
                             vertical = layout.height(14.dp, 12.dp),
@@ -278,7 +285,7 @@ internal fun DayAgenda(
             item {
                 GlassSurface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(layout.size(26.dp, 22.dp)),
+                    shape = RoundedCornerShape(layout.size(20.dp, 18.dp)),
                 ) {
                     Text(
                         text = if (searchQuery.isBlank()) "Sin tareas para este dia" else "Sin resultados",
@@ -293,10 +300,15 @@ internal fun DayAgenda(
             }
         } else {
             items(tasks, key = { it.id }) { task ->
+                val isBookingTask = task.source == "portfolio_booking"
                 SwipeableTaskCard(
                     task = task,
-                    onRequestDelete = { onRequestDelete(task) },
-                    onToggleDone = { done -> onToggleDone(task, done) },
+                    onRequestDelete = {
+                        if (isBookingTask) onRequestDeleteBooking(task) else onRequestDelete(task)
+                    },
+                    onToggleDone = { done ->
+                        if (isBookingTask) onRequestToggleBooking(task, done) else onToggleDone(task, done)
+                    },
                 )
             }
         }
@@ -339,6 +351,8 @@ private fun SwipeableTaskCard(
         )
         TaskCard(
             task = task,
+            onToggleDone = onToggleDone,
+            onRequestDelete = onRequestDelete,
             modifier = Modifier
                 .offset { IntOffset(animatedOffset.roundToInt(), 0) }
                 .pointerInput(task.id, isPerformingAction) {
@@ -450,6 +464,8 @@ private fun SwipeActionBackground(
 @Composable
 private fun TaskCard(
     task: TaskItem,
+    onToggleDone: (Boolean) -> Unit,
+    onRequestDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
@@ -555,6 +571,72 @@ private fun TaskCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+
+            // Always-visible, non-gestural alternative to the swipe-to-complete /
+            // swipe-to-delete actions above, for screen reader users and anyone who
+            // cannot reliably perform a drag gesture. Mirrors the same callbacks the
+            // swipe gestures use, so booking-task guarding (see DayAgenda) applies here too.
+            TaskCardActions(
+                isDone = task.isDone,
+                onToggleDone = onToggleDone,
+                onRequestDelete = onRequestDelete,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TaskCardActions(
+    isDone: Boolean,
+    onToggleDone: (Boolean) -> Unit,
+    onRequestDelete: () -> Unit,
+) {
+    val layout = AppLayout.metrics
+    val controlSize = layout.size(36.dp, 32.dp)
+    val doneColor = if (isDone) Color(0xFF43B87B) else GlassTheme.tokens.textSecondary
+    val doneDescription = if (isDone) "Marcar como pendiente" else "Marcar como hecha"
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(controlSize)
+                .clip(CircleShape)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = { onToggleDone(!isDone) },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Check,
+                contentDescription = doneDescription,
+                tint = doneColor,
+                modifier = Modifier.size(layout.size(20.dp, 18.dp)),
+            )
+        }
+        Spacer(modifier = Modifier.width(layout.width(4.dp, 4.dp)))
+        Box(
+            modifier = Modifier
+                .size(controlSize)
+                .clip(CircleShape)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onRequestDelete,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Delete,
+                contentDescription = "Eliminar tarea",
+                tint = GlassTheme.tokens.error,
+                modifier = Modifier.size(layout.size(20.dp, 18.dp)),
+            )
         }
     }
 }
@@ -686,12 +768,6 @@ private fun bookingStatusColor(status: String?): Color = when (status?.lowercase
     else -> Color(0xFFFFC857)
 }
 
-private fun formatTime(time: LocalTime): String {
-    val hour = time.hour.toString().padStart(2, '0')
-    val minute = time.minute.toString().padStart(2, '0')
-    return "$hour:$minute"
-}
-
 private fun formatFullDate(date: LocalDate): String {
     return "${dayName(date.dayOfWeek)}, ${date.dayOfMonth} de ${monthName(date.month)}"
 }
@@ -700,31 +776,6 @@ private fun formatDayTitle(date: LocalDate): String = dayName(date.dayOfWeek)
 
 private fun formatShortDate(date: LocalDate): String {
     return "${date.dayOfMonth} ${monthName(date.month, short = true)}"
-}
-
-private fun dayName(day: DayOfWeek): String = when (day) {
-    DayOfWeek.MONDAY -> "Lunes"
-    DayOfWeek.TUESDAY -> "Martes"
-    DayOfWeek.WEDNESDAY -> "Miercoles"
-    DayOfWeek.THURSDAY -> "Jueves"
-    DayOfWeek.FRIDAY -> "Viernes"
-    DayOfWeek.SATURDAY -> "Sabado"
-    DayOfWeek.SUNDAY -> "Domingo"
-}
-
-private fun monthName(month: Month, short: Boolean = false): String = when (month) {
-    Month.JANUARY -> if (short) "ene" else "enero"
-    Month.FEBRUARY -> if (short) "feb" else "febrero"
-    Month.MARCH -> if (short) "mar" else "marzo"
-    Month.APRIL -> if (short) "abr" else "abril"
-    Month.MAY -> if (short) "may" else "mayo"
-    Month.JUNE -> if (short) "jun" else "junio"
-    Month.JULY -> if (short) "jul" else "julio"
-    Month.AUGUST -> if (short) "ago" else "agosto"
-    Month.SEPTEMBER -> if (short) "sep" else "septiembre"
-    Month.OCTOBER -> if (short) "oct" else "octubre"
-    Month.NOVEMBER -> if (short) "nov" else "noviembre"
-    Month.DECEMBER -> if (short) "dic" else "diciembre"
 }
 
 internal fun filterTasks(tasks: List<TaskItem>, query: String): List<TaskItem> {

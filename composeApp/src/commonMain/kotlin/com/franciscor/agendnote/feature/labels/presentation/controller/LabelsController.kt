@@ -18,6 +18,10 @@ class LabelsController(
         return viewModel.createLabel(name, colorHex)
     }
 
+    fun createLabel(name: String, colorHex: String, onResult: (LabelTag?) -> Unit) {
+        viewModel.createLabel(name, colorHex, onResult)
+    }
+
     suspend fun deleteLabel(label: LabelTag): Boolean {
         return viewModel.deleteLabel(label)
     }

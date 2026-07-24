@@ -44,6 +44,37 @@ class AgendaController(
         return viewModel.deleteAllTasks()
     }
 
+    // --- Fire-and-forget wrappers -------------------------------------------------------
+    // Non-suspend entry points backed by the ViewModel's own internal scope (see
+    // AgendaViewModel.viewModelScope). Screen composables should call these directly instead of
+    // wrapping the suspend functions above in their own `rememberCoroutineScope().launch { }` -
+    // that pattern silently cancels the mutation if the user switches tabs mid-request.
+
+    fun handleAsync(action: AgendaAction) {
+        when (action) {
+            is AgendaAction.MoveDay -> viewModel.moveDayAndLoad(action.delta)
+            is AgendaAction.SelectDate -> viewModel.selectDateAndLoad(action.date)
+            AgendaAction.RefreshSelectedDate -> viewModel.refreshSelectedDateAsync()
+        }
+    }
+
+    fun saveTaskAsync(date: LocalDate, draft: TaskDraft, onResult: (SaveResult) -> Unit = {}) {
+        viewModel.saveTaskAsync(date, draft, onResult)
+    }
+
+    fun toggleTaskDoneAsync(
+        date: LocalDate,
+        task: TaskItem,
+        isDone: Boolean,
+        onResult: (Boolean) -> Unit = {},
+    ) {
+        viewModel.toggleTaskDoneAsync(date, task, isDone, onResult)
+    }
+
+    fun deleteTaskAsync(date: LocalDate, task: TaskItem, onResult: (Boolean) -> Unit = {}) {
+        viewModel.deleteTaskAsync(date, task, onResult)
+    }
+
     fun removeLabelFromTasks(labelId: String) {
         viewModel.removeLabelFromTasks(labelId)
     }

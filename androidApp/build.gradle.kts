@@ -29,9 +29,26 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            val releaseStoreFile = System.getenv("ANDROID_RELEASE_STORE_FILE")
+            if (!releaseStoreFile.isNullOrBlank()) {
+                storeFile = file(releaseStoreFile)
+            }
+            storePassword = System.getenv("ANDROID_RELEASE_STORE_PASSWORD") ?: ""
+            keyAlias = System.getenv("ANDROID_RELEASE_KEY_ALIAS") ?: ""
+            keyPassword = System.getenv("ANDROID_RELEASE_KEY_PASSWORD") ?: ""
+        }
+    }
+
     buildTypes {
         getByName("release") {
-            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 

@@ -7,17 +7,25 @@ import com.franciscor.agendnote.core.network.AppConfig
 import com.franciscor.agendnote.feature.settings.domain.SettingsRepository
 import com.franciscor.agendnote.feature.settings.presentation.model.SettingsBulkAction
 import com.franciscor.agendnote.feature.settings.presentation.model.SettingsUiState
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 
 class SettingsViewModel(
     private val repository: SettingsRepository?,
     private val fallbackBackgroundUrl: String = AppConfig.BACKGROUND_URL.trim(),
 ) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     var uiState by mutableStateOf(
         SettingsUiState(backgroundUrl = fallbackBackgroundUrl),
     )
         private set
 
-    suspend fun loadSettings() {
+    fun loadSettings() {
         uiState = uiState.copy(isLoading = true, errorMessage = null)
 
         val repository = repository ?: run {
@@ -25,25 +33,36 @@ class SettingsViewModel(
             return
         }
 
-        val themeMode = runCatching { repository.fetchThemeMode() }.getOrNull()
-        val backgroundUrl = runCatching { repository.fetchBackgroundUrl() }.getOrNull()
+        scope.launch {
+            val (themeModeResult, backgroundUrlResult) = coroutineScope {
+                val themeModeDeferred = async { runCatching { repository.fetchThemeMode() } }
+                val backgroundUrlDeferred = async { runCatching { repository.fetchBackgroundUrl() } }
+                themeModeDeferred.await() to backgroundUrlDeferred.await()
+            }
 
-        uiState = uiState.copy(
-            isDarkMode = themeMode ?: uiState.isDarkMode,
-            backgroundUrl = backgroundUrl?.takeUnless { it.isBlank() } ?: uiState.backgroundUrl,
-            isLoading = false,
-            errorMessage = null,
-        )
+            uiState = uiState.copy(
+                isDarkMode = themeModeResult.getOrNull() ?: uiState.isDarkMode,
+                backgroundUrl = backgroundUrlResult.getOrNull()?.takeUnless { it.isBlank() } ?: uiState.backgroundUrl,
+                isLoading = false,
+                errorMessage = if (themeModeResult.isFailure || backgroundUrlResult.isFailure) {
+                    "No se pudo cargar la configuracion"
+                } else {
+                    null
+                },
+            )
+        }
     }
 
-    suspend fun setTheme(isDark: Boolean) {
+    fun setTheme(isDark: Boolean) {
         uiState = uiState.copy(isDarkMode = isDark, errorMessage = null)
 
         val repository = repository ?: return
 
-        val result = runCatching { repository.updateThemeMode(isDark) }
-        if (result.isFailure) {
-            uiState = uiState.copy(errorMessage = "No se pudo guardar el tema")
+        scope.launch {
+            val result = runCatching { repository.updateThemeMode(isDark) }
+            if (result.isFailure) {
+                uiState = uiState.copy(errorMessage = "No se pudo guardar el tema")
+            }
         }
     }
 
@@ -60,6 +79,16 @@ class SettingsViewModel(
             pendingBulkAction = null,
             errorMessage = if (success) null else message ?: "No se pudo completar la accion",
         )
+    }
+
+    fun confirmBulkAction(execute: suspend () -> Boolean) {
+        scope.launch {
+            val success = execute()
+            completeBulkAction(
+                success = success,
+                message = if (success) null else "No se pudo completar la accion",
+            )
+        }
     }
 
     fun dismissError() {

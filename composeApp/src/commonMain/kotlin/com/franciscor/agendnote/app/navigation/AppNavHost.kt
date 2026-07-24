@@ -3,6 +3,8 @@ package com.franciscor.agendnote.app.navigation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeContentPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -53,6 +55,13 @@ fun AppNavHost(
         }
     }
 
+    // Small, scale-aware outer margin. Kept close to the previous 5dp literal on phones (via the
+    // `min`) but now grows with widthScale on larger windows instead of staying a fixed literal.
+    val contentHorizontalMargin = layout.width(8.dp, 6.dp)
+    // Caps the main content/bottom bar width so wide windows (tablet/desktop/landscape) don't
+    // stretch the UI edge-to-edge; content stays centered instead.
+    val contentMaxWidth = 480.dp
+
     Box(modifier = Modifier.fillMaxSize()) {
         GlassBackground(
             modifier = Modifier.fillMaxSize(),
@@ -62,15 +71,21 @@ fun AppNavHost(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                // Keeps interactive content clear of notches/system cutouts, matching the
+                // pattern already used in CalendarOverlay (feature/agenda).
+                .safeContentPadding()
                 .padding(
-                    horizontal = 5.dp,
+                    horizontal = contentHorizontalMargin,
                     vertical = layout.height(16.dp, 12.dp),
                 ),
+            contentAlignment = Alignment.TopCenter,
         ) {
             NavHost(
                 navController = navController,
                 startDestination = AppRoute.Agenda.route,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .widthIn(max = contentMaxWidth),
             ) {
                 composable(AppRoute.Agenda.route) {
                     AgendaRoute(
@@ -107,10 +122,13 @@ fun AppNavHost(
         BottomBar(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                // Same safe-area protection as the main content container above.
+                .safeContentPadding()
                 .padding(
-                    horizontal = 5.dp,
+                    horizontal = contentHorizontalMargin,
                     vertical = layout.height(16.dp, 14.dp),
-                ),
+                )
+                .widthIn(max = contentMaxWidth),
             selectedTab = selectedTab,
             onSelect = navigateToMainTab,
         )

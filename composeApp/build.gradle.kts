@@ -74,7 +74,7 @@ kotlin {
 }
 
 android {
-    namespace = "com.franciscor.agendnote"
+    namespace = "com.franciscor.agendnote.shared"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {

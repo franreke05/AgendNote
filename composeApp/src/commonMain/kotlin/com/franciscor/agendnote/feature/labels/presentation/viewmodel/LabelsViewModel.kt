@@ -6,11 +6,17 @@ import androidx.compose.runtime.setValue
 import com.franciscor.agendnote.core.model.LabelTag
 import com.franciscor.agendnote.feature.labels.domain.LabelRepository
 import com.franciscor.agendnote.feature.labels.presentation.model.LabelsUiState
-import kotlinx.datetime.Clock
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 
 class LabelsViewModel(
     private val repository: LabelRepository?,
 ) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     var uiState by mutableStateOf(LabelsUiState())
         private set
 
@@ -38,7 +44,29 @@ class LabelsViewModel(
             }
     }
 
+    /**
+     * Runs on this ViewModel's own [scope] and awaits the result, so the request and the
+     * resulting [uiState] update complete even if the caller's coroutine is cancelled. This is
+     * the suspend entry point used by callers that need the created label back directly (e.g.
+     * the "create label inline" flow from the Agenda feature, wired up in AppNavHost).
+     */
     suspend fun createLabel(name: String, colorHex: String): LabelTag? {
+        return scope.async { createLabelAwait(name, colorHex) }.await()
+    }
+
+    /**
+     * Fire-and-forget variant of [createLabel] for callers (like LabelsScreen) that don't need to
+     * suspend for the result. Runs on this ViewModel's own [scope] instead of the caller's, so
+     * the request survives even if the caller's coroutine scope (e.g. a screen's
+     * `rememberCoroutineScope()`) is cancelled by navigation before it finishes.
+     */
+    fun createLabel(name: String, colorHex: String, onResult: (LabelTag?) -> Unit) {
+        scope.launch {
+            onResult(createLabelAwait(name, colorHex))
+        }
+    }
+
+    private suspend fun createLabelAwait(name: String, colorHex: String): LabelTag? {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return null
         uiState = uiState.copy(isLoading = true, errorMessage = null)
@@ -46,7 +74,7 @@ class LabelsViewModel(
 
         return if (repository == null) {
             LabelTag(
-                id = "label-${Clock.System.now().toEpochMilliseconds()}",
+                id = "label-${kotlin.time.Clock.System.now().toEpochMilliseconds()}",
                 name = trimmed,
                 colorHex = colorHex,
             ).also {
@@ -75,13 +103,21 @@ class LabelsViewModel(
         }
     }
 
+    /**
+     * Runs on this ViewModel's own [scope] and awaits the result, so the request and the
+     * resulting [uiState] update complete even if the caller's coroutine is cancelled (e.g. the
+     * user navigates away from the Labels tab mid-request).
+     */
     suspend fun deleteLabel(label: LabelTag): Boolean {
-        val updated = uiState.labels.filterNot { it.id == label.id }
+        return scope.async { deleteLabelAwait(label) }.await()
+    }
+
+    private suspend fun deleteLabelAwait(label: LabelTag): Boolean {
         uiState = uiState.copy(isLoading = true, errorMessage = null)
         val repository = repository
         return if (repository == null) {
             uiState = uiState.copy(
-                labels = updated,
+                labels = uiState.labels.filterNot { it.id == label.id },
                 isLoading = false,
                 errorMessage = null,
             )
@@ -90,8 +126,11 @@ class LabelsViewModel(
             runCatching { repository.deleteLabel(label.id) }
                 .onSuccess { success ->
                     if (success) {
+                        // Recompute from the current uiState.labels here (not before the suspend
+                        // call above) so a concurrent mutation that completed while this request
+                        // was in flight isn't clobbered by a stale snapshot.
                         uiState = uiState.copy(
-                            labels = updated,
+                            labels = uiState.labels.filterNot { it.id == label.id },
                             isLoading = false,
                             errorMessage = null,
                         )

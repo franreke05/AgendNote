@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -62,6 +63,7 @@ import com.franciscor.agendnote.core.model.LabelTag
 import com.franciscor.agendnote.core.model.TaskDraft
 import com.franciscor.agendnote.core.model.TaskItem
 import com.franciscor.agendnote.core.ui.components.GlassActionButton
+import com.franciscor.agendnote.core.ui.components.GlassConfirmDialog
 import com.franciscor.agendnote.core.ui.components.GlassIconButton
 import com.franciscor.agendnote.core.ui.components.GlassSurface
 import com.franciscor.agendnote.core.ui.components.GlassTextField
@@ -72,7 +74,6 @@ import com.franciscor.agendnote.core.ui.theme.GlassTheme
 import com.franciscor.agendnote.feature.agenda.presentation.model.SaveResult
 import kotlin.math.abs
 import kotlinx.coroutines.launch
-import kotlinx.datetime.Clock
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
@@ -84,73 +85,24 @@ import kotlinx.datetime.todayIn
 
 @Composable
 internal fun ConfirmDeleteDialog(
-    taskTitle: String,
+    task: TaskItem,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val layout = AppLayout.metrics
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.35f))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismiss,
-                ),
-        )
-        GlassSurface(
-            modifier = Modifier
-                .padding(horizontal = layout.width(26.dp, 22.dp))
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(layout.size(26.dp, 22.dp)),
-            tint = GlassTheme.tokens.glassFillStrong,
-            strokeColor = GlassTheme.tokens.glassStroke,
-        ) {
-            Column(
-                modifier = Modifier.padding(
-                    horizontal = layout.width(18.dp, 16.dp),
-                    vertical = layout.height(16.dp, 14.dp),
-                ),
-                verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
-            ) {
-                Text(
-                    text = "Eliminar tarea?",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = GlassTheme.tokens.textPrimary,
-                )
-                Text(
-                    text = "Se borrara \"$taskTitle\"",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = GlassTheme.tokens.textSecondary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(layout.width(12.dp, 10.dp)),
-                ) {
-                    GlassActionButton(
-                        text = "Cancelar",
-                        modifier = Modifier.weight(1f),
-                        tint = GlassTheme.tokens.glassFillStrong,
-                        textColor = GlassTheme.tokens.textPrimary,
-                        onClick = onDismiss,
-                    )
-                    GlassActionButton(
-                        text = "Eliminar",
-                        modifier = Modifier.weight(1f),
-                        tint = Color(0xFFE06B6B),
-                        onClick = onConfirm,
-                    )
-                }
-            }
-        }
-    }
+    val isSyncedBooking = task.source == "portfolio_booking"
+    GlassConfirmDialog(
+        visible = true,
+        title = "Eliminar tarea?",
+        message = if (isSyncedBooking) {
+            "\"${task.title}\" es una cita sincronizada desde tu sistema de reservas. " +
+                "Eliminarla aqui no cancela la reserva externa."
+        } else {
+            "Se borrara \"${task.title}\""
+        },
+        onConfirm = onConfirm,
+        onDismiss = onDismiss,
+        confirmText = "Eliminar",
+    )
 }
 
 @Composable
@@ -163,7 +115,7 @@ internal fun NewTaskSheet(
 ) {
     val layout = AppLayout.metrics
     val timeZone = remember { TimeZone.currentSystemDefault() }
-    val today = remember { Clock.System.todayIn(timeZone) }
+    val today = remember { kotlin.time.Clock.System.todayIn(timeZone) }
     val palette = remember { labelColorPalette() }
     val usedColors = labels.map { it.colorHex.lowercase() }.toSet()
     val colorOptions = palette
@@ -180,6 +132,7 @@ internal fun NewTaskSheet(
     var showTimePicker by remember { mutableStateOf(false) }
     val selectedLabelIds = remember { mutableStateListOf<String>() }
     var newLabelName by remember { mutableStateOf("") }
+    var isCreatingLabel by remember { mutableStateOf(false) }
     var selectedColor by remember { mutableStateOf(colorOptions.first()) }
     var isSaving by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -194,6 +147,7 @@ internal fun NewTaskSheet(
         showTimePicker = false
         selectedLabelIds.clear()
         newLabelName = ""
+        isCreatingLabel = false
         selectedColor = colorOptions.first()
         isSaving = false
     }
@@ -216,7 +170,7 @@ internal fun NewTaskSheet(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0x660B1117))
+                    .background(GlassTheme.tokens.scrim)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -317,7 +271,7 @@ internal fun NewTaskSheet(
                                 modifier = Modifier
                                     .width(layout.width(104.dp, 94.dp))
                                     .height(layout.height(50.dp, 44.dp)),
-                                text = "Guardar",
+                                text = if (isSaving) "Guardando..." else "Guardar",
                                 enabled = title.isNotBlank() && !isSaving && !isPastSelected,
                                 onClick = {
                                     val trimmedTitle = title.trim()
@@ -452,7 +406,7 @@ internal fun NewTaskSheet(
                         Text(
                             text = errorText.orEmpty(),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFFB53B3B),
+                            color = GlassTheme.tokens.error,
                         )
                     }
 
@@ -519,14 +473,16 @@ internal fun NewTaskSheet(
                                     .width(layout.width(112.dp, 98.dp))
                                     .height(layout.height(52.dp, 46.dp)),
                                 text = "Agregar",
-                                enabled = newLabelName.isNotBlank(),
+                                enabled = newLabelName.isNotBlank() && !isCreatingLabel,
                                 tint = GlassTheme.tokens.glassFillStrong,
                                 textColor = GlassTheme.tokens.textPrimary,
                                 onClick = {
                                     val labelName = newLabelName.trim()
                                     if (labelName.isEmpty()) return@GlassActionButton
                                     scope.launch {
+                                        isCreatingLabel = true
                                         val created = onCreateLabel(labelName, selectedColor)
+                                        isCreatingLabel = false
                                         if (created != null) {
                                             if (!selectedLabelIds.contains(created.id)) {
                                                 selectedLabelIds.add(created.id)
@@ -589,7 +545,7 @@ private fun DatePickerOverlay(
 ) {
     val layout = AppLayout.metrics
     val timeZone = remember { TimeZone.currentSystemDefault() }
-    val today = remember { Clock.System.todayIn(timeZone) }
+    val today = remember { kotlin.time.Clock.System.todayIn(timeZone) }
     var visibleMonth by remember(selectedDate) {
         mutableStateOf(LocalDate(selectedDate.year, selectedDate.monthNumber, 1))
     }
@@ -611,7 +567,7 @@ private fun DatePickerOverlay(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0x660B1117))
+                .background(GlassTheme.tokens.scrim)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -743,7 +699,7 @@ private fun TimePickerOverlay(
     var minuteIndex by remember { mutableStateOf(0) }
 
     LaunchedEffect(initialTime) {
-        val base = initialTime ?: Clock.System.now().toLocalDateTime(timeZone).time
+        val base = initialTime ?: kotlin.time.Clock.System.now().toLocalDateTime(timeZone).time
         hourIndex = base.hour
         minuteIndex = base.minute
     }
@@ -752,7 +708,7 @@ private fun TimePickerOverlay(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0x660B1117))
+                .background(GlassTheme.tokens.scrim)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -782,16 +738,22 @@ private fun TimePickerOverlay(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = "Cancelar",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = GlassTheme.tokens.textSecondary,
-                        modifier = Modifier.clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onDismiss,
-                        ),
-                    )
+                    Box(
+                        modifier = Modifier
+                            .defaultMinSize(minWidth = 44.dp, minHeight = 44.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onDismiss,
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "Cancelar",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = GlassTheme.tokens.textSecondary,
+                        )
+                    }
                     Box(
                         modifier = Modifier.weight(1f),
                         contentAlignment = Alignment.Center,
@@ -802,16 +764,22 @@ private fun TimePickerOverlay(
                             color = GlassTheme.tokens.textPrimary,
                         )
                     }
-                    Text(
-                        text = "Listo",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = GlassTheme.tokens.textPrimary,
-                        modifier = Modifier.clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = { onConfirm(LocalTime(hourIndex, minuteIndex)) },
-                        ),
-                    )
+                    Box(
+                        modifier = Modifier
+                            .defaultMinSize(minWidth = 44.dp, minHeight = 44.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { onConfirm(LocalTime(hourIndex, minuteIndex)) },
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "Listo",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = GlassTheme.tokens.textPrimary,
+                        )
+                    }
                 }
 
                 Row(
@@ -1010,7 +978,7 @@ internal fun CalendarOverlay(
 ) {
     val layout = AppLayout.metrics
     val timeZone = remember { TimeZone.currentSystemDefault() }
-    val today = remember { Clock.System.todayIn(timeZone) }
+    val today = remember { kotlin.time.Clock.System.todayIn(timeZone) }
     var visibleMonth by remember(selectedDate) {
         mutableStateOf(LocalDate(selectedDate.year, selectedDate.monthNumber, 1))
     }
@@ -1036,7 +1004,7 @@ internal fun CalendarOverlay(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0x660B1117))
+                .background(GlassTheme.tokens.scrim)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -1071,16 +1039,22 @@ internal fun CalendarOverlay(
                             .padding(horizontal = layout.width(18.dp, 16.dp)),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            text = "Hoy",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = GlassTheme.tokens.textSecondary,
-                            modifier = Modifier.clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = { onSelectDate(today) },
-                            ),
-                        )
+                        Box(
+                            modifier = Modifier
+                                .defaultMinSize(minWidth = 44.dp, minHeight = 44.dp)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = { onSelectDate(today) },
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "Hoy",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = GlassTheme.tokens.textSecondary,
+                            )
+                        }
                         Box(
                             modifier = Modifier.weight(1f),
                             contentAlignment = Alignment.Center,
@@ -1091,16 +1065,22 @@ internal fun CalendarOverlay(
                                 color = GlassTheme.tokens.textPrimary,
                             )
                         }
-                        Text(
-                            text = "Listo",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = GlassTheme.tokens.textPrimary,
-                            modifier = Modifier.clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = onDismiss,
-                            ),
-                        )
+                        Box(
+                            modifier = Modifier
+                                .defaultMinSize(minWidth = 44.dp, minHeight = 44.dp)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = onDismiss,
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "Listo",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = GlassTheme.tokens.textPrimary,
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(layout.height(14.dp, 12.dp)))
@@ -1433,50 +1413,10 @@ private fun ColorSwatch(
     )
 }
 
-private fun formatTime(time: LocalTime): String {
-    val hour = time.hour.toString().padStart(2, '0')
-    val minute = time.minute.toString().padStart(2, '0')
-    return "$hour:$minute"
-}
-
 private fun formatShortDateWithYear(date: LocalDate): String {
     return "${date.dayOfMonth} ${monthName(date.month, short = true)} ${date.year}"
 }
 
 private fun weekDayLabels(): List<String> {
     return listOf("L", "M", "X", "J", "V", "S", "D")
-}
-
-private fun daysInMonth(year: Int, month: Month): Int = when (month) {
-    Month.JANUARY -> 31
-    Month.FEBRUARY -> if (isLeapYear(year)) 29 else 28
-    Month.MARCH -> 31
-    Month.APRIL -> 30
-    Month.MAY -> 31
-    Month.JUNE -> 30
-    Month.JULY -> 31
-    Month.AUGUST -> 31
-    Month.SEPTEMBER -> 30
-    Month.OCTOBER -> 31
-    Month.NOVEMBER -> 30
-    Month.DECEMBER -> 31
-}
-
-private fun isLeapYear(year: Int): Boolean {
-    return year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
-}
-
-private fun monthName(month: Month, short: Boolean = false): String = when (month) {
-    Month.JANUARY -> if (short) "ene" else "enero"
-    Month.FEBRUARY -> if (short) "feb" else "febrero"
-    Month.MARCH -> if (short) "mar" else "marzo"
-    Month.APRIL -> if (short) "abr" else "abril"
-    Month.MAY -> if (short) "may" else "mayo"
-    Month.JUNE -> if (short) "jun" else "junio"
-    Month.JULY -> if (short) "jul" else "julio"
-    Month.AUGUST -> if (short) "ago" else "agosto"
-    Month.SEPTEMBER -> if (short) "sep" else "septiembre"
-    Month.OCTOBER -> if (short) "oct" else "octubre"
-    Month.NOVEMBER -> if (short) "nov" else "noviembre"
-    Month.DECEMBER -> if (short) "dic" else "diciembre"
 }

@@ -1,8 +1,10 @@
 package com.franciscor.agendnote.core.ui.layout
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -30,15 +32,22 @@ data class AppLayoutMetrics(
     }
 }
 
-private var currentAppLayoutMetrics = AppLayoutMetrics(
+private val DefaultAppLayoutMetrics = AppLayoutMetrics(
     widthScale = 1f,
     heightScale = 1f,
     contentScale = 1f,
 )
 
+/**
+ * Backing CompositionLocal for [AppLayout.metrics]. Using `staticCompositionLocalOf` instead of a
+ * top-level `var` makes theme/rotation changes trigger a proper recomposition of every reader
+ * (e.g. LazyColumn rows) instead of leaving them painted with stale sizes/colors.
+ */
+private val LocalAppLayoutMetrics = staticCompositionLocalOf { DefaultAppLayoutMetrics }
+
 object AppLayout {
     val metrics: AppLayoutMetrics
-        @Composable get() = currentAppLayoutMetrics
+        @Composable get() = LocalAppLayoutMetrics.current
 }
 
 @Composable
@@ -52,7 +61,9 @@ fun rememberAppLayoutMetrics(
         AppLayoutMetrics(
             widthScale = widthScale,
             heightScale = heightScale,
-            contentScale = minOf(widthScale, heightScale),
+            // Cap growth so landscape/tablet windows don't distort content proportions or let
+            // components overgrow far beyond their phone-sized design intent.
+            contentScale = minOf(widthScale, heightScale).coerceAtMost(1.15f),
         )
     }
 }
@@ -62,6 +73,7 @@ fun ProvideAppLayoutMetrics(
     metrics: AppLayoutMetrics,
     content: @Composable () -> Unit,
 ) {
-    currentAppLayoutMetrics = metrics
-    content()
+    CompositionLocalProvider(LocalAppLayoutMetrics provides metrics) {
+        content()
+    }
 }

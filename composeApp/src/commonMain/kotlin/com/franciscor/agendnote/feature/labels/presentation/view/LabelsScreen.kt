@@ -1,7 +1,6 @@
 package com.franciscor.agendnote.feature.labels.presentation.view
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -36,7 +35,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.franciscor.agendnote.core.model.LabelTag
+import com.franciscor.agendnote.core.ui.components.ColorSwatch
 import com.franciscor.agendnote.core.ui.components.GlassActionButton
+import com.franciscor.agendnote.core.ui.components.GlassConfirmDialog
 import com.franciscor.agendnote.core.ui.components.GlassSurface
 import com.franciscor.agendnote.core.ui.components.GlassTextField
 import com.franciscor.agendnote.core.ui.components.colorFromHex
@@ -65,6 +66,7 @@ fun LabelsScreen(
     var newLabelName by remember { mutableStateOf("") }
     var selectedColor by remember { mutableStateOf(colorOptions.first()) }
     var localError by remember { mutableStateOf<String?>(null) }
+    var labelPendingDelete by remember { mutableStateOf<LabelTag?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(colorOptions) {
@@ -73,125 +75,156 @@ fun LabelsScreen(
         }
     }
 
-    LazyColumn(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
-        contentPadding = PaddingValues(bottom = layout.height(140.dp, 110.dp)),
-    ) {
-        item {
-            GlassSurface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
-            ) {
-                androidx.compose.foundation.layout.Column(
-                    modifier = Modifier.padding(layout.size(16.dp, 14.dp)),
-                    verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
-                ) {
-                    Text(
-                        text = "Crear etiqueta",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = GlassTheme.tokens.textPrimary,
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp))) {
-                        GlassTextField(
-                            value = newLabelName,
-                            onValueChange = { newLabelName = it },
-                            placeholder = "Nombre",
-                            modifier = Modifier.weight(1f),
-                        )
-                        GlassActionButton(
-                            text = "Agregar",
-                            enabled = newLabelName.isNotBlank() && !uiState.isLoading,
-                            tint = GlassTheme.tokens.glassFillStrong,
-                            textColor = GlassTheme.tokens.textPrimary,
-                            onClick = {
-                                val name = newLabelName.trim()
-                                if (name.isEmpty()) return@GlassActionButton
-                                scope.launch {
-                                    val created = controller.createLabel(name, selectedColor)
-                                    if (created != null) {
-                                        newLabelName = ""
-                                        localError = null
-                                    } else {
-                                        localError = "No se pudo crear la etiqueta"
-                                    }
-                                }
-                            },
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp)),
-                    ) {
-                        colorOptions.forEach { hex ->
-                            val color = colorFromHex(hex)
-                            ColorSwatch(
-                                color = color,
-                                selected = hex == selectedColor,
-                                onClick = { selectedColor = hex },
-                            )
-                        }
-                    }
-                    if (localError != null) {
-                        Text(
-                            text = localError.orEmpty(),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFFB53B3B),
-                        )
-                    }
-                }
-            }
-        }
-
-        if (uiState.errorMessage != null) {
-            item {
-                GlassSurface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(layout.size(20.dp, 18.dp)),
-                ) {
-                    Text(
-                        text = uiState.errorMessage,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFFB53B3B),
-                        modifier = Modifier.padding(
-                            horizontal = layout.width(16.dp, 14.dp),
-                            vertical = layout.height(14.dp, 12.dp),
-                        ),
-                    )
-                }
-            }
-        }
-
-        if (uiState.labels.isEmpty()) {
+    Box(modifier = modifier) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
+            contentPadding = PaddingValues(bottom = layout.height(140.dp, 110.dp)),
+        ) {
             item {
                 GlassSurface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
                 ) {
-                    Text(
-                        text = "Sin etiquetas creadas",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = GlassTheme.tokens.textSecondary,
-                        modifier = Modifier.padding(
-                            horizontal = layout.width(16.dp, 14.dp),
-                            vertical = layout.height(18.dp, 14.dp),
-                        ),
+                    androidx.compose.foundation.layout.Column(
+                        modifier = Modifier.padding(layout.size(16.dp, 14.dp)),
+                        verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
+                    ) {
+                        Text(
+                            text = "Crear etiqueta",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = GlassTheme.tokens.textPrimary,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp))) {
+                            GlassTextField(
+                                value = newLabelName,
+                                onValueChange = { newLabelName = it },
+                                placeholder = "Nombre",
+                                modifier = Modifier.weight(1f),
+                            )
+                            GlassActionButton(
+                                text = "Agregar",
+                                enabled = newLabelName.isNotBlank() && !uiState.isLoading,
+                                tint = GlassTheme.tokens.glassFillStrong,
+                                textColor = GlassTheme.tokens.textPrimary,
+                                onClick = {
+                                    val name = newLabelName.trim()
+                                    if (name.isEmpty()) return@GlassActionButton
+                                    controller.createLabel(name, selectedColor) { created ->
+                                        if (created != null) {
+                                            newLabelName = ""
+                                            localError = null
+                                        } else {
+                                            localError = "No se pudo crear la etiqueta"
+                                        }
+                                    }
+                                },
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp)),
+                        ) {
+                            colorOptions.forEach { hex ->
+                                val color = colorFromHex(hex)
+                                ColorSwatch(
+                                    color = color,
+                                    selected = hex == selectedColor,
+                                    onClick = { selectedColor = hex },
+                                )
+                            }
+                        }
+                        if (localError != null) {
+                            Text(
+                                text = localError.orEmpty(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color(0xFFB53B3B),
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (uiState.errorMessage != null) {
+                item {
+                    GlassSurface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(layout.size(20.dp, 18.dp)),
+                    ) {
+                        Text(
+                            text = uiState.errorMessage,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFFB53B3B),
+                            modifier = Modifier.padding(
+                                horizontal = layout.width(16.dp, 14.dp),
+                                vertical = layout.height(14.dp, 12.dp),
+                            ),
+                        )
+                    }
+                }
+            }
+
+            if (uiState.isLoading && uiState.labels.isEmpty()) {
+                item {
+                    GlassSurface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
+                    ) {
+                        Text(
+                            text = "Cargando etiquetas...",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = GlassTheme.tokens.textSecondary,
+                            modifier = Modifier.padding(
+                                horizontal = layout.width(16.dp, 14.dp),
+                                vertical = layout.height(18.dp, 14.dp),
+                            ),
+                        )
+                    }
+                }
+            } else if (uiState.labels.isEmpty()) {
+                item {
+                    GlassSurface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
+                    ) {
+                        Text(
+                            text = "Sin etiquetas creadas",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = GlassTheme.tokens.textSecondary,
+                            modifier = Modifier.padding(
+                                horizontal = layout.width(16.dp, 14.dp),
+                                vertical = layout.height(18.dp, 14.dp),
+                            ),
+                        )
+                    }
+                }
+            } else {
+                items(uiState.labels, key = { it.id }) { label ->
+                    LabelRow(
+                        label = label,
+                        onDelete = { labelPendingDelete = label },
                     )
                 }
             }
-        } else {
-            items(uiState.labels, key = { it.id }) { label ->
-                LabelRow(
-                    label = label,
-                    onDelete = {
-                        scope.launch {
-                            val success = onDeleteLabel(label)
-                            localError = if (success) null else "No se pudo eliminar la etiqueta"
-                        }
-                    },
-                )
-            }
         }
+
+        GlassConfirmDialog(
+            visible = labelPendingDelete != null,
+            title = "Eliminar etiqueta",
+            message = "Se eliminará la etiqueta \"${labelPendingDelete?.name.orEmpty()}\" y se quitará de todas las tareas que la tengan asignada.",
+            confirmText = "Eliminar",
+            onConfirm = {
+                val label = labelPendingDelete
+                labelPendingDelete = null
+                if (label != null) {
+                    scope.launch {
+                        val success = onDeleteLabel(label)
+                        localError = if (success) null else "No se pudo eliminar la etiqueta"
+                    }
+                }
+            },
+            onDismiss = { labelPendingDelete = null },
+        )
     }
 }
 
@@ -263,29 +296,4 @@ private fun LabelRow(
             }
         }
     }
-}
-
-@Composable
-private fun ColorSwatch(
-    color: Color,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val layout = AppLayout.metrics
-    Box(
-        modifier = Modifier
-            .size(layout.size(26.dp, 22.dp))
-            .clip(CircleShape)
-            .background(color)
-            .border(
-                width = layout.size(2.dp, 1.dp),
-                color = if (selected) GlassTheme.tokens.glassHighlight else Color.Transparent,
-                shape = CircleShape,
-            )
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-            ),
-    )
 }

@@ -10,7 +10,10 @@ import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaDayUiSta
 import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaUiState
 import com.franciscor.agendnote.feature.agenda.presentation.model.SaveResult
 import io.ktor.client.plugins.ResponseException
-import kotlinx.datetime.Clock
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
@@ -20,13 +23,28 @@ import kotlinx.datetime.todayIn
 class AgendaViewModel(
     private val repository: AgendaTaskRepository?,
     private val timeZone: TimeZone = TimeZone.currentSystemDefault(),
-    initialDate: LocalDate = Clock.System.todayIn(timeZone),
+    initialDate: LocalDate = kotlin.time.Clock.System.todayIn(timeZone),
 ) {
     var uiState by mutableStateOf(AgendaUiState(selectedDate = initialDate))
         private set
 
     private var nextLoadToken: Long = 0
     private val activeLoadTokenByDate = mutableMapOf<LocalDate, Long>()
+
+    /**
+     * Own coroutine scope for fire-and-forget mutations (save/delete/toggle/day navigation).
+     *
+     * Previously the screen composables launched these on `rememberCoroutineScope()`, which is
+     * tied to the composable's own lifetime. Switching tabs (or any recomposition that removes
+     * the agenda screen from composition) silently cancelled in-flight requests, leaving
+     * [uiState] out of sync with the backend (e.g. a delete that "didn't happen" after the user
+     * comes back). [SupervisorJob] means one failed mutation doesn't cancel the others, and
+     * [Dispatchers.Main.immediate] keeps state updates on the UI thread like the rest of this
+     * class. This scope is intentionally never cancelled: this ViewModel instance lives for the
+     * whole app session (created once in `AppNavHost`), so there is no owner lifecycle to tie it
+     * to.
+     */
+    private val viewModelScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     fun moveDay(delta: Int): LocalDate {
         val date = uiState.selectedDate.plus(delta, DateTimeUnit.DAY)
@@ -40,7 +58,7 @@ class AgendaViewModel(
 
     fun selectedDayUiState(): AgendaDayUiState = dayUiState(uiState.selectedDate)
 
-    fun today(): LocalDate = Clock.System.todayIn(timeZone)
+    fun today(): LocalDate = kotlin.time.Clock.System.todayIn(timeZone)
 
     fun dayUiState(date: LocalDate): AgendaDayUiState {
         return AgendaDayUiState(
@@ -113,7 +131,7 @@ class AgendaViewModel(
 
         return if (repository == null) {
             val task = TaskItem(
-                id = "task-${Clock.System.now().toEpochMilliseconds()}",
+                id = "task-${kotlin.time.Clock.System.now().toEpochMilliseconds()}",
                 title = trimmedTitle,
                 details = draft.details?.trim()?.ifBlank { null },
                 time = draft.time,
@@ -200,6 +218,43 @@ class AgendaViewModel(
                 }
                 .getOrDefault(false)
         }
+    }
+
+    // --- Fire-and-forget wrappers -------------------------------------------------------
+    // Launch on [viewModelScope] instead of relying on the caller's own coroutine scope, so the
+    // mutation always runs to completion and updates [uiState] even if the calling composable
+    // (e.g. AgendaScreen) has already left composition. Screen code should call these instead of
+    // wrapping the suspend functions above in `rememberCoroutineScope().launch { }`.
+
+    fun moveDayAndLoad(delta: Int) {
+        val target = moveDay(delta)
+        viewModelScope.launch { loadTasksForDate(target) }
+    }
+
+    fun selectDateAndLoad(date: LocalDate) {
+        selectDate(date)
+        viewModelScope.launch { loadTasksForDate(date) }
+    }
+
+    fun refreshSelectedDateAsync() {
+        viewModelScope.launch { loadTasksForDate(uiState.selectedDate) }
+    }
+
+    fun saveTaskAsync(date: LocalDate, draft: TaskDraft, onResult: (SaveResult) -> Unit = {}) {
+        viewModelScope.launch { onResult(saveTask(date, draft)) }
+    }
+
+    fun toggleTaskDoneAsync(
+        date: LocalDate,
+        task: TaskItem,
+        isDone: Boolean,
+        onResult: (Boolean) -> Unit = {},
+    ) {
+        viewModelScope.launch { onResult(toggleTaskDone(date, task, isDone)) }
+    }
+
+    fun deleteTaskAsync(date: LocalDate, task: TaskItem, onResult: (Boolean) -> Unit = {}) {
+        viewModelScope.launch { onResult(deleteTask(date, task)) }
     }
 
     fun clearAllTasks() {

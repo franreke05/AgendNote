@@ -14,5 +14,7 @@ sealed interface SettingsAction {
         val message: String? = null,
     ) : SettingsAction
 
+    class ConfirmBulkAction(val execute: suspend () -> Boolean) : SettingsAction
+
     data object DismissError : SettingsAction
 }
