@@ -11,22 +11,31 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.franciscor.agendnote.core.model.TaskSeries
 import com.franciscor.agendnote.core.ui.components.GlassActionButton
 import com.franciscor.agendnote.core.ui.components.GlassConfirmDialog
 import com.franciscor.agendnote.core.ui.components.GlassSurface
 import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
+import com.franciscor.agendnote.feature.agenda.domain.RecurrenceRule
 import com.franciscor.agendnote.feature.settings.presentation.controller.SettingsController
 import com.franciscor.agendnote.feature.settings.presentation.model.SettingsAction
 import com.franciscor.agendnote.feature.settings.presentation.model.SettingsBulkAction
 import com.franciscor.agendnote.feature.settings.presentation.viewmodel.SettingsViewModel
+import kotlinx.coroutines.launch
+import kotlinx.datetime.DayOfWeek
+import kotlinx.datetime.isoDayNumber
 
 @Composable
 fun SettingsScreen(
@@ -34,12 +43,16 @@ fun SettingsScreen(
     controller: SettingsController,
     onDeleteAllNotes: suspend () -> Boolean,
     onDeleteAllLabels: suspend () -> Boolean,
+    seriesList: List<TaskSeries>,
+    onDeleteSeries: suspend (TaskSeries) -> Boolean,
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
     val contentInset = layout.width(24.dp, 20.dp)
     val uiState = viewModel.uiState
     val isEditingEnabled = uiState.isRemoteAvailable
+    var seriesPendingDelete by remember { mutableStateOf<TaskSeries?>(null) }
+    val scope = rememberCoroutineScope()
 
     LazyColumn(
         modifier = modifier
@@ -136,6 +149,52 @@ fun SettingsScreen(
                 }
             }
         }
+
+        if (seriesList.isNotEmpty()) {
+            item {
+                GlassSurface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(layout.size(24.dp, 20.dp)),
+                ) {
+                    androidx.compose.foundation.layout.Column(
+                        modifier = Modifier.padding(layout.size(16.dp, 14.dp)),
+                        verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
+                    ) {
+                        Text(
+                            text = "Tareas recurrentes",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = GlassTheme.tokens.textPrimary,
+                        )
+                        seriesList.forEach { series ->
+                            androidx.compose.foundation.layout.Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                androidx.compose.foundation.layout.Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = series.title,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = GlassTheme.tokens.textPrimary,
+                                    )
+                                    Text(
+                                        text = describeRecurrence(series.rule),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = GlassTheme.tokens.textSecondary,
+                                    )
+                                }
+                                GlassActionButton(
+                                    text = "Borrar",
+                                    enabled = isEditingEnabled,
+                                    tint = Color(0xFFE06B6B),
+                                    onClick = { seriesPendingDelete = series },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     val pendingBulkAction = uiState.pendingBulkAction
@@ -167,6 +226,20 @@ fun SettingsScreen(
         },
         onDismiss = { controller.handle(SettingsAction.DismissBulkAction) },
     )
+
+    seriesPendingDelete?.let { series ->
+        GlassConfirmDialog(
+            visible = true,
+            title = "Borrar serie recurrente?",
+            message = "Se eliminaran las apariciones futuras de \"${series.title}\" que no esten completadas. Las pasadas se conservan.",
+            confirmText = "Borrar",
+            onConfirm = {
+                seriesPendingDelete = null
+                scope.launch { onDeleteSeries(series) }
+            },
+            onDismiss = { seriesPendingDelete = null },
+        )
+    }
 }
 
 @Composable
@@ -213,6 +286,28 @@ private fun ModeToggleButton(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+    }
+}
+
+private fun describeRecurrence(rule: RecurrenceRule): String {
+    return when (rule) {
+        is RecurrenceRule.Daily -> "Todos los dias"
+        is RecurrenceRule.WeeklyDays -> {
+            val names = rule.days.sortedBy { it.isoDayNumber }.joinToString(", ") { day ->
+                when (day) {
+                    DayOfWeek.MONDAY -> "lunes"
+                    DayOfWeek.TUESDAY -> "martes"
+                    DayOfWeek.WEDNESDAY -> "miercoles"
+                    DayOfWeek.THURSDAY -> "jueves"
+                    DayOfWeek.FRIDAY -> "viernes"
+                    DayOfWeek.SATURDAY -> "sabado"
+                    DayOfWeek.SUNDAY -> "domingo"
+                    else -> day.name.lowercase()
+                }
+            }
+            "Cada $names"
+        }
+        is RecurrenceRule.Monthly -> "El dia ${rule.dayOfMonth} de cada mes"
     }
 }
 

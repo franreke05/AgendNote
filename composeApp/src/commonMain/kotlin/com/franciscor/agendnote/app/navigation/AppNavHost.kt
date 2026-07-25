@@ -9,7 +9,10 @@ import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -18,6 +21,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.franciscor.agendnote.app.di.AppServices
+import com.franciscor.agendnote.core.model.TaskSeries
 import com.franciscor.agendnote.core.network.RemoteConfigStatus
 import com.franciscor.agendnote.core.ui.components.GlassBackground
 import com.franciscor.agendnote.core.ui.layout.AppLayout
@@ -65,6 +69,12 @@ fun AppNavHost(
         labelsController.handle(LabelsAction.Load)
     }
 
+    var recurringSeries by remember { mutableStateOf<List<TaskSeries>>(emptyList()) }
+
+    suspend fun refreshRecurringSeries() {
+        recurringSeries = AppServices.taskSeriesRepository?.fetchActiveSeries() ?: emptyList()
+    }
+
     LaunchedEffect(agendaController) {
         val taskSeriesRepository = AppServices.taskSeriesRepository
         val agendaTaskRepository = AppServices.agendaTaskRepository
@@ -73,6 +83,7 @@ fun AppNavHost(
                 .materializeAll(agendaViewModel.today())
             agendaController.handleAsync(AgendaAction.RefreshSelectedDate)
         }
+        refreshRecurringSeries()
     }
 
     val navigateToMainTab: (MainTab) -> Unit = { tab ->
@@ -151,6 +162,15 @@ fun AppNavHost(
                                     }
                                     success
                                 },
+                                seriesList = recurringSeries,
+                                onDeleteSeries = { series ->
+                                    val success = AppServices.taskSeriesRepository?.deleteSeries(series.id) ?: false
+                                    if (success) {
+                                        refreshRecurringSeries()
+                                        agendaController.handleAsync(AgendaAction.RefreshSelectedDate)
+                                    }
+                                    success
+                                },
                             )
                         }
                     }
@@ -218,12 +238,16 @@ private fun SettingsRoute(
     settingsController: SettingsController,
     onDeleteAllNotes: suspend () -> Boolean,
     onDeleteAllLabels: suspend () -> Boolean,
+    seriesList: List<TaskSeries>,
+    onDeleteSeries: suspend (TaskSeries) -> Boolean,
 ) {
     SettingsScreen(
         viewModel = settingsViewModel,
         controller = settingsController,
         onDeleteAllNotes = onDeleteAllNotes,
         onDeleteAllLabels = onDeleteAllLabels,
+        seriesList = seriesList,
+        onDeleteSeries = onDeleteSeries,
         modifier = Modifier.fillMaxSize(),
     )
 }
