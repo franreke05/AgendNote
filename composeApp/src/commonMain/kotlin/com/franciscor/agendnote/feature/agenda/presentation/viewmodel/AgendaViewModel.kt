@@ -225,7 +225,8 @@ class AgendaViewModel(
             return SaveResult(false, resolveServerError(error))
         }
 
-        val materialized = materializer.materializeSeries(series, date)
+        val materialized = runCatching { materializer.materializeSeries(series, date) }
+            .getOrElse { false }
         if (!materialized) {
             setError(date, "La serie se creo pero no se pudieron generar todas las tareas")
             return SaveResult(false, "La serie se creo pero no se pudieron generar todas las tareas")
