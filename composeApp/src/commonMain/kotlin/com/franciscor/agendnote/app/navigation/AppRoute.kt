@@ -7,6 +7,10 @@ sealed interface AppRoute {
         override val route: String = "agenda"
     }
 
+    data object Calendar : AppRoute {
+        override val route: String = "calendar"
+    }
+
     data object Labels : AppRoute {
         override val route: String = "labels"
     }

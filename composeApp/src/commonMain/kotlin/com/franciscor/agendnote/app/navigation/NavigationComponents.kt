@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CalendarToday
+import androidx.compose.material.icons.rounded.DateRange
 import androidx.compose.material.icons.rounded.Label
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
@@ -77,6 +78,12 @@ fun BottomBar(
                 label = "Agenda",
                 selected = selectedTab == MainTab.AGENDA,
                 onClick = { onSelect(MainTab.AGENDA) },
+            )
+            BottomBarItem(
+                icon = Icons.Rounded.DateRange,
+                label = "Calendario",
+                selected = selectedTab == MainTab.CALENDAR,
+                onClick = { onSelect(MainTab.CALENDAR) },
             )
             BottomBarItem(
                 icon = Icons.Rounded.Label,

@@ -30,6 +30,7 @@ import com.franciscor.agendnote.feature.agenda.domain.SeriesMaterializer
 import com.franciscor.agendnote.feature.agenda.presentation.controller.AgendaController
 import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaAction
 import com.franciscor.agendnote.feature.agenda.presentation.view.AgendaScreen
+import com.franciscor.agendnote.feature.agenda.presentation.view.CalendarScreen
 import com.franciscor.agendnote.feature.agenda.presentation.viewmodel.AgendaViewModel
 import com.franciscor.agendnote.feature.labels.presentation.controller.LabelsController
 import com.franciscor.agendnote.feature.labels.presentation.model.LabelsAction
@@ -119,7 +120,7 @@ fun AppNavHost(
             modifier = Modifier
                 .fillMaxSize()
                 // Keeps interactive content clear of notches/system cutouts, matching the
-                // pattern already used in CalendarOverlay (feature/agenda).
+                // pattern already used in CalendarMonthView (feature/agenda).
                 .safeContentPadding()
                 .padding(
                     horizontal = contentHorizontalMargin,
@@ -149,6 +150,13 @@ fun AppNavHost(
                                 agendaController = agendaController,
                                 labelsViewModel = labelsViewModel,
                                 labelsController = labelsController,
+                            )
+                        }
+                        composable(AppRoute.Calendar.route) {
+                            CalendarRoute(
+                                agendaViewModel = agendaViewModel,
+                                agendaController = agendaController,
+                                onNavigateToAgenda = { navigateToMainTab(MainTab.AGENDA) },
                             )
                         }
                         composable(AppRoute.Labels.route) {
@@ -221,6 +229,23 @@ private fun AgendaRoute(
         labels = labelsViewModel.uiState.labels,
         onCreateLabel = { name, colorHex ->
             labelsController.createLabel(name, colorHex)
+        },
+        modifier = Modifier.fillMaxSize(),
+    )
+}
+
+@Composable
+private fun CalendarRoute(
+    agendaViewModel: AgendaViewModel,
+    agendaController: AgendaController,
+    onNavigateToAgenda: () -> Unit,
+) {
+    CalendarScreen(
+        viewModel = agendaViewModel,
+        controller = agendaController,
+        onSelectDate = { date ->
+            agendaController.handleAsync(AgendaAction.SelectDate(date))
+            onNavigateToAgenda()
         },
         modifier = Modifier.fillMaxSize(),
     )

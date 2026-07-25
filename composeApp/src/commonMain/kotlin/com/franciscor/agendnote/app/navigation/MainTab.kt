@@ -5,6 +5,7 @@ enum class MainTab(
     val route: AppRoute,
 ) {
     AGENDA("Agenda", AppRoute.Agenda),
+    CALENDAR("Calendario", AppRoute.Calendar),
     LABELS("Etiquetas", AppRoute.Labels),
     SETTINGS("Ajustes", AppRoute.Settings),
     ;
