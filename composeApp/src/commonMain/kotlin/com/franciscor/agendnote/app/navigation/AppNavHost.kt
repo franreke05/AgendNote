@@ -21,7 +21,9 @@ import com.franciscor.agendnote.app.di.AppServices
 import com.franciscor.agendnote.core.network.RemoteConfigStatus
 import com.franciscor.agendnote.core.ui.components.GlassBackground
 import com.franciscor.agendnote.core.ui.layout.AppLayout
+import com.franciscor.agendnote.feature.agenda.domain.SeriesMaterializer
 import com.franciscor.agendnote.feature.agenda.presentation.controller.AgendaController
+import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaAction
 import com.franciscor.agendnote.feature.agenda.presentation.view.AgendaScreen
 import com.franciscor.agendnote.feature.agenda.presentation.viewmodel.AgendaViewModel
 import com.franciscor.agendnote.feature.labels.presentation.controller.LabelsController
@@ -42,6 +44,7 @@ fun AppNavHost(
     val agendaViewModel = remember(remoteConfigStatus) {
         AgendaViewModel(
             repository = AppServices.agendaTaskRepository,
+            taskSeriesRepository = AppServices.taskSeriesRepository,
             remoteUnavailableMessage = remoteConfigStatus.message,
         )
     }
@@ -60,6 +63,16 @@ fun AppNavHost(
 
     LaunchedEffect(labelsController) {
         labelsController.handle(LabelsAction.Load)
+    }
+
+    LaunchedEffect(agendaController) {
+        val taskSeriesRepository = AppServices.taskSeriesRepository
+        val agendaTaskRepository = AppServices.agendaTaskRepository
+        if (taskSeriesRepository != null && agendaTaskRepository != null) {
+            SeriesMaterializer(taskSeriesRepository, agendaTaskRepository)
+                .materializeAll(agendaViewModel.today())
+            agendaController.handleAsync(AgendaAction.RefreshSelectedDate)
+        }
     }
 
     val navigateToMainTab: (MainTab) -> Unit = { tab ->
