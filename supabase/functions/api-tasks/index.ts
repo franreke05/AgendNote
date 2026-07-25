@@ -6,7 +6,7 @@ import { requireAppSecret } from "../_shared/auth.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("SB_URL");
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SERVICE_ROLE_KEY");
-const TASK_SELECT = "id,title,body,day,due_at,slot_end_at,is_done,order_index,created_at,updated_at,notified_at,source,booking_status,appointment_id,client_name,client_email,client_phone";
+const TASK_SELECT = "id,title,body,day,due_at,slot_end_at,is_done,order_index,created_at,updated_at,notified_at,source,booking_status,appointment_id,client_name,client_email,client_phone,series_id";
 const DEFAULT_LABEL_COLOR = "#8C94A6";
 
 if (!supabaseUrl || !serviceKey) {
@@ -88,6 +88,7 @@ function buildInsertPayload(body: Record<string, unknown>) {
     client_name: normalizeOptionalString(body.client_name),
     client_email: normalizeOptionalString(body.client_email),
     client_phone: normalizeOptionalString(body.client_phone),
+    series_id: normalizeOptionalString(body.series_id),
   };
 }
 
