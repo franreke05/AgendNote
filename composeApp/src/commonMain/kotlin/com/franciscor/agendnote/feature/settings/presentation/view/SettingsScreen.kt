@@ -14,7 +14,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,7 +32,6 @@ import com.franciscor.agendnote.feature.settings.presentation.controller.Setting
 import com.franciscor.agendnote.feature.settings.presentation.model.SettingsAction
 import com.franciscor.agendnote.feature.settings.presentation.model.SettingsBulkAction
 import com.franciscor.agendnote.feature.settings.presentation.viewmodel.SettingsViewModel
-import kotlinx.coroutines.launch
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.isoDayNumber
 
@@ -44,7 +42,7 @@ fun SettingsScreen(
     onDeleteAllNotes: suspend () -> Boolean,
     onDeleteAllLabels: suspend () -> Boolean,
     seriesList: List<TaskSeries>,
-    onDeleteSeries: suspend (TaskSeries) -> Boolean,
+    onDeleteSeries: (TaskSeries) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
@@ -52,7 +50,6 @@ fun SettingsScreen(
     val uiState = viewModel.uiState
     val isEditingEnabled = uiState.isRemoteAvailable
     var seriesPendingDelete by remember { mutableStateOf<TaskSeries?>(null) }
-    val scope = rememberCoroutineScope()
 
     LazyColumn(
         modifier = modifier
@@ -235,7 +232,7 @@ fun SettingsScreen(
             confirmText = "Borrar",
             onConfirm = {
                 seriesPendingDelete = null
-                scope.launch { onDeleteSeries(series) }
+                onDeleteSeries(series)
             },
             onDismiss = { seriesPendingDelete = null },
         )

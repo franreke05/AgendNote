@@ -12,6 +12,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +38,7 @@ import com.franciscor.agendnote.feature.labels.presentation.viewmodel.LabelsView
 import com.franciscor.agendnote.feature.settings.presentation.controller.SettingsController
 import com.franciscor.agendnote.feature.settings.presentation.view.SettingsScreen
 import com.franciscor.agendnote.feature.settings.presentation.viewmodel.SettingsViewModel
+import kotlinx.coroutines.launch
 
 @Composable
 fun AppNavHost(
@@ -60,6 +62,11 @@ fun AppNavHost(
         )
     }
     val labelsController = remember(labelsViewModel) { LabelsController(labelsViewModel) }
+    // Scoped to AppNavHost itself (not to any child route composable), so it survives bottom-nav
+    // tab switches. Used for mutations like series deletion that must not be silently cancelled
+    // when the Settings route leaves composition mid-request (see AgendaController's comment on
+    // the same class of bug for label deletion).
+    val navHostScope = rememberCoroutineScope()
     val layout = AppLayout.metrics
     val globalInset = layout.globalInset
     val currentBackStackEntry = navController.currentBackStackEntryAsState()
@@ -164,12 +171,13 @@ fun AppNavHost(
                                 },
                                 seriesList = recurringSeries,
                                 onDeleteSeries = { series ->
-                                    val success = AppServices.taskSeriesRepository?.deleteSeries(series.id) ?: false
-                                    if (success) {
-                                        refreshRecurringSeries()
-                                        agendaController.handleAsync(AgendaAction.RefreshSelectedDate)
+                                    navHostScope.launch {
+                                        val success = AppServices.taskSeriesRepository?.deleteSeries(series.id) ?: false
+                                        if (success) {
+                                            refreshRecurringSeries()
+                                            agendaController.handleAsync(AgendaAction.RefreshSelectedDate)
+                                        }
                                     }
-                                    success
                                 },
                             )
                         }
@@ -239,7 +247,7 @@ private fun SettingsRoute(
     onDeleteAllNotes: suspend () -> Boolean,
     onDeleteAllLabels: suspend () -> Boolean,
     seriesList: List<TaskSeries>,
-    onDeleteSeries: suspend (TaskSeries) -> Boolean,
+    onDeleteSeries: (TaskSeries) -> Unit,
 ) {
     SettingsScreen(
         viewModel = settingsViewModel,
