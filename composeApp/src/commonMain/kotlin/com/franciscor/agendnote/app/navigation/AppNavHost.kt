@@ -79,7 +79,8 @@ fun AppNavHost(
     var recurringSeries by remember { mutableStateOf<List<TaskSeries>>(emptyList()) }
 
     suspend fun refreshRecurringSeries() {
-        recurringSeries = AppServices.taskSeriesRepository?.fetchActiveSeries() ?: emptyList()
+        recurringSeries = runCatching { AppServices.taskSeriesRepository?.fetchActiveSeries() }
+            .getOrNull() ?: emptyList()
     }
 
     LaunchedEffect(agendaController) {
@@ -158,6 +159,9 @@ fun AppNavHost(
                             )
                         }
                         composable(AppRoute.Settings.route) {
+                            LaunchedEffect(Unit) {
+                                refreshRecurringSeries()
+                            }
                             SettingsRoute(
                                 settingsViewModel = settingsViewModel,
                                 settingsController = settingsController,
@@ -172,7 +176,9 @@ fun AppNavHost(
                                 seriesList = recurringSeries,
                                 onDeleteSeries = { series ->
                                     navHostScope.launch {
-                                        val success = AppServices.taskSeriesRepository?.deleteSeries(series.id) ?: false
+                                        val success = runCatching {
+                                            AppServices.taskSeriesRepository?.deleteSeries(series.id)
+                                        }.getOrNull() ?: false
                                         if (success) {
                                             refreshRecurringSeries()
                                             agendaController.handleAsync(AgendaAction.RefreshSelectedDate)
