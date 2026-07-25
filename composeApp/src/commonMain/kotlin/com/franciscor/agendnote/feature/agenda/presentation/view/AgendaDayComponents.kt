@@ -42,7 +42,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,7 +62,6 @@ import com.franciscor.agendnote.core.ui.components.GlassSurface
 import com.franciscor.agendnote.core.ui.components.colorFromHex
 import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
-import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
 import kotlin.math.abs
@@ -308,7 +306,6 @@ private fun SwipeableTaskCard(
 ) {
     val layout = AppLayout.metrics
     val density = LocalDensity.current
-    val scope = rememberCoroutineScope()
     val maxOffset = with(density) { layout.width(108.dp, 88.dp).toPx() }
     val threshold = with(density) { layout.width(72.dp, 60.dp).toPx() }
     var offsetX by remember { mutableStateOf(0f) }
@@ -345,12 +342,10 @@ private fun SwipeableTaskCard(
                                 offsetX = 0f
                             } else {
                                 offsetX = maxOffset
-                                scope.launch {
-                                    isPerformingAction = true
-                                    onToggleDone(true)
-                                    isPerformingAction = false
-                                    offsetX = 0f
-                                }
+                                isPerformingAction = true
+                                onToggleDone(true)
+                                isPerformingAction = false
+                                offsetX = 0f
                             }
                         }
 
