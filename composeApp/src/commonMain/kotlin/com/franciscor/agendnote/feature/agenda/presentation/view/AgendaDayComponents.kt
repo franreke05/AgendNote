@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -495,7 +496,20 @@ private fun TaskCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TimeChip(startTime = task.time, endTime = task.endTime)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 4.dp)),
+                ) {
+                    TimeChip(startTime = task.time, endTime = task.endTime)
+                    if (task.seriesId != null) {
+                        Icon(
+                            imageVector = Icons.Rounded.Repeat,
+                            contentDescription = "Tarea recurrente",
+                            tint = GlassTheme.tokens.textSecondary,
+                            modifier = Modifier.size(layout.size(16.dp, 14.dp)),
+                        )
+                    }
+                }
                 Row(
                     modifier = Modifier.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 4.dp)),
