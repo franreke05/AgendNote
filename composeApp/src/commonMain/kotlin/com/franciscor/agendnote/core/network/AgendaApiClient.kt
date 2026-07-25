@@ -188,4 +188,15 @@ class AgendaApiClient(
             .body()
         return response.success
     }
+
+    suspend fun fetchTasksInRange(from: String, to: String): List<TaskDto> {
+        val response: TasksResponse = client
+            .get("$normalizedBaseUrl/api-tasks") {
+                withAuth(this)
+                parameter("from", from)
+                parameter("to", to)
+            }
+            .body()
+        return response.tasks
+    }
 }

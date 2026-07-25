@@ -54,6 +54,10 @@ private class FakeAgendaTaskRepositoryForMaterializer : AgendaTaskRepository {
 
     override suspend fun fetchTasks(date: LocalDate): List<TaskItem> = emptyList()
 
+    override suspend fun fetchTasksInRange(from: LocalDate, to: LocalDate): Map<LocalDate, List<TaskItem>> {
+        error("not used in this test")
+    }
+
     override suspend fun createTask(date: LocalDate, draft: TaskDraft): TaskItem {
         if (createdDrafts.size >= failAfter) {
             throw RuntimeException("simulated failure")

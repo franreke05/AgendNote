@@ -25,6 +25,11 @@ class SupabaseAgendaTaskRepository(
         return api.fetchTasks(date.toString()).map { it.toTaskItem(timeZone) }
     }
 
+    override suspend fun fetchTasksInRange(from: LocalDate, to: LocalDate): Map<LocalDate, List<TaskItem>> {
+        return api.fetchTasksInRange(from.toString(), to.toString())
+            .groupBy({ LocalDate.parse(it.day) }, { it.toTaskItem(timeZone) })
+    }
+
     override suspend fun createTask(date: LocalDate, draft: TaskDraft): TaskItem {
         val dueAt = draft.time?.let { time ->
             LocalDateTime(date, time).toInstant(timeZone).toString()

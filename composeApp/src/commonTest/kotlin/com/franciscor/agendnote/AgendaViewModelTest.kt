@@ -256,8 +256,13 @@ class AgendaViewModelTest {
 
 private class FakeAgendaTaskRepository(
     private val fetchTasksHandler: suspend (LocalDate) -> List<TaskItem> = { emptyList() },
+    private val fetchTasksInRangeHandler: suspend (LocalDate, LocalDate) -> Map<LocalDate, List<TaskItem>> =
+        { _, _ -> emptyMap() },
 ) : AgendaTaskRepository {
     override suspend fun fetchTasks(date: LocalDate): List<TaskItem> = fetchTasksHandler(date)
+
+    override suspend fun fetchTasksInRange(from: LocalDate, to: LocalDate): Map<LocalDate, List<TaskItem>> =
+        fetchTasksInRangeHandler(from, to)
 
     override suspend fun createTask(date: LocalDate, draft: TaskDraft): TaskItem {
         return TaskItem(
