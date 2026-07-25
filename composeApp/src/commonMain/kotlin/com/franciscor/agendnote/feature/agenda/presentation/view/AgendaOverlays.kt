@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -72,9 +73,11 @@ import com.franciscor.agendnote.core.ui.components.colorFromHex
 import com.franciscor.agendnote.core.ui.components.labelColorPalette
 import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
+import com.franciscor.agendnote.feature.agenda.domain.RecurrenceRule
 import com.franciscor.agendnote.feature.agenda.presentation.model.SaveResult
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
@@ -100,6 +103,10 @@ internal fun ConfirmDeleteDialog(
     )
 }
 
+private enum class RecurrenceOption {
+    None, Daily, WeeklyDays, Monthly
+}
+
 @Composable
 internal fun NewTaskSheet(
     date: LocalDate,
@@ -107,6 +114,7 @@ internal fun NewTaskSheet(
     onCreateLabel: suspend (String, String) -> LabelTag?,
     onDismiss: () -> Unit,
     onSave: suspend (LocalDate, TaskDraft) -> SaveResult,
+    onSaveRecurring: suspend (LocalDate, TaskDraft, RecurrenceRule) -> SaveResult,
 ) {
     val layout = AppLayout.metrics
     val timeZone = remember { TimeZone.currentSystemDefault() }
@@ -130,6 +138,9 @@ internal fun NewTaskSheet(
     var isCreatingLabel by remember { mutableStateOf(false) }
     var selectedColor by remember { mutableStateOf(colorOptions.first()) }
     var isSaving by remember { mutableStateOf(false) }
+    var selectedRecurrence by remember { mutableStateOf<RecurrenceOption>(RecurrenceOption.None) }
+    val selectedWeekDays = remember { mutableStateListOf<DayOfWeek>() }
+    var monthDay by remember { mutableStateOf(1) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(date, today, colorOptions) {
@@ -145,6 +156,9 @@ internal fun NewTaskSheet(
         isCreatingLabel = false
         selectedColor = colorOptions.first()
         isSaving = false
+        selectedRecurrence = RecurrenceOption.None
+        selectedWeekDays.clear()
+        monthDay = selectedDate.dayOfMonth
     }
 
     LaunchedEffect(colorOptions) {
@@ -278,6 +292,10 @@ internal fun NewTaskSheet(
                                         errorText = "No se pueden crear tareas en fechas pasadas"
                                         return@GlassActionButton
                                     }
+                                    if (selectedRecurrence == RecurrenceOption.WeeklyDays && selectedWeekDays.isEmpty()) {
+                                        errorText = "Elegi al menos un dia de la semana"
+                                        return@GlassActionButton
+                                    }
 
                                     val chosenLabels = labels.filter { selectedLabelIds.contains(it.id) }
                                     val draft = TaskDraft(
@@ -286,9 +304,19 @@ internal fun NewTaskSheet(
                                         time = selectedTime,
                                         labels = chosenLabels,
                                     )
+                                    val rule = when (selectedRecurrence) {
+                                        RecurrenceOption.None -> null
+                                        RecurrenceOption.Daily -> RecurrenceRule.Daily
+                                        RecurrenceOption.WeeklyDays -> RecurrenceRule.WeeklyDays(selectedWeekDays.toSet())
+                                        RecurrenceOption.Monthly -> RecurrenceRule.Monthly(monthDay)
+                                    }
                                     scope.launch {
                                         isSaving = true
-                                        val result = onSave(selectedDate, draft)
+                                        val result = if (rule != null) {
+                                            onSaveRecurring(selectedDate, draft, rule)
+                                        } else {
+                                            onSave(selectedDate, draft)
+                                        }
                                         isSaving = false
                                         if (result.success) {
                                             onDismiss()
@@ -385,6 +413,81 @@ internal fun NewTaskSheet(
                                     ),
                                     color = GlassTheme.tokens.textSecondary,
                                 )
+                            }
+                        }
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(layout.height(8.dp, 6.dp))) {
+                        Text(
+                            text = "Repetir",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = layout.text(15.sp, 14.sp),
+                            ),
+                            color = GlassTheme.tokens.textSecondary,
+                        )
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
+                        ) {
+                            RecurrenceOptionChip(
+                                text = "Ninguna",
+                                selected = selectedRecurrence == RecurrenceOption.None,
+                                onClick = { selectedRecurrence = RecurrenceOption.None },
+                            )
+                            RecurrenceOptionChip(
+                                text = "Diaria",
+                                selected = selectedRecurrence == RecurrenceOption.Daily,
+                                onClick = { selectedRecurrence = RecurrenceOption.Daily },
+                            )
+                            RecurrenceOptionChip(
+                                text = "Dias de la semana",
+                                selected = selectedRecurrence == RecurrenceOption.WeeklyDays,
+                                onClick = { selectedRecurrence = RecurrenceOption.WeeklyDays },
+                            )
+                            RecurrenceOptionChip(
+                                text = "Mensual",
+                                selected = selectedRecurrence == RecurrenceOption.Monthly,
+                                onClick = { selectedRecurrence = RecurrenceOption.Monthly },
+                            )
+                        }
+                        if (selectedRecurrence == RecurrenceOption.WeeklyDays) {
+                            Row(
+                                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 5.dp)),
+                            ) {
+                                weekDayOptions().forEach { (day, label) ->
+                                    val selected = selectedWeekDays.contains(day)
+                                    RecurrenceOptionChip(
+                                        text = label,
+                                        selected = selected,
+                                        onClick = {
+                                            if (selected) {
+                                                selectedWeekDays.remove(day)
+                                            } else {
+                                                selectedWeekDays.add(day)
+                                            }
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                        if (selectedRecurrence == RecurrenceOption.Monthly) {
+                            Text(
+                                text = "Dia $monthDay de cada mes",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = GlassTheme.tokens.textSecondary,
+                            )
+                            Row(
+                                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 5.dp)),
+                            ) {
+                                (1..31).forEach { day ->
+                                    RecurrenceOptionChip(
+                                        text = day.toString(),
+                                        selected = monthDay == day,
+                                        onClick = { monthDay = day },
+                                    )
+                                }
                             }
                         }
                     }
@@ -1577,4 +1680,46 @@ private fun formatShortDateWithYear(date: LocalDate): String {
 
 private fun weekDayLabels(): List<String> {
     return listOf("L", "M", "X", "J", "V", "S", "D")
+}
+
+@Composable
+private fun RecurrenceOptionChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val layout = AppLayout.metrics
+    GlassSurface(
+        shape = RoundedCornerShape(layout.size(14.dp, 12.dp)),
+        tint = if (selected) GlassTheme.tokens.accentOnLight else GlassTheme.tokens.glassFill,
+        modifier = Modifier
+            .clip(RoundedCornerShape(layout.size(14.dp, 12.dp)))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = LocalIndication.current,
+                onClick = onClick,
+            ),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) GlassTheme.tokens.onError else GlassTheme.tokens.textPrimary,
+            modifier = Modifier.padding(
+                horizontal = layout.width(12.dp, 10.dp),
+                vertical = layout.height(8.dp, 7.dp),
+            ),
+        )
+    }
+}
+
+private fun weekDayOptions(): List<Pair<DayOfWeek, String>> {
+    return listOf(
+        DayOfWeek.MONDAY to "L",
+        DayOfWeek.TUESDAY to "M",
+        DayOfWeek.WEDNESDAY to "X",
+        DayOfWeek.THURSDAY to "J",
+        DayOfWeek.FRIDAY to "V",
+        DayOfWeek.SATURDAY to "S",
+        DayOfWeek.SUNDAY to "D",
+    )
 }

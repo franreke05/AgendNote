@@ -182,6 +182,13 @@ fun AgendaScreen(
                         }
                     }
                 },
+                onSaveRecurring = { targetDate, draft, rule ->
+                    controller.saveRecurringTask(targetDate, draft, rule).also { result ->
+                        if (result.success) {
+                            showTaskSheet = false
+                        }
+                    }
+                },
             )
         }
 
