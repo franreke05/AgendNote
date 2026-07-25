@@ -82,7 +82,7 @@ internal fun AgendaHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column {
+        Column(modifier = Modifier.weight(1f, fill = false)) {
             Text(
                 text = "Agenda",
                 style = MaterialTheme.typography.displayLarge.copy(
@@ -98,6 +98,9 @@ internal fun AgendaHeader(
                         fontSize = layout.text(16.sp, 15.sp),
                     ),
                     color = GlassTheme.tokens.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
                 )
                 if (isToday) {
                     Spacer(modifier = Modifier.width(layout.width(10.dp, 8.dp)))
