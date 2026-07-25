@@ -372,6 +372,15 @@ class AgendaViewModel(
         viewModelScope.launch { onResult(saveTask(date, draft)) }
     }
 
+    fun saveRecurringTaskAsync(
+        date: LocalDate,
+        draft: TaskDraft,
+        rule: RecurrenceRule,
+        onResult: (SaveResult) -> Unit = {},
+    ) {
+        viewModelScope.launch { onResult(saveRecurringTask(date, draft, rule)) }
+    }
+
     fun toggleTaskDoneAsync(
         date: LocalDate,
         task: TaskItem,

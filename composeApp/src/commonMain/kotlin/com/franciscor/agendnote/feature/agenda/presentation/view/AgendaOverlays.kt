@@ -112,8 +112,8 @@ internal fun NewTaskSheet(
     labels: List<LabelTag>,
     onCreateLabel: suspend (String, String) -> LabelTag?,
     onDismiss: () -> Unit,
-    onSave: suspend (LocalDate, TaskDraft) -> SaveResult,
-    onSaveRecurring: suspend (LocalDate, TaskDraft, RecurrenceRule) -> SaveResult,
+    onSave: (LocalDate, TaskDraft, (SaveResult) -> Unit) -> Unit,
+    onSaveRecurring: (LocalDate, TaskDraft, RecurrenceRule, (SaveResult) -> Unit) -> Unit,
 ) {
     val layout = AppLayout.metrics
     val timeZone = remember { TimeZone.currentSystemDefault() }
@@ -309,19 +309,19 @@ internal fun NewTaskSheet(
                                         RecurrenceOption.WeeklyDays -> RecurrenceRule.WeeklyDays(selectedWeekDays.toSet())
                                         RecurrenceOption.Monthly -> RecurrenceRule.Monthly(monthDay)
                                     }
-                                    scope.launch {
-                                        isSaving = true
-                                        val result = if (rule != null) {
-                                            onSaveRecurring(selectedDate, draft, rule)
-                                        } else {
-                                            onSave(selectedDate, draft)
-                                        }
+                                    isSaving = true
+                                    val onResult: (SaveResult) -> Unit = { result ->
                                         isSaving = false
                                         if (result.success) {
                                             onDismiss()
                                         } else {
                                             errorText = result.errorMessage ?: "No se pudo guardar"
                                         }
+                                    }
+                                    if (rule != null) {
+                                        onSaveRecurring(selectedDate, draft, rule, onResult)
+                                    } else {
+                                        onSave(selectedDate, draft, onResult)
                                     }
                                 },
                             )
@@ -615,6 +615,7 @@ internal fun NewTaskSheet(
                 selectedDate = selectedDate,
                 onSelect = {
                     selectedDate = it
+                    monthDay = it.dayOfMonth
                     showDatePicker = false
                 },
                 onDismiss = { showDatePicker = false },

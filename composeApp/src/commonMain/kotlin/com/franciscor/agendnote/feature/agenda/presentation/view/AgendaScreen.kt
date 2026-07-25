@@ -161,19 +161,11 @@ fun AgendaScreen(
                 labels = labels,
                 onCreateLabel = onCreateLabel,
                 onDismiss = { showTaskSheet = false },
-                onSave = { targetDate, draft ->
-                    controller.saveTask(targetDate, draft).also { result ->
-                        if (result.success) {
-                            showTaskSheet = false
-                        }
-                    }
+                onSave = { targetDate, draft, onResult ->
+                    controller.saveTaskAsync(targetDate, draft, onResult)
                 },
-                onSaveRecurring = { targetDate, draft, rule ->
-                    controller.saveRecurringTask(targetDate, draft, rule).also { result ->
-                        if (result.success) {
-                            showTaskSheet = false
-                        }
-                    }
+                onSaveRecurring = { targetDate, draft, rule, onResult ->
+                    controller.saveRecurringTaskAsync(targetDate, draft, rule, onResult)
                 },
             )
         }
