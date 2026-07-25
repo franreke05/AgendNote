@@ -26,6 +26,10 @@ class AgendaController(
             AgendaAction.RefreshSelectedDate -> {
                 viewModel.loadTasksForDate(viewModel.uiState.selectedDate)
             }
+
+            is AgendaAction.LoadMonth -> {
+                viewModel.loadMonth(action.month)
+            }
         }
     }
 
@@ -60,6 +64,7 @@ class AgendaController(
             is AgendaAction.MoveDay -> viewModel.moveDayAndLoad(action.delta)
             is AgendaAction.SelectDate -> viewModel.selectDateAndLoad(action.date)
             AgendaAction.RefreshSelectedDate -> viewModel.refreshSelectedDateAsync()
+            is AgendaAction.LoadMonth -> viewModel.loadMonthAsync(action.month)
         }
     }
 

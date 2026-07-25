@@ -8,4 +8,6 @@ sealed interface AgendaAction {
     data class MoveDay(val delta: Int) : AgendaAction
 
     data object RefreshSelectedDate : AgendaAction
+
+    data class LoadMonth(val month: LocalDate) : AgendaAction
 }

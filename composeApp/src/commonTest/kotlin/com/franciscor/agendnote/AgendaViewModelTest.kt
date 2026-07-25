@@ -238,6 +238,77 @@ class AgendaViewModelTest {
         assertTrue(viewModel.uiState.tasksByDate[baseDate].isNullOrEmpty())
     }
 
+    @Test
+    fun `loadMonth populates tasksByDate for every day in the month`() = runTest {
+        val month = LocalDate(2026, 3, 1)
+        val taskOnDay5 = task("t-1", "Reunion")
+        val repository = FakeAgendaTaskRepository(
+            fetchTasksInRangeHandler = { from, to ->
+                assertEquals(LocalDate(2026, 3, 1), from)
+                assertEquals(LocalDate(2026, 3, 31), to)
+                mapOf(LocalDate(2026, 3, 5) to listOf(taskOnDay5))
+            },
+        )
+        val viewModel = AgendaViewModel(repository, timeZone = timeZone, initialDate = baseDate)
+
+        viewModel.loadMonth(month)
+
+        assertEquals(month, viewModel.uiState.visibleMonth)
+        assertEquals(listOf(taskOnDay5), viewModel.uiState.tasksByDate[LocalDate(2026, 3, 5)])
+        assertEquals(emptyList(), viewModel.uiState.tasksByDate[LocalDate(2026, 3, 1)])
+        assertEquals(emptyList(), viewModel.uiState.tasksByDate[LocalDate(2026, 3, 31)])
+        assertNull(viewModel.uiState.monthErrorMessage)
+        assertFalse(viewModel.uiState.isMonthLoading)
+    }
+
+    @Test
+    fun `loadMonth does not refetch an already loaded month`() = runTest {
+        var callCount = 0
+        val repository = FakeAgendaTaskRepository(
+            fetchTasksInRangeHandler = { _, _ ->
+                callCount += 1
+                emptyMap()
+            },
+        )
+        val viewModel = AgendaViewModel(repository, timeZone = timeZone, initialDate = baseDate)
+
+        viewModel.loadMonth(LocalDate(2026, 3, 1))
+        viewModel.loadMonth(LocalDate(2026, 3, 1))
+        viewModel.loadMonth(LocalDate(2026, 3, 20))
+
+        assertEquals(1, callCount)
+    }
+
+    @Test
+    fun `loadMonth failure sets monthErrorMessage without touching cached days`() = runTest {
+        val cachedTask = task("t-1", "Ya cacheada")
+        val repository = FakeAgendaTaskRepository(
+            fetchTasksHandler = { listOf(cachedTask) },
+            fetchTasksInRangeHandler = { _, _ -> error("boom") },
+        )
+        val viewModel = AgendaViewModel(repository, timeZone = timeZone, initialDate = baseDate)
+        viewModel.loadTasksForDate(baseDate)
+
+        viewModel.loadMonth(LocalDate(2026, 4, 1))
+
+        assertEquals("No se pudieron cargar las tareas del mes", viewModel.uiState.monthErrorMessage)
+        assertEquals(listOf(cachedTask), viewModel.uiState.tasksByDate[baseDate])
+    }
+
+    @Test
+    fun `loadMonth without remote repository exposes config error`() = runTest {
+        val viewModel = AgendaViewModel(
+            repository = null,
+            timeZone = timeZone,
+            remoteUnavailableMessage = "Falta APP_SECRET",
+            initialDate = baseDate,
+        )
+
+        viewModel.loadMonth(LocalDate(2026, 3, 1))
+
+        assertEquals("Falta APP_SECRET", viewModel.uiState.monthErrorMessage)
+    }
+
     private fun task(
         id: String,
         title: String,

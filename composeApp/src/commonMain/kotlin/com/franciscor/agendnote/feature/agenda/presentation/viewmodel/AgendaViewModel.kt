@@ -23,6 +23,7 @@ import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 
@@ -48,10 +49,13 @@ class AgendaViewModel(
     var uiState by mutableStateOf(
         AgendaUiState(
             selectedDate = initialDate,
+            visibleMonth = LocalDate(initialDate.year, initialDate.monthNumber, 1),
             isRemoteAvailable = hasRemoteAccess,
         ),
     )
         private set
+
+    private val loadedMonths = mutableSetOf<LocalDate>()
 
     private var nextLoadToken: Long = 0
     private val activeLoadTokenByDate = mutableMapOf<LocalDate, Long>()
@@ -173,6 +177,54 @@ class AgendaViewModel(
         if (activeLoadTokenByDate[targetDate] == token) {
             setLoading(targetDate, false)
         }
+    }
+
+    suspend fun loadMonth(month: LocalDate) {
+        val monthStart = LocalDate(month.year, month.monthNumber, 1)
+        uiState = uiState.copy(visibleMonth = monthStart)
+
+        if (loadedMonths.contains(monthStart)) return
+
+        val repository = repository ?: run {
+            setMonthError(remoteErrorMessage)
+            return
+        }
+
+        setMonthLoading(true)
+        setMonthError(null)
+
+        val monthEnd = monthStart.plus(1, DateTimeUnit.MONTH).minus(1, DateTimeUnit.DAY)
+        val result = runCatching { repository.fetchTasksInRange(monthStart, monthEnd) }
+
+        result
+            .onSuccess { fetched ->
+                val allDays = generateSequence(monthStart) { it.plus(1, DateTimeUnit.DAY) }
+                    .takeWhile { it <= monthEnd }
+                val fullMonth = allDays.associateWith { day -> fetched[day].orEmpty() }
+                setTasksForMonth(fullMonth)
+                loadedMonths.add(monthStart)
+            }
+            .onFailure {
+                setMonthError("No se pudieron cargar las tareas del mes")
+            }
+
+        setMonthLoading(false)
+    }
+
+    private fun setTasksForMonth(tasksByDate: Map<LocalDate, List<TaskItem>>) {
+        // No pasa por setTasks() a propósito: setTasks() re-programa notificaciones locales por
+        // cada tarea con hora, y llamarlo una vez por día del mes (hasta 31 veces) reprogramaría
+        // notificaciones ya programadas sin necesidad cada vez que se abre el calendario.
+        val ordered = tasksByDate.mapValues { (_, tasks) -> orderTasks(tasks) }
+        uiState = uiState.copy(tasksByDate = uiState.tasksByDate + ordered)
+    }
+
+    private fun setMonthLoading(isLoading: Boolean) {
+        uiState = uiState.copy(isMonthLoading = isLoading)
+    }
+
+    private fun setMonthError(message: String?) {
+        uiState = uiState.copy(monthErrorMessage = message)
     }
 
     suspend fun saveTask(date: LocalDate, draft: TaskDraft): SaveResult {
@@ -310,6 +362,10 @@ class AgendaViewModel(
 
     fun refreshSelectedDateAsync() {
         viewModelScope.launch { loadTasksForDate(uiState.selectedDate) }
+    }
+
+    fun loadMonthAsync(month: LocalDate) {
+        viewModelScope.launch { loadMonth(month) }
     }
 
     fun saveTaskAsync(date: LocalDate, draft: TaskDraft, onResult: (SaveResult) -> Unit = {}) {
