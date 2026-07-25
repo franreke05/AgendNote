@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -1068,18 +1067,17 @@ private fun DatePickerDayCell(
 }
 
 @Composable
-internal fun CalendarOverlay(
+internal fun CalendarMonthView(
     selectedDate: LocalDate,
+    visibleMonth: LocalDate,
     tasksByDate: Map<LocalDate, List<TaskItem>>,
     onSelectDate: (LocalDate) -> Unit,
-    onDismiss: () -> Unit,
+    onVisibleMonthChange: (LocalDate) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
     val timeZone = remember { TimeZone.currentSystemDefault() }
     val today = remember { currentDate(timeZone) }
-    var visibleMonth by remember(selectedDate) {
-        mutableStateOf(LocalDate(selectedDate.year, selectedDate.monthNumber, 1))
-    }
     val swipeThreshold = layout.width(72.dp, 56.dp)
     val swipeEdgeGuard = layout.width(24.dp, 18.dp)
     var dragTotal by remember { mutableStateOf(0f) }
@@ -1098,244 +1096,208 @@ internal fun CalendarOverlay(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        Box(
+    GlassSurface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(layout.size(28.dp, 24.dp)),
+        tint = GlassTheme.tokens.glassFillStrong,
+        shadowElevation = 0.dp,
+    ) {
+        Column(
             modifier = Modifier
-                .fillMaxSize()
-                .background(GlassTheme.tokens.scrim)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismiss,
-                ),
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .safeContentPadding(),
+                .fillMaxWidth()
+                .padding(vertical = layout.height(16.dp, 14.dp)),
         ) {
-            GlassSurface(
+            Row(
                 modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(
-                        horizontal = layout.width(18.dp, 16.dp),
-                        vertical = layout.height(24.dp, 18.dp),
-                    )
-                    .fillMaxWidth(),
-                shape = RoundedCornerShape(layout.size(28.dp, 24.dp)),
-                tint = GlassTheme.tokens.glassFillStrong,
-                shadowElevation = 0.dp,
+                    .fillMaxWidth()
+                    .padding(horizontal = layout.width(18.dp, 16.dp)),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = layout.height(16.dp, 14.dp)),
+                        .defaultMinSize(minWidth = 44.dp, minHeight = 44.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {
+                                onVisibleMonthChange(LocalDate(today.year, today.monthNumber, 1))
+                                onSelectDate(today)
+                            },
+                        ),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Row(
+                    Text(
+                        text = "Hoy",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = GlassTheme.tokens.textSecondary,
+                    )
+                }
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "Calendario",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = GlassTheme.tokens.textPrimary,
+                    )
+                }
+                Box(modifier = Modifier.defaultMinSize(minWidth = 44.dp, minHeight = 44.dp))
+            }
+
+            Spacer(modifier = Modifier.height(layout.height(14.dp, 12.dp)))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = layout.width(18.dp, 16.dp)),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(layout.height(2.dp, 2.dp))) {
+                    Text(
+                        text = monthName(visibleMonth.month),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = GlassTheme.tokens.textPrimary,
+                    )
+                    Text(
+                        text = visibleMonth.year.toString(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = GlassTheme.tokens.textSecondary,
+                    )
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(layout.width(12.dp, 10.dp)),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.ChevronLeft,
+                        contentDescription = "Mes anterior",
+                        tint = GlassTheme.tokens.textSecondary,
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = layout.width(18.dp, 16.dp)),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .defaultMinSize(minWidth = 44.dp, minHeight = 44.dp)
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = { onSelectDate(today) },
-                                ),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = "Hoy",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = GlassTheme.tokens.textSecondary,
-                            )
-                        }
-                        Box(
-                            modifier = Modifier.weight(1f),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = "Calendario",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = GlassTheme.tokens.textPrimary,
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .defaultMinSize(minWidth = 44.dp, minHeight = 44.dp)
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = onDismiss,
-                                ),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = "Listo",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = GlassTheme.tokens.textPrimary,
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(layout.height(14.dp, 12.dp)))
-
-                    Row(
+                            .size(layout.size(22.dp, 20.dp))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { onVisibleMonthChange(visibleMonth.plus(-1, DateTimeUnit.MONTH)) },
+                            ),
+                    )
+                    Icon(
+                        imageVector = Icons.Rounded.ChevronRight,
+                        contentDescription = "Mes siguiente",
+                        tint = GlassTheme.tokens.textSecondary,
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = layout.width(18.dp, 16.dp)),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
+                            .size(layout.size(22.dp, 20.dp))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { onVisibleMonthChange(visibleMonth.plus(1, DateTimeUnit.MONTH)) },
+                            ),
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(layout.height(12.dp, 10.dp)))
+
+            val daySpacing = layout.width(4.dp, 3.dp)
+            val gridInset = layout.width(12.dp, 10.dp)
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = gridInset),
+                horizontalArrangement = Arrangement.spacedBy(daySpacing),
+            ) {
+                weekDayLabels().forEach { label ->
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(layout.height(2.dp, 2.dp))) {
-                            Text(
-                                text = monthName(visibleMonth.month),
-                                style = MaterialTheme.typography.titleLarge,
-                                color = GlassTheme.tokens.textPrimary,
-                            )
-                            Text(
-                                text = visibleMonth.year.toString(),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = GlassTheme.tokens.textSecondary,
-                            )
-                        }
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(layout.width(12.dp, 10.dp)),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.ChevronLeft,
-                                contentDescription = "Mes anterior",
-                                tint = GlassTheme.tokens.textSecondary,
-                                modifier = Modifier
-                                    .size(layout.size(22.dp, 20.dp))
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null,
-                                        onClick = { visibleMonth = visibleMonth.plus(-1, DateTimeUnit.MONTH) },
-                                    ),
-                            )
-                            Icon(
-                                imageVector = Icons.Rounded.ChevronRight,
-                                contentDescription = "Mes siguiente",
-                                tint = GlassTheme.tokens.textSecondary,
-                                modifier = Modifier
-                                    .size(layout.size(22.dp, 20.dp))
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null,
-                                        onClick = { visibleMonth = visibleMonth.plus(1, DateTimeUnit.MONTH) },
-                                    ),
-                            )
-                        }
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontSize = layout.text(11.sp, 10.sp),
+                            ),
+                            color = GlassTheme.tokens.textSecondary,
+                        )
                     }
+                }
+            }
 
-                    Spacer(modifier = Modifier.height(layout.height(12.dp, 10.dp)))
+            Spacer(modifier = Modifier.height(layout.height(6.dp, 4.dp)))
 
-                    val daySpacing = layout.width(4.dp, 3.dp)
-                    val gridInset = layout.width(12.dp, 10.dp)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .pointerInput(visibleMonth) {
+                        detectHorizontalDragGestures(
+                            onDragStart = { offset ->
+                                val edge = swipeEdgeGuard.toPx()
+                                allowSwipe = offset.x in edge..(size.width - edge)
+                                dragTotal = 0f
+                            },
+                            onHorizontalDrag = { _, dragAmount ->
+                                if (allowSwipe) {
+                                    dragTotal += dragAmount
+                                }
+                            },
+                            onDragEnd = {
+                                if (allowSwipe) {
+                                    when {
+                                        dragTotal > swipeThreshold.toPx() -> {
+                                            onVisibleMonthChange(visibleMonth.plus(-1, DateTimeUnit.MONTH))
+                                        }
 
-                    Row(
+                                        dragTotal < -swipeThreshold.toPx() -> {
+                                            onVisibleMonthChange(visibleMonth.plus(1, DateTimeUnit.MONTH))
+                                        }
+                                    }
+                                }
+                                dragTotal = 0f
+                                allowSwipe = false
+                            },
+                            onDragCancel = {
+                                dragTotal = 0f
+                                allowSwipe = false
+                            },
+                        )
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                BoxWithConstraints(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val weeks = dayCells.chunked(7)
+                    val availableWidth = maxWidth - gridInset * 2
+                    val maxCellWidth = (availableWidth - daySpacing * 6) / 7
+
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = gridInset),
-                        horizontalArrangement = Arrangement.spacedBy(daySpacing),
+                        verticalArrangement = Arrangement.spacedBy(daySpacing),
                     ) {
-                        weekDayLabels().forEach { label ->
-                            Box(
-                                modifier = Modifier.weight(1f),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = label,
-                                    style = MaterialTheme.typography.labelMedium.copy(
-                                        fontSize = layout.text(11.sp, 10.sp),
-                                    ),
-                                    color = GlassTheme.tokens.textSecondary,
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(layout.height(6.dp, 4.dp)))
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .pointerInput(visibleMonth) {
-                                detectHorizontalDragGestures(
-                                    onDragStart = { offset ->
-                                        val edge = swipeEdgeGuard.toPx()
-                                        allowSwipe = offset.x in edge..(size.width - edge)
-                                        dragTotal = 0f
-                                    },
-                                    onHorizontalDrag = { _, dragAmount ->
-                                        if (allowSwipe) {
-                                            dragTotal += dragAmount
-                                        }
-                                    },
-                                    onDragEnd = {
-                                        if (allowSwipe) {
-                                            when {
-                                                dragTotal > swipeThreshold.toPx() -> {
-                                                    visibleMonth = visibleMonth.plus(-1, DateTimeUnit.MONTH)
-                                                }
-
-                                                dragTotal < -swipeThreshold.toPx() -> {
-                                                    visibleMonth = visibleMonth.plus(1, DateTimeUnit.MONTH)
-                                                }
-                                            }
-                                        }
-                                        dragTotal = 0f
-                                        allowSwipe = false
-                                    },
-                                    onDragCancel = {
-                                        dragTotal = 0f
-                                        allowSwipe = false
-                                    },
-                                )
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        BoxWithConstraints(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            val weeks = dayCells.chunked(7)
-                            val availableWidth = maxWidth - gridInset * 2
-                            val maxCellWidth = (availableWidth - daySpacing * 6) / 7
-
-                            Column(
+                        weeks.forEach { week ->
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = gridInset),
-                                verticalArrangement = Arrangement.spacedBy(daySpacing),
+                                    .height(maxCellWidth),
+                                horizontalArrangement = Arrangement.spacedBy(daySpacing),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                weeks.forEach { week ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(maxCellWidth),
-                                        horizontalArrangement = Arrangement.spacedBy(daySpacing),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        week.forEach { day ->
-                                            if (day == null) {
-                                                Box(modifier = Modifier.size(maxCellWidth))
-                                            } else {
-                                                CalendarDayCell(
-                                                    date = day,
-                                                    selectedDate = selectedDate,
-                                                    today = today,
-                                                    noteCount = tasksByDate[day]?.size ?: 0,
-                                                    onSelect = onSelectDate,
-                                                    modifier = Modifier.size(maxCellWidth),
-                                                )
-                                            }
-                                        }
+                                week.forEach { day ->
+                                    if (day == null) {
+                                        Box(modifier = Modifier.size(maxCellWidth))
+                                    } else {
+                                        CalendarDayCell(
+                                            date = day,
+                                            selectedDate = selectedDate,
+                                            today = today,
+                                            noteCount = tasksByDate[day]?.size ?: 0,
+                                            onSelect = onSelectDate,
+                                            modifier = Modifier.size(maxCellWidth),
+                                        )
                                     }
                                 }
                             }

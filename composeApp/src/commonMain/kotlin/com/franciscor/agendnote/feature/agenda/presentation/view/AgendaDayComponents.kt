@@ -29,7 +29,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.CalendarToday
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -76,7 +75,6 @@ internal fun AgendaHeader(
     isToday: Boolean,
     onPreviousDay: () -> Unit,
     onNextDay: () -> Unit,
-    onOpenCalendar: () -> Unit,
 ) {
     val layout = AppLayout.metrics
     Row(
@@ -85,24 +83,14 @@ internal fun AgendaHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(layout.width(14.dp, 10.dp)),
-            ) {
-                Text(
-                    text = "Agenda",
-                    style = MaterialTheme.typography.displayLarge.copy(
-                        fontSize = layout.text(36.sp, 32.sp),
-                        lineHeight = layout.text(38.sp, 34.sp),
-                    ),
-                    color = GlassTheme.tokens.textPrimary,
-                )
-                GlassIconButton(
-                    icon = Icons.Rounded.CalendarToday,
-                    contentDescription = "Calendario",
-                    onClick = onOpenCalendar,
-                )
-            }
+            Text(
+                text = "Agenda",
+                style = MaterialTheme.typography.displayLarge.copy(
+                    fontSize = layout.text(36.sp, 32.sp),
+                    lineHeight = layout.text(38.sp, 34.sp),
+                ),
+                color = GlassTheme.tokens.textPrimary,
+            )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = formatFullDate(selectedDate),

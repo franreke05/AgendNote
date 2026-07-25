@@ -44,7 +44,6 @@ fun AgendaScreen(
     val selectedDate = uiState.selectedDate
     val sourceTasks = dayUiState.tasks
     var searchQuery by rememberSaveable { mutableStateOf("") }
-    var showCalendar by rememberSaveable { mutableStateOf(false) }
     var showTaskSheet by rememberSaveable { mutableStateOf(false) }
     var pendingDeleteTaskId by rememberSaveable { mutableStateOf<String?>(null) }
     var showTaskDetailsTaskId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -63,7 +62,7 @@ fun AgendaScreen(
     val filteredTasks = remember(sourceTasks, searchQuery) {
         filterTasks(sourceTasks, searchQuery)
     }
-    val blurRadius = if (showTaskSheet || showCalendar || showTaskDetails != null) layout.size(18.dp, 14.dp) else 0.dp
+    val blurRadius = if (showTaskSheet || showTaskDetails != null) layout.size(18.dp, 14.dp) else 0.dp
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -85,7 +84,6 @@ fun AgendaScreen(
                 onNextDay = {
                     controller.handleAsync(AgendaAction.MoveDay(1))
                 },
-                onOpenCalendar = { showCalendar = true },
             )
 
             AgendaSearchBar(
@@ -156,18 +154,6 @@ fun AgendaScreen(
             enabled = isEditingEnabled,
             onClick = { showTaskSheet = true },
         )
-
-        if (showCalendar) {
-            CalendarOverlay(
-                selectedDate = selectedDate,
-                tasksByDate = uiState.tasksByDate,
-                onDismiss = { showCalendar = false },
-                onSelectDate = { date ->
-                    showCalendar = false
-                    controller.handleAsync(AgendaAction.SelectDate(date))
-                },
-            )
-        }
 
         if (showTaskSheet) {
             NewTaskSheet(
