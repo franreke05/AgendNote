@@ -24,7 +24,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.franciscor.agendnote.core.ui.layout.AppLayout
@@ -110,13 +109,13 @@ fun RemoteStatusBanner(
     GlassSurface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(layout.size(22.dp, 18.dp)),
-        tint = Color(0xFFFDE7E7),
-        strokeColor = Color(0xFFF2B8B8),
+        tint = GlassTheme.tokens.error.copy(alpha = 0.16f),
+        strokeColor = GlassTheme.tokens.error.copy(alpha = 0.45f),
     ) {
         Text(
             text = message,
             style = MaterialTheme.typography.bodyMedium,
-            color = Color(0xFF9C2F2F),
+            color = GlassTheme.tokens.error,
             modifier = Modifier.padding(
                 horizontal = layout.width(16.dp, 14.dp),
                 vertical = layout.height(12.dp, 10.dp),

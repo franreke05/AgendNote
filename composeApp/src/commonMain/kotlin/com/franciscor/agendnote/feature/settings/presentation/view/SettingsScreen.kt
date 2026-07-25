@@ -79,7 +79,7 @@ fun SettingsScreen(
                         Text(
                             text = uiState.errorMessage,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFFB53B3B),
+                            color = GlassTheme.tokens.error,
                         )
                     }
                     androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp))) {

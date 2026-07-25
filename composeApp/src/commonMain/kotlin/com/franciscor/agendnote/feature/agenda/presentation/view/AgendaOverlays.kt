@@ -1504,7 +1504,7 @@ internal fun TaskDetailsOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0x660B1117))
+            .background(GlassTheme.tokens.scrim)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
