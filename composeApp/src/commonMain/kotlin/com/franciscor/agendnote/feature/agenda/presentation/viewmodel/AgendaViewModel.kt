@@ -181,7 +181,7 @@ class AgendaViewModel(
 
     suspend fun loadMonth(month: LocalDate) {
         val monthStart = LocalDate(month.year, month.monthNumber, 1)
-        uiState = uiState.copy(visibleMonth = monthStart)
+        uiState = uiState.copy(visibleMonth = monthStart, monthErrorMessage = null)
 
         if (loadedMonths.contains(monthStart)) return
 
