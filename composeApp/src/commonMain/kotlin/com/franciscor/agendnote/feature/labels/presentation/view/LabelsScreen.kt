@@ -27,12 +27,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.franciscor.agendnote.core.model.LabelTag
 import com.franciscor.agendnote.core.ui.components.ColorSwatch
@@ -46,13 +44,12 @@ import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
 import com.franciscor.agendnote.feature.labels.presentation.controller.LabelsController
 import com.franciscor.agendnote.feature.labels.presentation.viewmodel.LabelsViewModel
-import kotlinx.coroutines.launch
 
 @Composable
 fun LabelsScreen(
     viewModel: LabelsViewModel,
     controller: LabelsController,
-    onDeleteLabel: suspend (LabelTag) -> Boolean,
+    onDeleteLabel: (LabelTag) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
@@ -69,7 +66,6 @@ fun LabelsScreen(
     var selectedColor by remember { mutableStateOf(colorOptions.first()) }
     var localError by remember { mutableStateOf<String?>(null) }
     var labelPendingDelete by remember { mutableStateOf<LabelTag?>(null) }
-    val scope = rememberCoroutineScope()
 
     LaunchedEffect(colorOptions) {
         if (!colorOptions.contains(selectedColor)) {
@@ -145,7 +141,7 @@ fun LabelsScreen(
                             Text(
                                 text = localError.orEmpty(),
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = Color(0xFFB53B3B),
+                                color = GlassTheme.tokens.error,
                             )
                         }
                     }
@@ -161,7 +157,7 @@ fun LabelsScreen(
                         Text(
                             text = uiState.errorMessage,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFFB53B3B),
+                            color = GlassTheme.tokens.error,
                             modifier = Modifier.padding(
                                 horizontal = layout.width(16.dp, 14.dp),
                                 vertical = layout.height(14.dp, 12.dp),
@@ -225,10 +221,7 @@ fun LabelsScreen(
                 val label = labelPendingDelete
                 labelPendingDelete = null
                 if (label != null) {
-                    scope.launch {
-                        val success = onDeleteLabel(label)
-                        localError = if (success) null else "No se pudo eliminar la etiqueta"
-                    }
+                    onDeleteLabel(label)
                 }
             },
             onDismiss = { labelPendingDelete = null },

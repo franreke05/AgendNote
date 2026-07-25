@@ -39,6 +39,7 @@ import com.franciscor.agendnote.feature.labels.presentation.viewmodel.LabelsView
 import com.franciscor.agendnote.feature.settings.presentation.controller.SettingsController
 import com.franciscor.agendnote.feature.settings.presentation.view.SettingsScreen
 import com.franciscor.agendnote.feature.settings.presentation.viewmodel.SettingsViewModel
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 @Composable
@@ -164,6 +165,7 @@ fun AppNavHost(
                                 labelsViewModel = labelsViewModel,
                                 labelsController = labelsController,
                                 agendaController = agendaController,
+                                navHostScope = navHostScope,
                             )
                         }
                         composable(AppRoute.Settings.route) {
@@ -256,16 +258,22 @@ private fun LabelsRoute(
     labelsViewModel: LabelsViewModel,
     labelsController: LabelsController,
     agendaController: AgendaController,
+    navHostScope: CoroutineScope,
 ) {
     LabelsScreen(
         viewModel = labelsViewModel,
         controller = labelsController,
+        // Fire-and-forget: runs on navHostScope (survives the Labels tab leaving composition)
+        // instead of the screen's own rememberCoroutineScope(), so the cross-ViewModel cleanup
+        // below always runs even if the user switches tabs mid-request. Same class of bug as
+        // series deletion above (see navHostScope's doc comment).
         onDeleteLabel = { label ->
-            val success = labelsController.deleteLabel(label)
-            if (success) {
-                agendaController.removeLabelFromTasks(label.id)
+            navHostScope.launch {
+                val success = labelsController.deleteLabel(label)
+                if (success) {
+                    agendaController.removeLabelFromTasks(label.id)
+                }
             }
-            success
         },
         modifier = Modifier.fillMaxSize(),
     )
