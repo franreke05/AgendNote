@@ -2,6 +2,7 @@ package com.franciscor.agendnote.feature.agenda.presentation.controller
 
 import com.franciscor.agendnote.core.model.TaskDraft
 import com.franciscor.agendnote.core.model.TaskItem
+import com.franciscor.agendnote.feature.agenda.domain.RecurrenceRule
 import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaAction
 import com.franciscor.agendnote.feature.agenda.presentation.model.SaveResult
 import com.franciscor.agendnote.feature.agenda.presentation.viewmodel.AgendaViewModel
@@ -30,6 +31,10 @@ class AgendaController(
 
     suspend fun saveTask(date: LocalDate, draft: TaskDraft): SaveResult {
         return viewModel.saveTask(date, draft)
+    }
+
+    suspend fun saveRecurringTask(date: LocalDate, draft: TaskDraft, rule: RecurrenceRule): SaveResult {
+        return viewModel.saveRecurringTask(date, draft, rule)
     }
 
     suspend fun toggleTaskDone(date: LocalDate, task: TaskItem, isDone: Boolean): Boolean {

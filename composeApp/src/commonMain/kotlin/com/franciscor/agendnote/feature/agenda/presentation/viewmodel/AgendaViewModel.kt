@@ -8,6 +8,9 @@ import com.franciscor.agendnote.core.model.TaskItem
 import com.franciscor.agendnote.core.notifications.NotificationServiceProvider
 import com.franciscor.agendnote.core.platform.currentTimeMillis
 import com.franciscor.agendnote.feature.agenda.domain.AgendaTaskRepository
+import com.franciscor.agendnote.feature.agenda.domain.RecurrenceRule
+import com.franciscor.agendnote.feature.agenda.domain.SeriesMaterializer
+import com.franciscor.agendnote.feature.agenda.domain.TaskSeriesRepository
 import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaDayUiState
 import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaUiState
 import com.franciscor.agendnote.feature.agenda.presentation.model.SaveResult
@@ -25,6 +28,7 @@ import kotlinx.datetime.toLocalDateTime
 
 class AgendaViewModel(
     private val repository: AgendaTaskRepository?,
+    private val taskSeriesRepository: TaskSeriesRepository? = null,
     private val timeZone: TimeZone = TimeZone.currentSystemDefault(),
     private val remoteUnavailableMessage: String? = null,
     initialDate: LocalDate = currentDate(timeZone),
@@ -35,6 +39,11 @@ class AgendaViewModel(
         ?.takeIf { it.isNotBlank() }
         ?: "Configuracion remota incompleta. No se puede conectar con la BD."
     private val notificationService = NotificationServiceProvider.getNotificationService()
+    private val materializer = if (repository != null && taskSeriesRepository != null) {
+        SeriesMaterializer(taskSeriesRepository, repository)
+    } else {
+        null
+    }
 
     var uiState by mutableStateOf(
         AgendaUiState(
@@ -186,6 +195,44 @@ class AgendaViewModel(
                 onSuccess = { SaveResult(true) },
                 onFailure = { SaveResult(false, resolveServerError(it)) },
             )
+    }
+
+    suspend fun saveRecurringTask(date: LocalDate, draft: TaskDraft, rule: RecurrenceRule): SaveResult {
+        val trimmedTitle = draft.title.trim()
+        if (trimmedTitle.isEmpty()) return SaveResult(false, "Titulo requerido")
+        val taskSeriesRepository = taskSeriesRepository ?: run {
+            setError(date, remoteErrorMessage)
+            return SaveResult(false, remoteErrorMessage)
+        }
+        val materializer = materializer ?: run {
+            setError(date, remoteErrorMessage)
+            return SaveResult(false, remoteErrorMessage)
+        }
+
+        val seriesResult = runCatching {
+            taskSeriesRepository.createSeries(
+                title = trimmedTitle,
+                details = draft.details,
+                time = draft.time,
+                rule = rule,
+                labels = draft.labels,
+                startDate = date,
+            )
+        }
+
+        val series = seriesResult.getOrElse { error ->
+            setError(date, resolveServerError(error))
+            return SaveResult(false, resolveServerError(error))
+        }
+
+        val materialized = materializer.materializeSeries(series, date)
+        if (!materialized) {
+            setError(date, "La serie se creo pero no se pudieron generar todas las tareas")
+            return SaveResult(false, "La serie se creo pero no se pudieron generar todas las tareas")
+        }
+
+        loadTasksForDate(date)
+        return SaveResult(true)
     }
 
     suspend fun toggleTaskDone(date: LocalDate, task: TaskItem, isDone: Boolean): Boolean {
