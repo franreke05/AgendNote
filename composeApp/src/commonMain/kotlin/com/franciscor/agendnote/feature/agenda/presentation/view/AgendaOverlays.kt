@@ -699,6 +699,9 @@ private fun DatePickerOverlay(
                         text = "${monthName(visibleMonth.month)} ${visibleMonth.year}",
                         style = MaterialTheme.typography.titleMedium,
                         color = GlassTheme.tokens.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
                     )
                     GlassIconButton(
                         icon = Icons.Rounded.ChevronRight,
@@ -1155,11 +1158,16 @@ internal fun CalendarMonthView(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(layout.height(2.dp, 2.dp))) {
+                Column(
+                    modifier = Modifier.weight(1f, fill = false),
+                    verticalArrangement = Arrangement.spacedBy(layout.height(2.dp, 2.dp)),
+                ) {
                     Text(
                         text = monthName(visibleMonth.month),
                         style = MaterialTheme.typography.titleLarge,
                         color = GlassTheme.tokens.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = visibleMonth.year.toString(),
@@ -1171,30 +1179,40 @@ internal fun CalendarMonthView(
                     horizontalArrangement = Arrangement.spacedBy(layout.width(12.dp, 10.dp)),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        imageVector = Icons.Rounded.ChevronLeft,
-                        contentDescription = "Mes anterior",
-                        tint = GlassTheme.tokens.textSecondary,
+                    Box(
                         modifier = Modifier
-                            .size(layout.size(22.dp, 20.dp))
+                            .size(layout.size(48.dp, 44.dp))
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
                                 onClick = { onVisibleMonthChange(visibleMonth.plus(-1, DateTimeUnit.MONTH)) },
                             ),
-                    )
-                    Icon(
-                        imageVector = Icons.Rounded.ChevronRight,
-                        contentDescription = "Mes siguiente",
-                        tint = GlassTheme.tokens.textSecondary,
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.ChevronLeft,
+                            contentDescription = "Mes anterior",
+                            tint = GlassTheme.tokens.textSecondary,
+                            modifier = Modifier.size(layout.size(22.dp, 20.dp)),
+                        )
+                    }
+                    Box(
                         modifier = Modifier
-                            .size(layout.size(22.dp, 20.dp))
+                            .size(layout.size(48.dp, 44.dp))
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
                                 onClick = { onVisibleMonthChange(visibleMonth.plus(1, DateTimeUnit.MONTH)) },
                             ),
-                    )
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.ChevronRight,
+                            contentDescription = "Mes siguiente",
+                            tint = GlassTheme.tokens.textSecondary,
+                            modifier = Modifier.size(layout.size(22.dp, 20.dp)),
+                        )
+                    }
                 }
             }
 

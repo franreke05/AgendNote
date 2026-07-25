@@ -502,7 +502,9 @@ private fun TaskCard(
                     }
                 }
                 Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 4.dp)),
                 ) {
                     task.labels.forEach { label ->
