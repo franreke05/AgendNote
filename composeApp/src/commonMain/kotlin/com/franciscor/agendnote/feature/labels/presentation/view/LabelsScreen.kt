@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Label
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -32,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import com.franciscor.agendnote.app.navigation.SectionHeader
 import com.franciscor.agendnote.core.model.LabelTag
 import com.franciscor.agendnote.core.ui.components.ColorSwatch
 import com.franciscor.agendnote.core.ui.components.GlassActionButton
@@ -53,7 +55,7 @@ fun LabelsScreen(
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
-    val contentInset = layout.width(24.dp, 20.dp)
+    val contentInset = layout.width(16.dp, 14.dp)
     val uiState = viewModel.uiState
     val isEditingEnabled = uiState.isRemoteAvailable
     val palette = labelColorPalette()
@@ -78,20 +80,24 @@ fun LabelsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = contentInset),
-            verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
+            verticalArrangement = Arrangement.spacedBy(layout.height(16.dp, 14.dp)),
             contentPadding = PaddingValues(
                 bottom = layout.height(140.dp, 110.dp),
                 top = layout.height(12.dp, 10.dp),
             ),
         ) {
             item {
+                SectionHeader("Etiquetas", "Crea y organiza las etiquetas de tus tareas")
+            }
+
+            item {
                 GlassSurface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
                 ) {
                     androidx.compose.foundation.layout.Column(
-                        modifier = Modifier.padding(layout.size(16.dp, 14.dp)),
-                        verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
+                        modifier = Modifier.padding(layout.size(20.dp, 18.dp)),
+                        verticalArrangement = Arrangement.spacedBy(layout.height(14.dp, 12.dp)),
                     ) {
                         Text(
                             text = "Crear etiqueta",
@@ -148,7 +154,10 @@ fun LabelsScreen(
                 }
             }
 
-            if (uiState.errorMessage != null) {
+            // Suppressed when the remote is unavailable: that error text is always identical to
+            // the app-wide RemoteStatusBanner already shown above the tab content (AppNavHost),
+            // so repeating it here would just be redundant.
+            if (uiState.errorMessage != null && isEditingEnabled) {
                 item {
                     GlassSurface(
                         modifier = Modifier.fillMaxWidth(),
@@ -190,15 +199,28 @@ fun LabelsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
                     ) {
-                        Text(
-                            text = "Sin etiquetas creadas",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = GlassTheme.tokens.textSecondary,
-                            modifier = Modifier.padding(
-                                horizontal = layout.width(16.dp, 14.dp),
-                                vertical = layout.height(18.dp, 14.dp),
-                            ),
-                        )
+                        androidx.compose.foundation.layout.Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(
+                                    horizontal = layout.width(16.dp, 14.dp),
+                                    vertical = layout.height(28.dp, 22.dp),
+                                ),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(layout.height(10.dp, 8.dp)),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Label,
+                                contentDescription = null,
+                                tint = GlassTheme.tokens.textSecondary.copy(alpha = 0.5f),
+                                modifier = Modifier.size(layout.size(56.dp, 48.dp)),
+                            )
+                            Text(
+                                text = "Sin etiquetas creadas",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = GlassTheme.tokens.textSecondary,
+                            )
+                        }
                     }
                 }
             } else {
@@ -243,19 +265,19 @@ private fun LabelRow(
     ) {
         Row(
             modifier = Modifier.padding(
-                horizontal = layout.width(16.dp, 14.dp),
-                vertical = layout.height(14.dp, 12.dp),
+                horizontal = layout.width(18.dp, 16.dp),
+                vertical = layout.height(18.dp, 16.dp),
             ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp)),
+                horizontalArrangement = Arrangement.spacedBy(layout.width(12.dp, 10.dp)),
             ) {
                 Box(
                     modifier = Modifier
-                        .size(layout.size(10.dp, 8.dp))
+                        .size(layout.size(12.dp, 10.dp))
                         .clip(CircleShape)
                         .background(color),
                 )
@@ -279,8 +301,8 @@ private fun LabelRow(
             ) {
                 Row(
                     modifier = Modifier.padding(
-                        horizontal = layout.width(10.dp, 8.dp),
-                        vertical = layout.height(6.dp, 6.dp),
+                        horizontal = layout.width(12.dp, 10.dp),
+                        vertical = layout.height(8.dp, 7.dp),
                     ),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 4.dp)),
@@ -288,12 +310,12 @@ private fun LabelRow(
                     Icon(
                         imageVector = Icons.Rounded.Delete,
                         contentDescription = "Eliminar",
-                        tint = if (enabled) GlassTheme.tokens.textSecondary else GlassTheme.tokens.textSecondary.copy(alpha = 0.55f),
+                        tint = if (enabled) GlassTheme.tokens.error else GlassTheme.tokens.error.copy(alpha = 0.55f),
                     )
                     Text(
                         text = "Eliminar",
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (enabled) GlassTheme.tokens.textSecondary else GlassTheme.tokens.textSecondary.copy(alpha = 0.55f),
+                        color = if (enabled) GlassTheme.tokens.error else GlassTheme.tokens.error.copy(alpha = 0.55f),
                     )
                 }
             }

@@ -1,5 +1,6 @@
 package com.franciscor.agendnote.app.navigation
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -13,7 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CalendarToday
+import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.DateRange
 import androidx.compose.material.icons.rounded.Label
 import androidx.compose.material.icons.rounded.Settings
@@ -24,6 +25,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.franciscor.agendnote.core.ui.layout.AppLayout
@@ -68,33 +71,36 @@ fun BottomBar(
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = layout.width(18.dp, 16.dp)),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+                .padding(horizontal = layout.width(10.dp, 8.dp)),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BottomBarItem(
-                icon = Icons.Rounded.CalendarToday,
+                icon = Icons.Rounded.Checklist,
                 label = "Agenda",
                 selected = selectedTab == MainTab.AGENDA,
                 onClick = { onSelect(MainTab.AGENDA) },
+                modifier = Modifier.weight(1f),
             )
             BottomBarItem(
                 icon = Icons.Rounded.DateRange,
                 label = "Calendario",
                 selected = selectedTab == MainTab.CALENDAR,
                 onClick = { onSelect(MainTab.CALENDAR) },
+                modifier = Modifier.weight(1f),
             )
             BottomBarItem(
                 icon = Icons.Rounded.Label,
                 label = "Etiquetas",
                 selected = selectedTab == MainTab.LABELS,
                 onClick = { onSelect(MainTab.LABELS) },
+                modifier = Modifier.weight(1f),
             )
             BottomBarItem(
                 icon = Icons.Rounded.Settings,
                 label = "Ajustes",
                 selected = selectedTab == MainTab.SETTINGS,
                 onClick = { onSelect(MainTab.SETTINGS) },
+                modifier = Modifier.weight(1f),
             )
         }
     }
@@ -130,15 +136,30 @@ private fun BottomBarItem(
     label: String,
     selected: Boolean,
     onClick: () -> Unit = {},
+    modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
     val color = if (selected) GlassTheme.tokens.textPrimary else GlassTheme.tokens.textSecondary
+    // Neutral wash behind the active tab (existing textPrimary token at low alpha) so the
+    // selection reads at a glance, without introducing the accent color into navigation.
+    val backgroundColor = if (selected) {
+        GlassTheme.tokens.textPrimary.copy(alpha = 0.08f)
+    } else {
+        Color.Transparent
+    }
+    // Each item gets equal weight from the parent Row (see BottomBar) instead of sizing to its
+    // own content, so a longer label on an earlier tab can't shrink the width left for a later
+    // one and force it to wrap (that used to happen to "Ajustes", the last/narrowest item).
     Column(
-        modifier = Modifier.clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = null,
-            onClick = onClick,
-        ),
+        modifier = modifier
+            .clip(RoundedCornerShape(layout.size(16.dp, 14.dp)))
+            .background(backgroundColor)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(vertical = layout.height(6.dp, 5.dp)),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(layout.height(2.dp, 2.dp)),
     ) {
@@ -152,6 +173,8 @@ private fun BottomBarItem(
             text = label,
             style = MaterialTheme.typography.labelMedium,
             color = color,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
     }
 }

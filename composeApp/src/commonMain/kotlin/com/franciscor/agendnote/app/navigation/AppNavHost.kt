@@ -104,9 +104,11 @@ fun AppNavHost(
         }
     }
 
-    // Small, scale-aware outer margin. Kept close to the previous 5dp literal on phones (via the
-    // `min`) but now grows with widthScale on larger windows instead of staying a fixed literal.
-    val contentHorizontalMargin = layout.width(8.dp, 6.dp)
+    // Small, scale-aware outer margin — just enough to keep rounded card corners off the screen
+    // edge. Kept deliberately thin: the real horizontal rhythm comes from each screen's own
+    // contentInset (see AgendaScreen/CalendarScreen/LabelsScreen/SettingsScreen), so content uses
+    // as much of the display width as possible instead of losing it to two stacked margins.
+    val contentHorizontalMargin = layout.width(4.dp, 4.dp)
     // Caps the main content/bottom bar width so wide windows (tablet/desktop/landscape) don't
     // stretch the UI edge-to-edge; content stays centered instead.
     val contentMaxWidth = 480.dp
@@ -245,10 +247,7 @@ private fun CalendarRoute(
     CalendarScreen(
         viewModel = agendaViewModel,
         controller = agendaController,
-        onSelectDate = { date ->
-            agendaController.handleAsync(AgendaAction.SelectDate(date))
-            onNavigateToAgenda()
-        },
+        onOpenInAgenda = onNavigateToAgenda,
         modifier = Modifier.fillMaxSize(),
     )
 }

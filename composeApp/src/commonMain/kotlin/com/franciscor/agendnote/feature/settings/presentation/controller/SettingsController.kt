@@ -10,6 +10,7 @@ class SettingsController(
         when (action) {
             SettingsAction.Load -> viewModel.loadSettings()
             is SettingsAction.SetTheme -> viewModel.setTheme(action.isDark)
+            is SettingsAction.SetBackgroundUrl -> viewModel.setBackgroundUrl(action.url)
             is SettingsAction.RequestBulkAction -> viewModel.requestBulkAction(action.action)
             SettingsAction.DismissBulkAction -> viewModel.dismissBulkAction()
             is SettingsAction.CompleteBulkAction -> viewModel.completeBulkAction(action.success, action.message)

@@ -15,15 +15,15 @@ data class RemoteConfigStatus(
             val message = when {
                 isEnabled -> null
                 !hasBaseUrl && !hasAppSecret -> {
-                    "Configuracion remota incompleta. Faltan API_BASE_URL y APP_SECRET para conectar con la BD."
+                    "Configuración remota incompleta. Faltan API_BASE_URL y APP_SECRET para conectar con la BD."
                 }
 
                 !hasBaseUrl -> {
-                    "Configuracion remota incompleta. Falta API_BASE_URL para conectar con la BD."
+                    "Configuración remota incompleta. Falta API_BASE_URL para conectar con la BD."
                 }
 
                 else -> {
-                    "Configuracion remota incompleta. Falta APP_SECRET para conectar con la BD."
+                    "Configuración remota incompleta. Falta APP_SECRET para conectar con la BD."
                 }
             }
             return RemoteConfigStatus(

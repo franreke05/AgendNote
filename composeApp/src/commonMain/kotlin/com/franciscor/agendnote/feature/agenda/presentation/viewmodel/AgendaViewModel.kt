@@ -38,7 +38,7 @@ class AgendaViewModel(
     private val remoteErrorMessage = remoteUnavailableMessage
         ?.trim()
         ?.takeIf { it.isNotBlank() }
-        ?: "Configuracion remota incompleta. No se puede conectar con la BD."
+        ?: "Configuración remota incompleta. No se puede conectar con la BD."
     private val notificationService = NotificationServiceProvider.getNotificationService()
     private val materializer = if (repository != null && taskSeriesRepository != null) {
         SeriesMaterializer(taskSeriesRepository, repository)
@@ -229,7 +229,7 @@ class AgendaViewModel(
 
     suspend fun saveTask(date: LocalDate, draft: TaskDraft): SaveResult {
         val trimmedTitle = draft.title.trim()
-        if (trimmedTitle.isEmpty()) return SaveResult(false, "Titulo requerido")
+        if (trimmedTitle.isEmpty()) return SaveResult(false, "Título requerido")
         val repository = repository ?: run {
             setError(date, remoteErrorMessage)
             return SaveResult(false, remoteErrorMessage)
@@ -251,7 +251,7 @@ class AgendaViewModel(
 
     suspend fun saveRecurringTask(date: LocalDate, draft: TaskDraft, rule: RecurrenceRule): SaveResult {
         val trimmedTitle = draft.title.trim()
-        if (trimmedTitle.isEmpty()) return SaveResult(false, "Titulo requerido")
+        if (trimmedTitle.isEmpty()) return SaveResult(false, "Título requerido")
         val taskSeriesRepository = taskSeriesRepository ?: run {
             setError(date, remoteErrorMessage)
             return SaveResult(false, remoteErrorMessage)

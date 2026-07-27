@@ -44,6 +44,8 @@ data class GlassTokens(
     val shadowSpot: Color,
     val error: Color,
     val onError: Color,
+    val success: Color,
+    val onSuccess: Color,
     val scrim: Color,
 )
 
@@ -63,6 +65,8 @@ private val LightGlassTokens = GlassTokens(
     shadowSpot = Color(0x33000000),
     error = Color(0xFFB53B3B),
     onError = Color.White,
+    success = Color(0xFF43B87B),
+    onSuccess = Color.White,
     scrim = Color(0x59000000),
 )
 
@@ -82,6 +86,8 @@ private val DarkGlassTokens = GlassTokens(
     shadowSpot = Color(0x88000000),
     error = Color(0xFFCC3333),
     onError = Color.White,
+    success = Color(0xFF43B87B),
+    onSuccess = Color.White,
     scrim = Color(0x660B1117),
 )
 

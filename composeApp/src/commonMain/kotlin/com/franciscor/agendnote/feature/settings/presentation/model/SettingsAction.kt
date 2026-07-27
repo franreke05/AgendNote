@@ -5,6 +5,8 @@ sealed interface SettingsAction {
 
     data class SetTheme(val isDark: Boolean) : SettingsAction
 
+    data class SetBackgroundUrl(val url: String) : SettingsAction
+
     data class RequestBulkAction(val action: SettingsBulkAction) : SettingsAction
 
     data object DismissBulkAction : SettingsAction

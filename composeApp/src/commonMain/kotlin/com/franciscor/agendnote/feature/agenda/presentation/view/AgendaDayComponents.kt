@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.EventAvailable
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.Icon
@@ -51,6 +52,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -75,12 +77,12 @@ internal fun AgendaHeader(
     onNextDay: () -> Unit,
 ) {
     val layout = AppLayout.metrics
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f, fill = false)) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
                 text = "Agenda",
                 style = MaterialTheme.typography.displayLarge.copy(
@@ -89,49 +91,48 @@ internal fun AgendaHeader(
                 ),
                 color = GlassTheme.tokens.textPrimary,
             )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = formatFullDate(selectedDate),
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontSize = layout.text(16.sp, 15.sp),
-                    ),
-                    color = GlassTheme.tokens.textSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
+            Row(horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp))) {
+                GlassIconButton(
+                    icon = Icons.Rounded.ChevronLeft,
+                    contentDescription = "Día anterior",
+                    onClick = onPreviousDay,
                 )
-                if (isToday) {
-                    Spacer(modifier = Modifier.width(layout.width(10.dp, 8.dp)))
-                    GlassSurface(
-                        shape = RoundedCornerShape(layout.size(16.dp, 14.dp)),
-                        tint = GlassTheme.tokens.glassFillStrong,
-                        modifier = Modifier.padding(top = layout.height(2.dp, 2.dp)),
-                    ) {
-                        Text(
-                            text = "Hoy",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = GlassTheme.tokens.textPrimary,
-                            modifier = Modifier.padding(
-                                horizontal = layout.width(14.dp, 12.dp),
-                                vertical = layout.height(7.dp, 6.dp),
-                            ),
-                        )
-                    }
-                }
+                GlassIconButton(
+                    icon = Icons.Rounded.ChevronRight,
+                    contentDescription = "Día siguiente",
+                    onClick = onNextDay,
+                )
             }
         }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp))) {
-            GlassIconButton(
-                icon = Icons.Rounded.ChevronLeft,
-                contentDescription = "Dia anterior",
-                onClick = onPreviousDay,
+        Spacer(modifier = Modifier.height(layout.height(6.dp, 4.dp)))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = formatFullDate(selectedDate),
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = layout.text(16.sp, 15.sp),
+                ),
+                color = GlassTheme.tokens.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
             )
-            GlassIconButton(
-                icon = Icons.Rounded.ChevronRight,
-                contentDescription = "Dia siguiente",
-                onClick = onNextDay,
-            )
+            if (isToday) {
+                Spacer(modifier = Modifier.width(layout.width(10.dp, 8.dp)))
+                GlassSurface(
+                    shape = RoundedCornerShape(layout.size(16.dp, 14.dp)),
+                    tint = GlassTheme.tokens.glassFillStrong,
+                ) {
+                    Text(
+                        text = "Hoy",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = GlassTheme.tokens.textPrimary,
+                        modifier = Modifier.padding(
+                            horizontal = layout.width(14.dp, 12.dp),
+                            vertical = layout.height(7.dp, 6.dp),
+                        ),
+                    )
+                }
+            }
         }
     }
 }
@@ -266,19 +267,34 @@ internal fun DayAgenda(
 
         if (showEmptyState) {
             item {
-                GlassSurface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(layout.size(20.dp, 18.dp)),
+                Box(
+                    modifier = Modifier.fillParentMaxHeight(0.6f),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text = if (searchQuery.isBlank()) "Sin tareas para este dia" else "Sin resultados",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = GlassTheme.tokens.textSecondary,
-                        modifier = Modifier.padding(
-                            horizontal = layout.width(16.dp, 14.dp),
-                            vertical = layout.height(18.dp, 14.dp),
-                        ),
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(layout.height(10.dp, 8.dp)),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.EventAvailable,
+                            contentDescription = null,
+                            tint = GlassTheme.tokens.textSecondary.copy(alpha = 0.5f),
+                            modifier = Modifier.size(layout.size(72.dp, 60.dp)),
+                        )
+                        Text(
+                            text = if (searchQuery.isBlank()) "Sin tareas para este día" else "Sin resultados",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = GlassTheme.tokens.textSecondary,
+                        )
+                        if (searchQuery.isBlank()) {
+                            Text(
+                                text = "Toca + para crear tu primera tarea de este día",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = GlassTheme.tokens.textSecondary.copy(alpha = 0.7f),
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
                 }
             }
         } else {
@@ -394,7 +410,7 @@ private fun SwipeActionBackground(
 ) {
     if (progress <= 0.01f) return
     val layout = AppLayout.metrics
-    val actionColor = if (isSwipeRight) Color(0xFF43B87B) else Color(0xFFE06B6B)
+    val actionColor = if (isSwipeRight) GlassTheme.tokens.success else GlassTheme.tokens.error
     val label = if (isSwipeRight) "Hecha" else "Eliminar"
     val icon = if (isSwipeRight) Icons.Rounded.Check else Icons.Rounded.Delete
     val eased = progress.coerceIn(0f, 1f)
@@ -549,7 +565,7 @@ private fun TaskCardActions(
 ) {
     val layout = AppLayout.metrics
     val controlSize = layout.size(36.dp, 32.dp)
-    val doneColor = if (isDone) Color(0xFF43B87B) else GlassTheme.tokens.textSecondary
+    val doneColor = if (isDone) GlassTheme.tokens.success else GlassTheme.tokens.textSecondary
     val doneDescription = if (isDone) "Marcar como pendiente" else "Marcar como hecha"
 
     Row(
@@ -691,10 +707,6 @@ internal fun FloatingAddButton(
             )
         }
     }
-}
-
-private fun formatFullDate(date: LocalDate): String {
-    return "${dayName(date.dayOfWeek)}, ${date.dayOfMonth} de ${monthName(date.month)}"
 }
 
 private fun formatDayTitle(date: LocalDate): String = dayName(date.dayOfWeek)

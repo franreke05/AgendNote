@@ -1,6 +1,7 @@
 package com.franciscor.agendnote.feature.agenda.presentation.view
 
 import kotlinx.datetime.DayOfWeek
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.Month
 
@@ -21,13 +22,17 @@ internal fun formatTime(time: LocalTime): String {
     return "$hour:$minute"
 }
 
+internal fun formatFullDate(date: LocalDate): String {
+    return "${dayName(date.dayOfWeek)}, ${date.dayOfMonth} de ${monthName(date.month)}"
+}
+
 internal fun dayName(day: DayOfWeek): String = when (day) {
     DayOfWeek.MONDAY -> "Lunes"
     DayOfWeek.TUESDAY -> "Martes"
-    DayOfWeek.WEDNESDAY -> "Miercoles"
+    DayOfWeek.WEDNESDAY -> "Miércoles"
     DayOfWeek.THURSDAY -> "Jueves"
     DayOfWeek.FRIDAY -> "Viernes"
-    DayOfWeek.SATURDAY -> "Sabado"
+    DayOfWeek.SATURDAY -> "Sábado"
     DayOfWeek.SUNDAY -> "Domingo"
 }
 

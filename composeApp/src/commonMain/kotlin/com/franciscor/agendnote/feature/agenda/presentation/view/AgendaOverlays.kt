@@ -94,8 +94,8 @@ internal fun ConfirmDeleteDialog(
 ) {
     GlassConfirmDialog(
         visible = true,
-        title = "Eliminar tarea?",
-        message = "Se borrara \"${task.title}\"",
+        title = "¿Eliminar tarea?",
+        message = "Se borrará \"${task.title}\"",
         onConfirm = onConfirm,
         onDismiss = onDismiss,
         confirmText = "Eliminar",
@@ -284,7 +284,7 @@ internal fun NewTaskSheet(
                                 onClick = {
                                     val trimmedTitle = title.trim()
                                     if (trimmedTitle.isEmpty()) {
-                                        errorText = "Titulo requerido"
+                                        errorText = "Título requerido"
                                         return@GlassActionButton
                                     }
                                     if (selectedDate < today) {
@@ -292,7 +292,7 @@ internal fun NewTaskSheet(
                                         return@GlassActionButton
                                     }
                                     if (selectedRecurrence == RecurrenceOption.WeeklyDays && selectedWeekDays.isEmpty()) {
-                                        errorText = "Elegi al menos un dia de la semana"
+                                        errorText = "Elegí al menos un día de la semana"
                                         return@GlassActionButton
                                     }
 
@@ -334,7 +334,7 @@ internal fun NewTaskSheet(
                             title = it
                             if (errorText != null) errorText = null
                         },
-                        placeholder = "Titulo de la tarea",
+                        placeholder = "Título de la tarea",
                         modifier = Modifier.fillMaxWidth(),
                         textStyle = MaterialTheme.typography.titleLarge.copy(
                             fontSize = layout.text(18.sp, 16.sp),
@@ -439,7 +439,7 @@ internal fun NewTaskSheet(
                                 onClick = { selectedRecurrence = RecurrenceOption.Daily },
                             )
                             RecurrenceOptionChip(
-                                text = "Dias de la semana",
+                                text = "Días de la semana",
                                 selected = selectedRecurrence == RecurrenceOption.WeeklyDays,
                                 onClick = { selectedRecurrence = RecurrenceOption.WeeklyDays },
                             )
@@ -472,7 +472,7 @@ internal fun NewTaskSheet(
                         }
                         if (selectedRecurrence == RecurrenceOption.Monthly) {
                             Text(
-                                text = "Dia $monthDay de cada mes",
+                                text = "Día $monthDay de cada mes",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = GlassTheme.tokens.textSecondary,
                             )
@@ -1624,7 +1624,7 @@ internal fun TaskDetailsOverlay(
                     GlassActionButton(
                         text = "Eliminar",
                         modifier = Modifier.weight(1f),
-                        tint = Color(0xFFE06B6B),
+                        tint = GlassTheme.tokens.error,
                         onClick = onRequestDelete,
                     )
                 }

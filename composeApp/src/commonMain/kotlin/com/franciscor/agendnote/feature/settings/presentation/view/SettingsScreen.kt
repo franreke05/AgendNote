@@ -4,16 +4,26 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Wallpaper
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -21,10 +31,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.franciscor.agendnote.app.navigation.SectionHeader
 import com.franciscor.agendnote.core.model.TaskSeries
+import com.franciscor.agendnote.core.network.AppConfig
+import com.franciscor.agendnote.core.notifications.NotificationServiceProvider
 import com.franciscor.agendnote.core.ui.components.GlassActionButton
 import com.franciscor.agendnote.core.ui.components.GlassConfirmDialog
 import com.franciscor.agendnote.core.ui.components.GlassSurface
+import com.franciscor.agendnote.core.ui.components.GlassTextField
 import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
 import com.franciscor.agendnote.feature.agenda.domain.RecurrenceRule
@@ -32,6 +46,7 @@ import com.franciscor.agendnote.feature.settings.presentation.controller.Setting
 import com.franciscor.agendnote.feature.settings.presentation.model.SettingsAction
 import com.franciscor.agendnote.feature.settings.presentation.model.SettingsBulkAction
 import com.franciscor.agendnote.feature.settings.presentation.viewmodel.SettingsViewModel
+import kotlinx.coroutines.launch
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.isoDayNumber
 
@@ -46,7 +61,7 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
-    val contentInset = layout.width(24.dp, 20.dp)
+    val contentInset = layout.width(16.dp, 14.dp)
     val uiState = viewModel.uiState
     val isEditingEnabled = uiState.isRemoteAvailable
     var seriesPendingDelete by remember { mutableStateOf<TaskSeries?>(null) }
@@ -62,11 +77,15 @@ fun SettingsScreen(
         ),
     ) {
         item {
+            SectionHeader("Ajustes", "Personaliza la app y gestiona tus datos")
+        }
+
+        item {
             GlassSurface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(layout.size(24.dp, 20.dp)),
+                shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
             ) {
-                androidx.compose.foundation.layout.Column(
+                Column(
                     modifier = Modifier.padding(layout.size(16.dp, 14.dp)),
                     verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
                 ) {
@@ -75,14 +94,17 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.titleMedium,
                         color = GlassTheme.tokens.textPrimary,
                     )
-                    if (uiState.errorMessage != null) {
+                    // Suppressed when the remote is unavailable: that error text is always
+                    // identical to the app-wide RemoteStatusBanner already shown above the tab
+                    // content (AppNavHost), so repeating it here would just be redundant.
+                    if (uiState.errorMessage != null && isEditingEnabled) {
                         Text(
                             text = uiState.errorMessage,
                             style = MaterialTheme.typography.bodyMedium,
                             color = GlassTheme.tokens.error,
                         )
                     }
-                    androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp))) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp))) {
                         ModeToggleButton(
                             text = "Claro",
                             selected = !uiState.isDarkMode,
@@ -105,9 +127,121 @@ fun SettingsScreen(
         item {
             GlassSurface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(layout.size(24.dp, 20.dp)),
+                shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
             ) {
-                androidx.compose.foundation.layout.Column(
+                Column(
+                    modifier = Modifier.padding(layout.size(16.dp, 14.dp)),
+                    verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Wallpaper,
+                            contentDescription = null,
+                            tint = GlassTheme.tokens.textSecondary,
+                            modifier = Modifier.size(layout.size(20.dp, 18.dp)),
+                        )
+                        Text(
+                            text = "Fondo",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = GlassTheme.tokens.textPrimary,
+                        )
+                    }
+                    Text(
+                        text = "Pega la URL de una imagen para personalizar el fondo de la app.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = GlassTheme.tokens.textSecondary,
+                    )
+                    var backgroundUrlInput by remember(uiState.backgroundUrl) {
+                        mutableStateOf(uiState.backgroundUrl)
+                    }
+                    GlassTextField(
+                        value = backgroundUrlInput,
+                        onValueChange = { backgroundUrlInput = it },
+                        placeholder = "https://...",
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = MaterialTheme.typography.bodyMedium,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp))) {
+                        GlassActionButton(
+                            text = "Guardar",
+                            enabled = isEditingEnabled,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                controller.handle(SettingsAction.SetBackgroundUrl(backgroundUrlInput))
+                            },
+                        )
+                        val canClearBackground = isEditingEnabled && uiState.backgroundUrl.isNotBlank()
+                        GlassActionButton(
+                            text = "Quitar",
+                            enabled = canClearBackground,
+                            tint = if (canClearBackground) GlassTheme.tokens.glassFillStrong else GlassTheme.tokens.glassFill,
+                            textColor = if (canClearBackground) GlassTheme.tokens.textPrimary else GlassTheme.tokens.textSecondary,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                backgroundUrlInput = ""
+                                controller.handle(SettingsAction.SetBackgroundUrl(""))
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            GlassSurface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
+            ) {
+                Column(
+                    modifier = Modifier.padding(layout.size(16.dp, 14.dp)),
+                    verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Notifications,
+                            contentDescription = null,
+                            tint = GlassTheme.tokens.textSecondary,
+                            modifier = Modifier.size(layout.size(20.dp, 18.dp)),
+                        )
+                        Text(
+                            text = "Notificaciones",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = GlassTheme.tokens.textPrimary,
+                        )
+                    }
+                    Text(
+                        text = "Recibe un aviso a la hora programada de cada tarea con horario.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = GlassTheme.tokens.textSecondary,
+                    )
+                    val notificationScope = rememberCoroutineScope()
+                    GlassActionButton(
+                        text = "Activar recordatorios",
+                        tint = GlassTheme.tokens.glassFillStrong,
+                        textColor = GlassTheme.tokens.textPrimary,
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            notificationScope.launch {
+                                NotificationServiceProvider.getNotificationService().requestPermissions()
+                            }
+                        },
+                    )
+                }
+            }
+        }
+
+        item {
+            GlassSurface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
+            ) {
+                Column(
                     modifier = Modifier.padding(layout.size(16.dp, 14.dp)),
                     verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
                 ) {
@@ -124,7 +258,8 @@ fun SettingsScreen(
                     GlassActionButton(
                         text = "Borrar todas las notas",
                         enabled = isEditingEnabled,
-                        tint = Color(0xFFE06B6B),
+                        tint = GlassTheme.tokens.error,
+                        textColor = GlassTheme.tokens.onError,
                         onClick = {
                             controller.handle(
                                 SettingsAction.RequestBulkAction(SettingsBulkAction.DELETE_NOTES),
@@ -135,7 +270,8 @@ fun SettingsScreen(
                     GlassActionButton(
                         text = "Borrar todas las etiquetas",
                         enabled = isEditingEnabled,
-                        tint = Color(0xFFE06B6B),
+                        tint = GlassTheme.tokens.error,
+                        textColor = GlassTheme.tokens.onError,
                         onClick = {
                             controller.handle(
                                 SettingsAction.RequestBulkAction(SettingsBulkAction.DELETE_LABELS),
@@ -151,9 +287,9 @@ fun SettingsScreen(
             item {
                 GlassSurface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(layout.size(24.dp, 20.dp)),
+                    shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
                 ) {
-                    androidx.compose.foundation.layout.Column(
+                    Column(
                         modifier = Modifier.padding(layout.size(16.dp, 14.dp)),
                         verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
                     ) {
@@ -163,12 +299,12 @@ fun SettingsScreen(
                             color = GlassTheme.tokens.textPrimary,
                         )
                         seriesList.forEach { series ->
-                            androidx.compose.foundation.layout.Row(
+                            Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                androidx.compose.foundation.layout.Column(modifier = Modifier.weight(1f)) {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = series.title,
                                         style = MaterialTheme.typography.bodyLarge,
@@ -183,12 +319,52 @@ fun SettingsScreen(
                                 GlassActionButton(
                                     text = "Borrar",
                                     enabled = isEditingEnabled,
-                                    tint = Color(0xFFE06B6B),
+                                    tint = GlassTheme.tokens.error,
+                                    textColor = GlassTheme.tokens.onError,
                                     onClick = { seriesPendingDelete = series },
                                 )
                             }
                         }
                     }
+                }
+            }
+        }
+
+        item {
+            GlassSurface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
+            ) {
+                Column(
+                    modifier = Modifier.padding(layout.size(16.dp, 14.dp)),
+                    verticalArrangement = Arrangement.spacedBy(layout.height(6.dp, 5.dp)),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Info,
+                            contentDescription = null,
+                            tint = GlassTheme.tokens.textSecondary,
+                            modifier = Modifier.size(layout.size(20.dp, 18.dp)),
+                        )
+                        Text(
+                            text = "Acerca de",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = GlassTheme.tokens.textPrimary,
+                        )
+                    }
+                    Text(
+                        text = "AgendNote · v${AppConfig.APP_VERSION}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = GlassTheme.tokens.textSecondary,
+                    )
+                    Text(
+                        text = "Tu agenda de tareas con etiquetas y series recurrentes.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = GlassTheme.tokens.textSecondary.copy(alpha = 0.8f),
+                    )
                 }
             }
         }
@@ -198,14 +374,14 @@ fun SettingsScreen(
     GlassConfirmDialog(
         visible = pendingBulkAction != null,
         title = if (pendingBulkAction == SettingsBulkAction.DELETE_NOTES) {
-            "Borrar todas las notas?"
+            "¿Borrar todas las notas?"
         } else {
-            "Borrar todas las etiquetas?"
+            "¿Borrar todas las etiquetas?"
         },
         message = if (pendingBulkAction == SettingsBulkAction.DELETE_NOTES) {
-            "Esta accion elimina todas las notas guardadas."
+            "Esta acción elimina todas las notas guardadas."
         } else {
-            "Esta accion elimina todas las etiquetas creadas."
+            "Esta acción elimina todas las etiquetas creadas."
         },
         confirmText = "Borrar",
         onConfirm = {
@@ -227,8 +403,8 @@ fun SettingsScreen(
     seriesPendingDelete?.let { series ->
         GlassConfirmDialog(
             visible = true,
-            title = "Borrar serie recurrente?",
-            message = "Se eliminaran las apariciones futuras de \"${series.title}\" que no esten completadas. Las pasadas se conservan.",
+            title = "¿Borrar serie recurrente?",
+            message = "Se eliminarán las apariciones futuras de \"${series.title}\" que no estén completadas. Las pasadas se conservan.",
             confirmText = "Borrar",
             onConfirm = {
                 seriesPendingDelete = null
@@ -260,14 +436,14 @@ private fun ModeToggleButton(
     }
     GlassSurface(
         modifier = modifier
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(layout.size(16.dp, 16.dp)))
+            .clip(RoundedCornerShape(layout.size(16.dp, 16.dp)))
             .clickable(
                 enabled = enabled,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick,
             ),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(layout.size(16.dp, 16.dp)),
+        shape = RoundedCornerShape(layout.size(16.dp, 16.dp)),
         tint = tint,
         strokeColor = if (selected) tint.copy(alpha = 0.6f) else GlassTheme.tokens.glassStroke,
     ) {
@@ -288,23 +464,23 @@ private fun ModeToggleButton(
 
 private fun describeRecurrence(rule: RecurrenceRule): String {
     return when (rule) {
-        is RecurrenceRule.Daily -> "Todos los dias"
+        is RecurrenceRule.Daily -> "Todos los días"
         is RecurrenceRule.WeeklyDays -> {
             val names = rule.days.sortedBy { it.isoDayNumber }.joinToString(", ") { day ->
                 when (day) {
                     DayOfWeek.MONDAY -> "lunes"
                     DayOfWeek.TUESDAY -> "martes"
-                    DayOfWeek.WEDNESDAY -> "miercoles"
+                    DayOfWeek.WEDNESDAY -> "miércoles"
                     DayOfWeek.THURSDAY -> "jueves"
                     DayOfWeek.FRIDAY -> "viernes"
-                    DayOfWeek.SATURDAY -> "sabado"
+                    DayOfWeek.SATURDAY -> "sábado"
                     DayOfWeek.SUNDAY -> "domingo"
                     else -> day.name.lowercase()
                 }
             }
             "Cada $names"
         }
-        is RecurrenceRule.Monthly -> "El dia ${rule.dayOfMonth} de cada mes"
+        is RecurrenceRule.Monthly -> "El día ${rule.dayOfMonth} de cada mes"
     }
 }
 

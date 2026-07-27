@@ -24,7 +24,7 @@ class SettingsViewModel(
     private val remoteErrorMessage = remoteUnavailableMessage
         ?.trim()
         ?.takeIf { it.isNotBlank() }
-        ?: "Configuracion remota incompleta. No se puede conectar con la BD."
+        ?: "Configuración remota incompleta. No se puede conectar con la BD."
 
     var uiState by mutableStateOf(
         SettingsUiState(
@@ -57,7 +57,7 @@ class SettingsViewModel(
                 backgroundUrl = backgroundUrlResult.getOrNull()?.takeUnless { it.isBlank() } ?: uiState.backgroundUrl,
                 isLoading = false,
                 errorMessage = if (themeModeResult.isFailure || backgroundUrlResult.isFailure) {
-                    "No se pudo cargar la configuracion"
+                    "No se pudo cargar la configuración"
                 } else {
                     null
                 },
@@ -81,6 +81,23 @@ class SettingsViewModel(
         }
     }
 
+    fun setBackgroundUrl(url: String) {
+        val repository = repository ?: run {
+            uiState = uiState.copy(errorMessage = remoteErrorMessage)
+            return
+        }
+
+        val trimmed = url.trim()
+        uiState = uiState.copy(backgroundUrl = trimmed, errorMessage = null)
+
+        scope.launch {
+            val result = runCatching { repository.updateBackgroundUrl(trimmed) }
+            if (result.isFailure) {
+                uiState = uiState.copy(errorMessage = "No se pudo guardar el fondo")
+            }
+        }
+    }
+
     fun requestBulkAction(action: SettingsBulkAction) {
         if (repository == null) {
             uiState = uiState.copy(
@@ -99,7 +116,7 @@ class SettingsViewModel(
     fun completeBulkAction(success: Boolean, message: String?) {
         uiState = uiState.copy(
             pendingBulkAction = null,
-            errorMessage = if (success) null else message ?: "No se pudo completar la accion",
+            errorMessage = if (success) null else message ?: "No se pudo completar la acción",
         )
     }
 
@@ -108,7 +125,7 @@ class SettingsViewModel(
             val success = execute()
             completeBulkAction(
                 success = success,
-                message = if (success) null else "No se pudo completar la accion",
+                message = if (success) null else "No se pudo completar la acción",
             )
         }
     }

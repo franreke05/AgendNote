@@ -21,7 +21,7 @@ class LabelsViewModel(
     private val remoteErrorMessage = remoteUnavailableMessage
         ?.trim()
         ?.takeIf { it.isNotBlank() }
-        ?: "Configuracion remota incompleta. No se puede conectar con la BD."
+        ?: "Configuración remota incompleta. No se puede conectar con la BD."
 
     var uiState by mutableStateOf(LabelsUiState(isRemoteAvailable = hasRemoteAccess))
         private set

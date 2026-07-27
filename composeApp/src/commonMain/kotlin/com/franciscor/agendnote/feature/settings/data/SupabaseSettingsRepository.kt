@@ -8,6 +8,10 @@ class SupabaseSettingsRepository(
 ) : SettingsRepository {
     override suspend fun fetchBackgroundUrl(): String? = api.fetchSetting("background_url")
 
+    override suspend fun updateBackgroundUrl(url: String) {
+        api.updateSetting("background_url", url)
+    }
+
     override suspend fun fetchThemeMode(): Boolean? {
         val value = api.fetchSetting("theme_mode")?.trim()?.lowercase()
         return when (value) {

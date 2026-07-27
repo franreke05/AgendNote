@@ -37,7 +37,7 @@ fun AgendaScreen(
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
-    val contentInset = layout.width(24.dp, 20.dp)
+    val contentInset = layout.width(16.dp, 14.dp)
     val uiState = viewModel.uiState
     val isEditingEnabled = uiState.isRemoteAvailable
     val dayUiState = viewModel.selectedDayUiState()
@@ -97,7 +97,11 @@ fun AgendaScreen(
                 tasks = filteredTasks,
                 hasSourceTasks = dayUiState.hasCachedTasks,
                 isLoading = dayUiState.isLoading,
-                errorMessage = dayUiState.errorMessage,
+                // When the remote is unavailable, dayUiState.errorMessage is always the same
+                // "remote unavailable" text already shown by the app-wide RemoteStatusBanner
+                // (AppNavHost) — showing it a second time here is pure redundancy. Suppressing it
+                // in that case also lets the (nicer) empty state render instead of a red card.
+                errorMessage = dayUiState.errorMessage.takeIf { isEditingEnabled },
                 searchQuery = searchQuery,
                 isEditingEnabled = isEditingEnabled,
                 onToggleDone = { task, done ->

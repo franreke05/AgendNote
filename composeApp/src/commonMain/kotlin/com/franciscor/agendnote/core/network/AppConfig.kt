@@ -5,4 +5,5 @@ object AppConfig {
     val APP_SECRET: String
         get() = AppSecrets.appSecret
     const val BACKGROUND_URL: String = ""
+    const val APP_VERSION: String = "1.0"
 }
