@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
 
@@ -52,23 +53,15 @@ fun GlassConfirmDialog(
     if (!visible) return
 
     val layout = AppLayout.metrics
-    val indication = LocalIndication.current
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = indication,
-                onClick = onDismiss,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
+    Dialog(onDismissRequest = onDismiss) {
         GlassSurface(
             modifier = Modifier
                 .padding(horizontal = layout.width(24.dp, 20.dp))
                 .fillMaxWidth(),
             shape = RoundedCornerShape(layout.size(28.dp, 24.dp)),
-            tint = GlassTheme.tokens.glassFillStrong,
+            // REVIEW: modal copy must not compete with text from the screen behind it.
+            tint = GlassTheme.tokens.modalFill,
+            shadowElevation = 16.dp,
         ) {
             Column(
                 modifier = Modifier.padding(layout.size(20.dp, 16.dp)),
@@ -120,6 +113,7 @@ private fun GlassConfirmDialogButton(
     val indication = LocalIndication.current
     GlassSurface(
         modifier = modifier
+            .defaultMinSize(minHeight = layout.height(48.dp, 48.dp))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = indication,

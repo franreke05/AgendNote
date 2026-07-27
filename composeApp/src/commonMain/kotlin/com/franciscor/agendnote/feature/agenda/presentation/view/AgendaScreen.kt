@@ -1,6 +1,5 @@
 package com.franciscor.agendnote.feature.agenda.presentation.view
 
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,16 +9,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.franciscor.agendnote.core.model.LabelTag
 import com.franciscor.agendnote.core.ui.layout.AppLayout
@@ -51,10 +47,6 @@ fun AgendaScreen(
         sourceTasks.find { it.id == id }?.let { task -> PendingDelete(selectedDate, task) }
     }
     val showTaskDetails = showTaskDetailsTaskId?.let { id -> sourceTasks.find { it.id == id } }
-    var dragOffset by remember { mutableFloatStateOf(0f) }
-    val swipeThreshold = layout.width(72.dp, 56.dp)
-    val swipeEdgeGuard = layout.width(24.dp, 18.dp)
-
     LaunchedEffect(Unit) {
         controller.handleAsync(AgendaAction.RefreshSelectedDate)
     }
@@ -62,8 +54,6 @@ fun AgendaScreen(
     val filteredTasks = remember(sourceTasks, searchQuery) {
         filterTasks(sourceTasks, searchQuery)
     }
-    val blurRadius = if (showTaskSheet || showTaskDetails != null) layout.size(18.dp, 14.dp) else 0.dp
-
     Box(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -71,8 +61,7 @@ fun AgendaScreen(
                 .padding(
                     horizontal = contentInset,
                     vertical = layout.height(12.dp, 10.dp),
-                )
-                .blur(blurRadius),
+                ),
             verticalArrangement = Arrangement.spacedBy(layout.height(16.dp, 14.dp)),
         ) {
             AgendaHeader(
@@ -93,7 +82,6 @@ fun AgendaScreen(
             )
 
             DayAgenda(
-                selectedDate = selectedDate,
                 tasks = filteredTasks,
                 hasSourceTasks = dayUiState.hasCachedTasks,
                 isLoading = dayUiState.isLoading,
@@ -104,6 +92,9 @@ fun AgendaScreen(
                 errorMessage = dayUiState.errorMessage.takeIf { isEditingEnabled },
                 searchQuery = searchQuery,
                 isEditingEnabled = isEditingEnabled,
+                onRetry = {
+                    controller.handleAsync(AgendaAction.RefreshSelectedDate)
+                },
                 onToggleDone = { task, done ->
                     controller.toggleTaskDoneAsync(selectedDate, task, done)
                 },
@@ -113,51 +104,25 @@ fun AgendaScreen(
                 onTaskSelected = { task ->
                     showTaskDetailsTaskId = task.id
                 },
-                modifier = Modifier
-                    .weight(1f)
-                    .pointerInput(selectedDate, swipeThreshold, swipeEdgeGuard) {
-                        var allowSwipe = false
-                        detectHorizontalDragGestures(
-                            onDragStart = { offset ->
-                                val edge = swipeEdgeGuard.toPx()
-                                allowSwipe = offset.x in edge..(size.width - edge)
-                                dragOffset = 0f
-                            },
-                            onHorizontalDrag = { _, dragAmount ->
-                                if (allowSwipe) {
-                                    dragOffset += dragAmount
-                                }
-                            },
-                            onDragEnd = {
-                                when {
-                                    dragOffset > swipeThreshold.toPx() ->
-                                        controller.handleAsync(AgendaAction.MoveDay(-1))
-
-                                    dragOffset < -swipeThreshold.toPx() ->
-                                        controller.handleAsync(AgendaAction.MoveDay(1))
-                                }
-                                dragOffset = 0f
-                                allowSwipe = false
-                            },
-                            onDragCancel = {
-                                dragOffset = 0f
-                                allowSwipe = false
-                            },
-                        )
-                    },
+                // REVIEW: day navigation stays on the explicit header controls. A parent-level
+                // horizontal drag competed with each task card's swipe actions and made both
+                // gestures unreliable, especially for TalkBack and compact screens.
+                modifier = Modifier.weight(1f),
             )
         }
 
-        FloatingAddButton(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(
-                    end = layout.width(20.dp, 18.dp) + contentInset,
-                    bottom = layout.height(98.dp, 88.dp),
-                ),
-            enabled = isEditingEnabled,
-            onClick = { showTaskSheet = true },
-        )
+        if (!showTaskSheet && showTaskDetails == null) {
+            FloatingAddButton(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(
+                        end = layout.width(20.dp, 18.dp) + contentInset,
+                        bottom = layout.height(16.dp, 12.dp),
+                    ),
+                enabled = isEditingEnabled,
+                onClick = { showTaskSheet = true },
+            )
+        }
 
         if (showTaskSheet) {
             NewTaskSheet(

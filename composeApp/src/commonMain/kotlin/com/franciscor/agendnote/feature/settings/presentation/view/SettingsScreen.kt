@@ -1,12 +1,14 @@
 package com.franciscor.agendnote.feature.settings.presentation.view
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -30,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.franciscor.agendnote.app.navigation.SectionHeader
 import com.franciscor.agendnote.core.model.TaskSeries
@@ -72,7 +75,7 @@ fun SettingsScreen(
             .padding(horizontal = contentInset),
         verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
         contentPadding = PaddingValues(
-            bottom = layout.height(140.dp, 110.dp),
+            bottom = layout.height(24.dp, 20.dp),
             top = layout.height(12.dp, 10.dp),
         ),
     ) {
@@ -101,10 +104,13 @@ fun SettingsScreen(
                         Text(
                             text = uiState.errorMessage,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = GlassTheme.tokens.error,
+                            color = GlassTheme.tokens.errorContent,
                         )
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp))) {
+                    Row(
+                        modifier = Modifier.selectableGroup(),
+                        horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp)),
+                    ) {
                         ModeToggleButton(
                             text = "Claro",
                             selected = !uiState.isDarkMode,
@@ -157,20 +163,39 @@ fun SettingsScreen(
                     var backgroundUrlInput by remember(uiState.backgroundUrl) {
                         mutableStateOf(uiState.backgroundUrl)
                     }
+                    val normalizedBackgroundUrl = backgroundUrlInput.trim()
+                    val isBackgroundUrlValid = normalizedBackgroundUrl.isBlank() ||
+                        normalizedBackgroundUrl.startsWith("https://", ignoreCase = true) ||
+                        normalizedBackgroundUrl.startsWith("http://", ignoreCase = true)
+                    Text(
+                        text = "URL de la imagen",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = GlassTheme.tokens.textSecondary,
+                    )
                     GlassTextField(
                         value = backgroundUrlInput,
                         onValueChange = { backgroundUrlInput = it },
                         placeholder = "https://...",
+                        label = "URL de la imagen de fondo",
                         modifier = Modifier.fillMaxWidth(),
                         textStyle = MaterialTheme.typography.bodyMedium,
                     )
+                    if (!isBackgroundUrlValid) {
+                        Text(
+                            text = "Introduce una dirección que empiece por https:// o http://",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = GlassTheme.tokens.errorContent,
+                        )
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp))) {
                         GlassActionButton(
                             text = "Guardar",
-                            enabled = isEditingEnabled,
+                            enabled = isEditingEnabled &&
+                                isBackgroundUrlValid &&
+                                normalizedBackgroundUrl != uiState.backgroundUrl,
                             modifier = Modifier.weight(1f),
                             onClick = {
-                                controller.handle(SettingsAction.SetBackgroundUrl(backgroundUrlInput))
+                                controller.handle(SettingsAction.SetBackgroundUrl(normalizedBackgroundUrl))
                             },
                         )
                         val canClearBackground = isEditingEnabled && uiState.backgroundUrl.isNotBlank()
@@ -216,13 +241,13 @@ fun SettingsScreen(
                         )
                     }
                     Text(
-                        text = "Recibe un aviso a la hora programada de cada tarea con horario.",
+                        text = "Concede los permisos de notificación y hora exacta para recibir cada aviso cuando corresponde.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = GlassTheme.tokens.textSecondary,
                     )
                     val notificationScope = rememberCoroutineScope()
                     GlassActionButton(
-                        text = "Activar recordatorios",
+                        text = "Configurar recordatorios",
                         tint = GlassTheme.tokens.glassFillStrong,
                         textColor = GlassTheme.tokens.textPrimary,
                         modifier = Modifier.fillMaxWidth(),
@@ -246,7 +271,7 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
                 ) {
                     Text(
-                        text = "Acciones",
+                        text = "Zona de peligro",
                         style = MaterialTheme.typography.titleMedium,
                         color = GlassTheme.tokens.textPrimary,
                     )
@@ -256,10 +281,10 @@ fun SettingsScreen(
                         color = GlassTheme.tokens.textSecondary,
                     )
                     GlassActionButton(
-                        text = "Borrar todas las notas",
+                        text = "Borrar todas las tareas",
                         enabled = isEditingEnabled,
-                        tint = GlassTheme.tokens.error,
-                        textColor = GlassTheme.tokens.onError,
+                        tint = GlassTheme.tokens.error.copy(alpha = 0.18f),
+                        textColor = GlassTheme.tokens.errorContent,
                         onClick = {
                             controller.handle(
                                 SettingsAction.RequestBulkAction(SettingsBulkAction.DELETE_NOTES),
@@ -270,8 +295,8 @@ fun SettingsScreen(
                     GlassActionButton(
                         text = "Borrar todas las etiquetas",
                         enabled = isEditingEnabled,
-                        tint = GlassTheme.tokens.error,
-                        textColor = GlassTheme.tokens.onError,
+                        tint = GlassTheme.tokens.error.copy(alpha = 0.18f),
+                        textColor = GlassTheme.tokens.errorContent,
                         onClick = {
                             controller.handle(
                                 SettingsAction.RequestBulkAction(SettingsBulkAction.DELETE_LABELS),
@@ -319,8 +344,8 @@ fun SettingsScreen(
                                 GlassActionButton(
                                     text = "Borrar",
                                     enabled = isEditingEnabled,
-                                    tint = GlassTheme.tokens.error,
-                                    textColor = GlassTheme.tokens.onError,
+                                    tint = GlassTheme.tokens.error.copy(alpha = 0.18f),
+                                    textColor = GlassTheme.tokens.errorContent,
                                     onClick = { seriesPendingDelete = series },
                                 )
                             }
@@ -374,12 +399,12 @@ fun SettingsScreen(
     GlassConfirmDialog(
         visible = pendingBulkAction != null,
         title = if (pendingBulkAction == SettingsBulkAction.DELETE_NOTES) {
-            "¿Borrar todas las notas?"
+            "¿Borrar todas las tareas?"
         } else {
             "¿Borrar todas las etiquetas?"
         },
         message = if (pendingBulkAction == SettingsBulkAction.DELETE_NOTES) {
-            "Esta acción elimina todas las notas guardadas."
+            "Esta acción elimina todas las tareas guardadas."
         } else {
             "Esta acción elimina todas las etiquetas creadas."
         },
@@ -426,7 +451,9 @@ private fun ModeToggleButton(
     val layout = AppLayout.metrics
     val tint = when {
         !enabled -> GlassTheme.tokens.glassFill
-        selected -> GlassTheme.tokens.accent
+        // REVIEW: white text on the raw coral accent misses AA contrast. The semantic
+        // accentOnLight token preserves the brand hue with a readable filled state.
+        selected -> GlassTheme.tokens.accentOnLight
         else -> GlassTheme.tokens.glassFillStrong
     }
     val textColor = when {
@@ -436,9 +463,12 @@ private fun ModeToggleButton(
     }
     GlassSurface(
         modifier = modifier
+            .defaultMinSize(minHeight = 48.dp)
             .clip(RoundedCornerShape(layout.size(16.dp, 16.dp)))
-            .clickable(
+            .selectable(
+                selected = selected,
                 enabled = enabled,
+                role = Role.RadioButton,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick,
@@ -475,7 +505,6 @@ private fun describeRecurrence(rule: RecurrenceRule): String {
                     DayOfWeek.FRIDAY -> "viernes"
                     DayOfWeek.SATURDAY -> "sábado"
                     DayOfWeek.SUNDAY -> "domingo"
-                    else -> day.name.lowercase()
                 }
             }
             "Cada $names"

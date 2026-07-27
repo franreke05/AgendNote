@@ -27,6 +27,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,6 +41,7 @@ fun GlassTextField(
     value: String,
     onValueChange: (String) -> Unit,
     placeholder: String,
+    label: String = placeholder,
     modifier: Modifier = Modifier,
     singleLine: Boolean = true,
     maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
@@ -46,7 +50,9 @@ fun GlassTextField(
     val layout = AppLayout.metrics
     val tokens = GlassTheme.tokens
     BasicTextField(
-        modifier = modifier,
+        // REVIEW: BasicTextField exposes editing semantics but no stable field name. Supplying
+        // one here makes every glass input understandable to screen readers.
+        modifier = modifier.semantics { contentDescription = label },
         value = value,
         onValueChange = onValueChange,
         singleLine = singleLine,
@@ -102,7 +108,7 @@ fun GlassActionButton(
         modifier = modifier
             .defaultMinSize(
                 minWidth = layout.width(84.dp, 76.dp),
-                minHeight = layout.height(52.dp, 46.dp),
+                minHeight = layout.height(52.dp, 48.dp),
             )
             .clip(RoundedCornerShape(radius))
             .clickable(
@@ -168,7 +174,9 @@ fun GlassSearchBar(
                 singleLine = true,
                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = tokens.textPrimary),
                 cursorBrush = SolidColor(tokens.accent),
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics { contentDescription = placeholder },
                 decorationBox = { innerTextField ->
                     if (value.isBlank()) {
                         Text(
@@ -182,16 +190,26 @@ fun GlassSearchBar(
             )
             if (value.isNotBlank()) {
                 Spacer(modifier = Modifier.width(layout.width(4.dp, 4.dp)))
-                Icon(
-                    imageVector = Icons.Rounded.Close,
-                    contentDescription = "Limpiar",
-                    tint = tokens.textSecondary,
-                    modifier = Modifier.clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = LocalIndication.current,
-                        onClick = { onValueChange("") },
-                    ),
-                )
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(layout.size(14.dp, 12.dp)))
+                        .clickable(
+                            role = Role.Button,
+                            onClickLabel = "Limpiar búsqueda",
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = LocalIndication.current,
+                            onClick = { onValueChange("") },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = null,
+                        tint = tokens.textSecondary,
+                        modifier = Modifier.size(layout.size(22.dp, 20.dp)),
+                    )
+                }
             }
         }
     }

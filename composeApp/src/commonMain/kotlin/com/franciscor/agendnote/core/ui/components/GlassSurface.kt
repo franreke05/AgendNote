@@ -35,7 +35,7 @@ fun GlassSurface(
     shape: Shape = RoundedCornerShape(24.dp),
     tint: Color = GlassTheme.tokens.glassFill,
     strokeColor: Color = GlassTheme.tokens.glassStroke,
-    shadowElevation: Dp = 10.dp,
+    shadowElevation: Dp = 0.dp,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val layout = AppLayout.metrics
@@ -61,8 +61,10 @@ fun GlassSurface(
             .background(tint)
             .border(layout.size(1.dp, 1.dp), strokeColor, shape)
             .drawWithContent {
-                drawContent()
+                // REVIEW: the highlight belongs to the material, behind its children. Drawing it
+                // after content washed out text/icons and flattened hierarchy across the app.
                 drawRect(highlightBrush, alpha = 0.22f)
+                drawContent()
             },
         content = content,
     )
@@ -90,6 +92,7 @@ fun GlassIconButton(
         shape = CircleShape,
         tint = GlassTheme.tokens.glassFillStrong,
         strokeColor = GlassTheme.tokens.glassStroke,
+        shadowElevation = 6.dp,
     ) {
         Box(
             modifier = Modifier.fillMaxSize(),

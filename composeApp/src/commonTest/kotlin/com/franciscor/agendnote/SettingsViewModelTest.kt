@@ -64,6 +64,41 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `setTheme rolls back optimistic state when persistence fails`() = runTest(testDispatcher) {
+        val repository = FakeSettingsRepository(
+            background = "",
+            theme = false,
+            failThemeSave = true,
+        )
+        val viewModel = SettingsViewModel(repository, fallbackBackgroundUrl = "")
+
+        viewModel.setTheme(true)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.isDarkMode)
+        assertEquals("No se pudo guardar el tema", viewModel.uiState.errorMessage)
+    }
+
+    @Test
+    fun `setBackgroundUrl rolls back optimistic state when persistence fails`() = runTest(testDispatcher) {
+        val repository = FakeSettingsRepository(
+            background = "https://cdn.example.com/original.png",
+            theme = false,
+            failBackgroundSave = true,
+        )
+        val viewModel = SettingsViewModel(
+            repository = repository,
+            fallbackBackgroundUrl = "https://cdn.example.com/original.png",
+        )
+
+        viewModel.setBackgroundUrl("https://cdn.example.com/new.png")
+        advanceUntilIdle()
+
+        assertEquals("https://cdn.example.com/original.png", viewModel.uiState.backgroundUrl)
+        assertEquals("No se pudo guardar el fondo", viewModel.uiState.errorMessage)
+    }
+
+    @Test
     fun `fallback background remains when remote background is missing`() = runTest(testDispatcher) {
         val viewModel = SettingsViewModel(
             repository = FakeSettingsRepository(background = null, theme = null),
@@ -108,14 +143,23 @@ class SettingsViewModelTest {
 private class FakeSettingsRepository(
     private val background: String?,
     private val theme: Boolean?,
+    private val failThemeSave: Boolean = false,
+    private val failBackgroundSave: Boolean = false,
 ) : SettingsRepository {
     val savedThemes = mutableListOf<Boolean>()
+    val savedBackgrounds = mutableListOf<String>()
 
     override suspend fun fetchBackgroundUrl(): String? = background
 
     override suspend fun fetchThemeMode(): Boolean? = theme
 
+    override suspend fun updateBackgroundUrl(url: String) {
+        if (failBackgroundSave) error("background save failed")
+        savedBackgrounds += url
+    }
+
     override suspend fun updateThemeMode(isDark: Boolean) {
+        if (failThemeSave) error("theme save failed")
         savedThemes += isDark
     }
 }

@@ -12,7 +12,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -58,7 +57,6 @@ fun GlassBackground(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxSize()
-                    .blur(layout.size(28.dp, 20.dp))
                     .alpha(imageAlpha),
             )
             Box(
@@ -88,8 +86,7 @@ fun GlassBackground(
                         colors = listOf(Color(0x66FFFFFF), Color.Transparent),
                     ),
                     shape = CircleShape,
-                )
-                .blur(layout.size(90.dp, 70.dp)),
+                ),
         )
         Box(
             modifier = Modifier
@@ -103,8 +100,7 @@ fun GlassBackground(
                         colors = listOf(Color(0x33FFFFFF), Color.Transparent),
                     ),
                     shape = CircleShape,
-                )
-                .blur(layout.size(80.dp, 64.dp)),
+                ),
         )
         Box(
             modifier = Modifier
@@ -118,8 +114,7 @@ fun GlassBackground(
                         colors = listOf(Color(0x55C7E6FF), Color.Transparent),
                     ),
                     shape = CircleShape,
-                )
-                .blur(layout.size(120.dp, 90.dp)),
+                ),
         )
 
         GrainOverlay(

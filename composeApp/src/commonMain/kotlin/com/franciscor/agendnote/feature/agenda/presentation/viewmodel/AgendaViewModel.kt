@@ -15,6 +15,7 @@ import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaDayUiSta
 import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaUiState
 import com.franciscor.agendnote.feature.agenda.presentation.model.SaveResult
 import io.ktor.client.plugins.ResponseException
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -74,6 +75,24 @@ class AgendaViewModel(
      * to.
      */
     private val viewModelScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    // Notification APIs are platform work and must never block the Compose/UI dispatcher.
+    private val notificationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val notificationCommands = Channel<NotificationCommand>(Channel.UNLIMITED)
+
+    init {
+        // REVIEW: one consumer gives notification mutations strict FIFO ordering without reading
+        // Compose state from a background thread. It also keeps JVM tests independent of Main.
+        notificationScope.launch {
+            for (command in notificationCommands) {
+                when (command) {
+                    is NotificationCommand.ReconcileDay -> reconcileDayNotifications(command)
+                    NotificationCommand.CancelAll -> {
+                        runCatching { notificationService.cancelAllTaskNotifications() }
+                    }
+                }
+            }
+        }
+    }
 
     fun moveDay(delta: Int): LocalDate {
         val date = uiState.selectedDate.plus(delta, DateTimeUnit.DAY)
@@ -100,38 +119,19 @@ class AgendaViewModel(
     }
 
     fun setTasks(date: LocalDate, tasks: List<TaskItem>) {
+        val previousTasks = uiState.tasksByDate[date].orEmpty()
         val orderedTasks = orderTasks(tasks)
         uiState = uiState.copy(tasksByDate = uiState.tasksByDate + (date to orderedTasks))
-        
-        // Schedule notifications for tasks with time
-        for (task in orderedTasks) {
-            if (task.time != null) {
-                try {
-                    scheduleNotificationAsync(task, date)
-                } catch (e: Exception) {
-                    println("Error scheduling notification: ${e.message}")
-                }
-            }
-        }
-    }
-    
-    private fun cancelNotificationAsync(taskId: String) {
-        runCatching {
-            kotlinx.coroutines.runBlocking {
-                notificationService.cancelTaskNotification(taskId)
-            }
-        }
-    }
 
-    private fun scheduleNotificationAsync(task: TaskItem, date: LocalDate) {
-        // Note: This runs synchronously on iOS, which is fine for local notifications
-        try {
-            kotlinx.coroutines.runBlocking {
-                notificationService.scheduleTaskNotification(task, date)
-            }
-        } catch (e: Exception) {
-            println("Error in notification scheduling: ${e.message}")
-        }
+        // REVIEW: reconciling the whole day also removes alarms for tasks deleted remotely,
+        // completed, or changed to "Sin hora". The channel preserves mutation order.
+        notificationCommands.trySend(
+            NotificationCommand.ReconcileDay(
+                date = date,
+                previousTasks = previousTasks,
+                currentTasks = orderedTasks,
+            ),
+        )
     }
 
     fun clearTasks(date: LocalDate) {
@@ -304,11 +304,6 @@ class AgendaViewModel(
         return runCatching { repository.updateTaskDone(task.id, isDone) }
             .onSuccess { updated ->
                 replaceTask(date, updated)
-                if (isDone) {
-                    cancelNotificationAsync(task.id)
-                } else {
-                    scheduleNotificationAsync(updated, date)
-                }
                 setError(date, null)
             }
             .onFailure {
@@ -326,7 +321,6 @@ class AgendaViewModel(
             .onSuccess { success ->
                 if (success) {
                     removeTask(date, task.id)
-                    cancelNotificationAsync(task.id)
                     setError(date, null)
                 } else {
                     setError(date, "No se pudo eliminar la tarea")
@@ -415,6 +409,32 @@ class AgendaViewModel(
             errorByDate = emptyMap(),
         )
         activeLoadTokenByDate.clear()
+        notificationCommands.trySend(NotificationCommand.CancelAll)
+    }
+
+    private suspend fun reconcileDayNotifications(command: NotificationCommand.ReconcileDay) {
+        val currentById = command.currentTasks.associateBy { it.id }
+        command.previousTasks.forEach { previous ->
+            val current = currentById[previous.id]
+            if (current == null || current.isDone || current.time == null) {
+                runCatching { notificationService.cancelTaskNotification(previous.id) }
+            }
+        }
+        command.currentTasks
+            .filter { !it.isDone && it.time != null }
+            .forEach { task ->
+                runCatching { notificationService.scheduleTaskNotification(task, command.date) }
+            }
+    }
+
+    private sealed interface NotificationCommand {
+        data class ReconcileDay(
+            val date: LocalDate,
+            val previousTasks: List<TaskItem>,
+            val currentTasks: List<TaskItem>,
+        ) : NotificationCommand
+
+        data object CancelAll : NotificationCommand
     }
 
     fun removeLabelFromTasks(labelId: String) {

@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.foundation.layout.widthIn
@@ -70,7 +71,6 @@ fun AppNavHost(
     // the same class of bug for label deletion).
     val navHostScope = rememberCoroutineScope()
     val layout = AppLayout.metrics
-    val globalInset = layout.globalInset
     val currentBackStackEntry = navController.currentBackStackEntryAsState()
     val selectedTab = MainTab.fromRoute(currentBackStackEntry.value?.destination?.route) ?: MainTab.AGENDA
 
@@ -201,22 +201,17 @@ fun AppNavHost(
                         }
                     }
                 }
+
+                // REVIEW: navigation participates in layout instead of floating over content.
+                // Every destination now receives one reliable viewport, so cards and actions
+                // cannot be hidden behind the bar on compact screens.
+                BottomBar(
+                    modifier = Modifier.fillMaxWidth(),
+                    selectedTab = selectedTab,
+                    onSelect = navigateToMainTab,
+                )
             }
         }
-
-        BottomBar(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                // Same safe-area protection as the main content container above.
-                .safeContentPadding()
-                .padding(
-                    horizontal = contentHorizontalMargin,
-                    vertical = layout.height(16.dp, 14.dp),
-                )
-                .widthIn(max = contentMaxWidth),
-            selectedTab = selectedTab,
-            onSelect = navigateToMainTab,
-        )
     }
 }
 

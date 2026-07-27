@@ -71,6 +71,11 @@ object IosNotificationService : NotificationService {
         notificationCenter.removePendingNotificationRequestsWithIdentifiers(listOf("task_$taskId"))
     }
 
+    override suspend fun cancelAllTaskNotifications() {
+        UNUserNotificationCenter.currentNotificationCenter()
+            .removeAllPendingNotificationRequests()
+    }
+
     override suspend fun requestPermissions() {
         val notificationCenter = UNUserNotificationCenter.currentNotificationCenter()
         val options = UNAuthorizationOptionAlert or UNAuthorizationOptionBadge or UNAuthorizationOptionSound

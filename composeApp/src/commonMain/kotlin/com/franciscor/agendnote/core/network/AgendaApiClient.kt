@@ -2,6 +2,7 @@ package com.franciscor.agendnote.core.network
 
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
@@ -13,6 +14,11 @@ import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.serialization.json.Json
 
 class AgendaApiClient(
@@ -20,7 +26,23 @@ class AgendaApiClient(
     private val appSecret: String,
 ) {
     private val normalizedBaseUrl = baseUrl.trimEnd('/')
-    private val client = HttpClient {
+    // REVIEW: Ktor engine discovery is expensive on a cold Android process. Creating the client
+    // in this constructor delayed the app's first frame by several seconds. Lazy async creation
+    // preserves the same API while keeping that work off the UI dispatcher.
+    private val clientDeferred = CoroutineScope(SupervisorJob() + Dispatchers.Default).async(
+        start = CoroutineStart.LAZY,
+    ) {
+        createHttpClient()
+    }
+
+    private fun createHttpClient(): HttpClient = HttpClient {
+        // REVIEW: finite timeouts prevent Agenda/Calendar/Labels from remaining in a permanent
+        // loading state when the API or the network becomes unreachable.
+        install(HttpTimeout) {
+            requestTimeoutMillis = 15_000
+            connectTimeoutMillis = 10_000
+            socketTimeoutMillis = 15_000
+        }
         install(ContentNegotiation) {
             json(
                 Json {
@@ -31,12 +53,14 @@ class AgendaApiClient(
         }
     }
 
+    private suspend fun client(): HttpClient = clientDeferred.await()
+
     private fun withAuth(builder: io.ktor.client.request.HttpRequestBuilder) {
         builder.header("x-app-secret", appSecret)
     }
 
     suspend fun fetchLabels(): List<LabelDto> {
-        val response: LabelsResponse = client
+        val response: LabelsResponse = client()
             .get("$normalizedBaseUrl/api-labels") {
                 withAuth(this)
             }
@@ -45,7 +69,7 @@ class AgendaApiClient(
     }
 
     suspend fun createLabel(name: String, colorHex: String): LabelDto {
-        val response: LabelResponse = client
+        val response: LabelResponse = client()
             .post("$normalizedBaseUrl/api-labels") {
                 withAuth(this)
                 contentType(ContentType.Application.Json)
@@ -56,7 +80,7 @@ class AgendaApiClient(
     }
 
     suspend fun fetchTasks(day: String): List<TaskDto> {
-        val response: TasksResponse = client
+        val response: TasksResponse = client()
             .get("$normalizedBaseUrl/api-tasks") {
                 withAuth(this)
                 parameter("day", day)
@@ -66,7 +90,7 @@ class AgendaApiClient(
     }
 
     suspend fun createTask(request: CreateTaskRequest): TaskDto {
-        val response: TaskResponse = client
+        val response: TaskResponse = client()
             .post("$normalizedBaseUrl/api-tasks") {
                 withAuth(this)
                 contentType(ContentType.Application.Json)
@@ -77,7 +101,7 @@ class AgendaApiClient(
     }
 
     suspend fun updateTask(request: UpdateTaskRequest): TaskDto {
-        val response: TaskResponse = client
+        val response: TaskResponse = client()
             .patch("$normalizedBaseUrl/api-tasks") {
                 withAuth(this)
                 contentType(ContentType.Application.Json)
@@ -88,7 +112,7 @@ class AgendaApiClient(
     }
 
     suspend fun deleteTask(id: String): Boolean {
-        val response: SuccessResponse = client
+        val response: SuccessResponse = client()
             .delete("$normalizedBaseUrl/api-tasks") {
                 withAuth(this)
                 parameter("id", id)
@@ -98,7 +122,7 @@ class AgendaApiClient(
     }
 
     suspend fun deleteAllTasks(): Boolean {
-        val response: SuccessResponse = client
+        val response: SuccessResponse = client()
             .delete("$normalizedBaseUrl/api-tasks") {
                 withAuth(this)
                 parameter("all", "true")
@@ -108,7 +132,7 @@ class AgendaApiClient(
     }
 
     suspend fun fetchSetting(key: String): String? {
-        val response: SettingResponse = client
+        val response: SettingResponse = client()
             .get("$normalizedBaseUrl/api-settings") {
                 withAuth(this)
                 parameter("key", key)
@@ -118,7 +142,7 @@ class AgendaApiClient(
     }
 
     suspend fun updateSetting(key: String, value: String): SettingDto {
-        val response: SettingResponse = client
+        val response: SettingResponse = client()
             .post("$normalizedBaseUrl/api-settings") {
                 withAuth(this)
                 contentType(ContentType.Application.Json)
@@ -129,7 +153,7 @@ class AgendaApiClient(
     }
 
     suspend fun deleteLabel(id: String): Boolean {
-        val response: SuccessResponse = client
+        val response: SuccessResponse = client()
             .delete("$normalizedBaseUrl/api-labels") {
                 withAuth(this)
                 parameter("id", id)
@@ -139,7 +163,7 @@ class AgendaApiClient(
     }
 
     suspend fun deleteAllLabels(): Boolean {
-        val response: SuccessResponse = client
+        val response: SuccessResponse = client()
             .delete("$normalizedBaseUrl/api-labels") {
                 withAuth(this)
                 parameter("all", "true")
@@ -149,7 +173,7 @@ class AgendaApiClient(
     }
 
     suspend fun fetchTaskSeries(): List<TaskSeriesDto> {
-        val response: TaskSeriesListResponse = client
+        val response: TaskSeriesListResponse = client()
             .get("$normalizedBaseUrl/api-task-series") {
                 withAuth(this)
             }
@@ -158,7 +182,7 @@ class AgendaApiClient(
     }
 
     suspend fun createTaskSeries(request: CreateTaskSeriesRequest): TaskSeriesDto {
-        val response: TaskSeriesResponse = client
+        val response: TaskSeriesResponse = client()
             .post("$normalizedBaseUrl/api-task-series") {
                 withAuth(this)
                 contentType(ContentType.Application.Json)
@@ -169,7 +193,7 @@ class AgendaApiClient(
     }
 
     suspend fun updateTaskSeries(request: UpdateTaskSeriesRequest): TaskSeriesDto {
-        val response: TaskSeriesResponse = client
+        val response: TaskSeriesResponse = client()
             .patch("$normalizedBaseUrl/api-task-series") {
                 withAuth(this)
                 contentType(ContentType.Application.Json)
@@ -180,7 +204,7 @@ class AgendaApiClient(
     }
 
     suspend fun deleteTaskSeries(id: String): Boolean {
-        val response: SuccessResponse = client
+        val response: SuccessResponse = client()
             .delete("$normalizedBaseUrl/api-task-series") {
                 withAuth(this)
                 parameter("id", id)
@@ -190,7 +214,7 @@ class AgendaApiClient(
     }
 
     suspend fun fetchTasksInRange(from: String, to: String): List<TaskDto> {
-        val response: TasksResponse = client
+        val response: TasksResponse = client()
             .get("$normalizedBaseUrl/api-tasks") {
                 withAuth(this)
                 parameter("from", from)
