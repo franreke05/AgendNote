@@ -31,6 +31,6 @@ Completed audit and improvement of every mobile screen using the local `.claude`
 
 ## Handoff
 - Detailed findings and rationale: `docs/FINAL_UI_QA_REPORT.md`.
-- Draft PR published for team review: `https://github.com/franreke05/AgendNote/pull/1`.
+- PR `https://github.com/franreke05/AgendNote/pull/1` merged into `main`.
 - Native iOS build remains to be run on macOS/Xcode.
-- The branch is pushed and the PR is clean/mergeable against `main`.
+- Local and remote `main` are synchronized at the completed handoff.
