@@ -1,8 +1,9 @@
 package com.franciscor.agendnote.app.navigation
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,9 +15,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Label
 import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.DateRange
-import androidx.compose.material.icons.rounded.Label
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +29,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.core.ui.components.GlassSurface
@@ -50,7 +53,7 @@ fun SectionHeader(
             style = MaterialTheme.typography.bodyLarge,
             color = GlassTheme.tokens.textSecondary,
         )
-        Spacer(modifier = Modifier.height(layout.height(16.dp, 12.dp)))
+        Spacer(modifier = Modifier.height(layout.height(8.dp, 6.dp)))
     }
 }
 
@@ -64,13 +67,15 @@ fun BottomBar(
     GlassSurface(
         modifier = modifier
             .fillMaxWidth()
-            .height(layout.height(68.dp, 62.dp)),
+            .height(layout.height(64.dp, 60.dp)),
         shape = RoundedCornerShape(layout.size(28.dp, 24.dp)),
         tint = GlassTheme.tokens.glassFillStrong,
+        shadowElevation = 12.dp,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
+                .selectableGroup()
                 .padding(horizontal = layout.width(10.dp, 8.dp)),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -89,7 +94,7 @@ fun BottomBar(
                 modifier = Modifier.weight(1f),
             )
             BottomBarItem(
-                icon = Icons.Rounded.Label,
+                icon = Icons.AutoMirrored.Rounded.Label,
                 label = "Etiquetas",
                 selected = selectedTab == MainTab.LABELS,
                 onClick = { onSelect(MainTab.LABELS) },
@@ -121,7 +126,7 @@ fun RemoteStatusBanner(
         Text(
             text = message,
             style = MaterialTheme.typography.bodyMedium,
-            color = GlassTheme.tokens.error,
+            color = GlassTheme.tokens.errorContent,
             modifier = Modifier.padding(
                 horizontal = layout.width(16.dp, 14.dp),
                 vertical = layout.height(12.dp, 10.dp),
@@ -154,7 +159,10 @@ private fun BottomBarItem(
         modifier = modifier
             .clip(RoundedCornerShape(layout.size(16.dp, 14.dp)))
             .background(backgroundColor)
-            .clickable(
+            .semantics(mergeDescendants = true) {}
+            .selectable(
+                selected = selected,
+                role = Role.Tab,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick,
@@ -165,7 +173,7 @@ private fun BottomBarItem(
     ) {
         Icon(
             imageVector = icon,
-            contentDescription = label,
+            contentDescription = null,
             tint = color,
             modifier = Modifier.size(layout.size(26.dp, 22.dp)),
         )

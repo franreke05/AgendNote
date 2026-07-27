@@ -14,6 +14,13 @@ class LabelsController(
         }
     }
 
+    fun handleAsync(action: LabelsAction) {
+        when (action) {
+            LabelsAction.Load -> viewModel.loadLabelsAsync()
+            LabelsAction.DismissError -> viewModel.dismissError()
+        }
+    }
+
     suspend fun createLabel(name: String, colorHex: String): LabelTag? {
         return viewModel.createLabel(name, colorHex)
     }

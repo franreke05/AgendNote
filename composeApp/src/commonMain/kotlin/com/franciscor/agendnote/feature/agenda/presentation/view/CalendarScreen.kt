@@ -35,10 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -50,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import com.franciscor.agendnote.app.navigation.SectionHeader
 import com.franciscor.agendnote.core.model.TaskItem
 import com.franciscor.agendnote.core.platform.currentTimeMillis
+import com.franciscor.agendnote.core.ui.components.GlassActionButton
 import com.franciscor.agendnote.core.ui.components.GlassIconButton
 import com.franciscor.agendnote.core.ui.components.GlassSurface
 import com.franciscor.agendnote.core.ui.components.colorFromHex
@@ -73,10 +71,6 @@ fun CalendarScreen(
     val layout = AppLayout.metrics
     val contentInset = layout.width(16.dp, 14.dp)
     val uiState = viewModel.uiState
-    // Toggles between the month grid (see task accumulation across the month) and a single day
-    // broken down by hour (see hallazgo original request: keep the month view, add an hourly
-    // breakdown of a specific day instead of jumping to the flat Agenda list).
-    var showDayView by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         controller.handleAsync(AgendaAction.LoadMonth(uiState.visibleMonth))
@@ -91,48 +85,53 @@ fun CalendarScreen(
             ),
         verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
     ) {
-        if (showDayView) {
-            val dayUiState = viewModel.selectedDayUiState()
-            DayHourAgenda(
-                selectedDate = uiState.selectedDate,
-                tasks = dayUiState.tasks,
-                isLoading = dayUiState.isLoading,
-                isToday = uiState.selectedDate == viewModel.today(),
-                onBack = { showDayView = false },
-                onPreviousDay = { controller.handleAsync(AgendaAction.MoveDay(-1)) },
-                onNextDay = { controller.handleAsync(AgendaAction.MoveDay(1)) },
-                onOpenInAgenda = onOpenInAgenda,
-                modifier = Modifier.weight(1f),
-            )
-        } else {
-            SectionHeader("Calendario", "Consulta y navega tus tareas por mes")
-            if (uiState.monthErrorMessage != null) {
-                Text(
-                    text = uiState.monthErrorMessage,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = GlassTheme.tokens.error,
-                )
-            } else if (uiState.isMonthLoading) {
-                Text(
-                    text = "Cargando...",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = GlassTheme.tokens.textSecondary,
-                )
+        SectionHeader("Calendario", "Consulta y navega tus tareas por mes")
+        if (uiState.monthErrorMessage != null) {
+            GlassSurface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(layout.size(20.dp, 18.dp)),
+            ) {
+                Column(
+                    modifier = Modifier.padding(layout.size(14.dp, 12.dp)),
+                    verticalArrangement = Arrangement.spacedBy(layout.height(10.dp, 8.dp)),
+                ) {
+                    Text(
+                        text = uiState.monthErrorMessage,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = GlassTheme.tokens.errorContent,
+                    )
+                    GlassActionButton(
+                        text = "Reintentar",
+                        onClick = {
+                            controller.handleAsync(AgendaAction.LoadMonth(uiState.visibleMonth))
+                        },
+                        tint = GlassTheme.tokens.glassFillStrong,
+                        textColor = GlassTheme.tokens.textPrimary,
+                    )
+                }
             }
-            CalendarMonthView(
-                selectedDate = uiState.selectedDate,
-                visibleMonth = uiState.visibleMonth,
-                tasksByDate = uiState.tasksByDate,
-                onSelectDate = { date ->
-                    controller.handleAsync(AgendaAction.SelectDate(date))
-                    showDayView = true
-                },
-                onVisibleMonthChange = { month ->
-                    controller.handleAsync(AgendaAction.LoadMonth(month))
-                },
-                modifier = Modifier.fillMaxSize(),
+        } else if (uiState.isMonthLoading) {
+            Text(
+                text = "Cargando...",
+                style = MaterialTheme.typography.bodyMedium,
+                color = GlassTheme.tokens.textSecondary,
             )
         }
+        CalendarMonthView(
+            selectedDate = uiState.selectedDate,
+            visibleMonth = uiState.visibleMonth,
+            tasksByDate = uiState.tasksByDate,
+            onSelectDate = { date ->
+                // REVIEW: the accepted calendar spec treats the month as a fast date picker.
+                // Agenda remains the single task-management surface for the selected day.
+                controller.handleAsync(AgendaAction.SelectDate(date))
+                onOpenInAgenda()
+            },
+            onVisibleMonthChange = { month ->
+                controller.handleAsync(AgendaAction.LoadMonth(month))
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -271,10 +270,9 @@ private fun DayHourAgenda(
         GlassSurface(
             modifier = Modifier
                 .fillMaxWidth()
-                // The bottom nav bar is a floating overlay (see AppNavHost) that doesn't reserve
-                // layout space of its own — every screen is responsible for clearing it, same as
-                // the contentPadding(bottom = ...) used by the other tabs' scrollable lists.
-                .padding(bottom = layout.height(90.dp, 80.dp))
+                // The app shell now reserves the bottom-navigation space, so only a small visual
+                // breathing room is needed at the end of this internal (currently unused) view.
+                .padding(bottom = layout.height(8.dp, 6.dp))
                 .clip(RoundedCornerShape(layout.size(16.dp, 14.dp)))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },

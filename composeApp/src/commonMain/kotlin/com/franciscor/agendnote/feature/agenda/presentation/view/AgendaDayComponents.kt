@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.franciscor.agendnote.core.model.TaskItem
+import com.franciscor.agendnote.core.ui.components.GlassActionButton
 import com.franciscor.agendnote.core.ui.components.GlassIconButton
 import com.franciscor.agendnote.core.ui.components.GlassSearchBar
 import com.franciscor.agendnote.core.ui.components.GlassSurface
@@ -152,13 +153,13 @@ internal fun AgendaSearchBar(
 
 @Composable
 internal fun DayAgenda(
-    selectedDate: LocalDate,
     tasks: List<TaskItem>,
     hasSourceTasks: Boolean,
     isLoading: Boolean,
     errorMessage: String?,
     searchQuery: String,
     isEditingEnabled: Boolean,
+    onRetry: () -> Unit,
     onToggleDone: (TaskItem, Boolean) -> Unit,
     onRequestDelete: (TaskItem) -> Unit,
     onTaskSelected: (TaskItem) -> Unit = {},
@@ -172,42 +173,8 @@ internal fun DayAgenda(
     LazyColumn(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
-        contentPadding = PaddingValues(bottom = layout.height(128.dp, 108.dp)),
+        contentPadding = PaddingValues(bottom = layout.height(88.dp, 76.dp)),
     ) {
-        item {
-            GlassSurface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .defaultMinSize(minHeight = layout.height(84.dp, 74.dp)),
-                shape = RoundedCornerShape(layout.size(28.dp, 24.dp)),
-                tint = GlassTheme.tokens.glassFillStrong,
-            ) {
-                Row(
-                    modifier = Modifier.padding(
-                        horizontal = layout.width(20.dp, 16.dp),
-                        vertical = layout.height(16.dp, 14.dp),
-                    ),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Column {
-                        Text(
-                            text = formatDayTitle(selectedDate),
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontSize = layout.text(22.sp, 19.sp),
-                            ),
-                            color = GlassTheme.tokens.textPrimary,
-                        )
-                        Text(
-                            text = formatShortDate(selectedDate),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = GlassTheme.tokens.textSecondary,
-                        )
-                    }
-                }
-            }
-        }
-
         if (showInitialLoader) {
             item {
                 GlassSurface(
@@ -233,15 +200,25 @@ internal fun DayAgenda(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(layout.size(20.dp, 18.dp)),
                 ) {
-                    Text(
-                        text = errorMessage,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = GlassTheme.tokens.error,
+                    Column(
                         modifier = Modifier.padding(
                             horizontal = layout.width(16.dp, 14.dp),
                             vertical = layout.height(14.dp, 12.dp),
                         ),
-                    )
+                        verticalArrangement = Arrangement.spacedBy(layout.height(10.dp, 8.dp)),
+                    ) {
+                        Text(
+                            text = errorMessage,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = GlassTheme.tokens.errorContent,
+                        )
+                        GlassActionButton(
+                            text = "Reintentar",
+                            onClick = onRetry,
+                            tint = GlassTheme.tokens.glassFillStrong,
+                            textColor = GlassTheme.tokens.textPrimary,
+                        )
+                    }
                 }
             }
         }
@@ -477,21 +454,21 @@ private fun TaskCard(
     GlassSurface(
         modifier = modifier
             .fillMaxWidth()
-            .defaultMinSize(minHeight = layout.height(112.dp, 96.dp))
+            .defaultMinSize(minHeight = layout.height(96.dp, 88.dp))
             .alpha(alpha)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onTaskSelected,
             ),
-        shape = RoundedCornerShape(layout.size(28.dp, 24.dp)),
+        shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
     ) {
         Column(
             modifier = Modifier.padding(
-                horizontal = layout.width(18.dp, 16.dp),
-                vertical = layout.height(14.dp, 12.dp),
+                horizontal = layout.width(16.dp, 14.dp),
+                vertical = layout.height(12.dp, 10.dp),
             ),
-            verticalArrangement = Arrangement.spacedBy(layout.height(10.dp, 8.dp)),
+            verticalArrangement = Arrangement.spacedBy(layout.height(8.dp, 6.dp)),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -524,16 +501,30 @@ private fun TaskCard(
                 }
             }
 
-            Text(
-                text = task.title,
-                style = MaterialTheme.typography.titleLarge.copy(
-                    fontSize = layout.text(19.sp, 17.sp),
-                    lineHeight = layout.text(21.sp, 19.sp),
-                ),
-                color = GlassTheme.tokens.textPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
+            ) {
+                Text(
+                    text = task.title,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = layout.text(17.sp, 16.sp),
+                        lineHeight = layout.text(20.sp, 18.sp),
+                    ),
+                    color = GlassTheme.tokens.textPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                // REVIEW: visible alternatives remain next to the task title, reducing card
+                // height without making completion/deletion depend on swipe gestures.
+                TaskCardActions(
+                    isDone = task.isDone,
+                    onToggleDone = onToggleDone,
+                    onRequestDelete = onRequestDelete,
+                )
+            }
 
             if (!task.details.isNullOrBlank()) {
                 Text(
@@ -545,14 +536,6 @@ private fun TaskCard(
                 )
             }
 
-            // Always-visible, non-gestural alternative to the swipe-to-complete /
-            // swipe-to-delete actions above, for screen reader users and anyone who
-            // cannot reliably perform a drag gesture.
-            TaskCardActions(
-                isDone = task.isDone,
-                onToggleDone = onToggleDone,
-                onRequestDelete = onRequestDelete,
-            )
         }
     }
 }
@@ -564,12 +547,13 @@ private fun TaskCardActions(
     onRequestDelete: () -> Unit,
 ) {
     val layout = AppLayout.metrics
-    val controlSize = layout.size(36.dp, 32.dp)
+    // REVIEW: icon controls were below the mobile accessibility minimum; completion and
+    // destructive actions now expose a full 48 dp touch target.
+    val controlSize = 48.dp
     val doneColor = if (isDone) GlassTheme.tokens.success else GlassTheme.tokens.textSecondary
     val doneDescription = if (isDone) "Marcar como pendiente" else "Marcar como hecha"
 
     Row(
-        modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -606,7 +590,7 @@ private fun TaskCardActions(
             Icon(
                 imageVector = Icons.Rounded.Delete,
                 contentDescription = "Eliminar tarea",
-                tint = GlassTheme.tokens.error,
+                tint = GlassTheme.tokens.errorContent,
                 modifier = Modifier.size(layout.size(20.dp, 18.dp)),
             )
         }
@@ -691,6 +675,7 @@ internal fun FloatingAddButton(
             ),
         shape = CircleShape,
         tint = tint,
+        shadowElevation = 12.dp,
     ) {
         Box(
             modifier = Modifier
@@ -707,12 +692,6 @@ internal fun FloatingAddButton(
             )
         }
     }
-}
-
-private fun formatDayTitle(date: LocalDate): String = dayName(date.dayOfWeek)
-
-private fun formatShortDate(date: LocalDate): String {
-    return "${date.dayOfMonth} ${monthName(date.month, short = true)}"
 }
 
 internal fun filterTasks(tasks: List<TaskItem>, query: String): List<TaskItem> {

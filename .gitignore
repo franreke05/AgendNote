@@ -21,3 +21,9 @@ captures
 node_modules/
 google-services.json
 .mcp.json
+
+# Local AI tooling, agent skills and machine-specific Android credentials.
+.ai/
+.android/
+.claude/
+plan_mejora_codex.md

@@ -28,7 +28,7 @@ class RemoteConfigStatusTest {
 
         assertFalse(status.isEnabled)
         assertEquals(
-            "Configuracion remota incompleta. Falta APP_SECRET para conectar con la BD.",
+            "Configuración remota incompleta. Falta APP_SECRET para conectar con la BD.",
             status.message,
         )
     }

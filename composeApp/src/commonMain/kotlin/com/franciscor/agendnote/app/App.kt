@@ -8,14 +8,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import com.franciscor.agendnote.app.di.AppServices
 import com.franciscor.agendnote.app.navigation.AppNavHost
-import com.franciscor.agendnote.core.notifications.NotificationServiceProvider
 import com.franciscor.agendnote.core.ui.layout.ProvideAppLayoutMetrics
 import com.franciscor.agendnote.core.ui.layout.rememberAppLayoutMetrics
 import com.franciscor.agendnote.core.ui.theme.AgendNoteTheme
 import com.franciscor.agendnote.feature.settings.presentation.controller.SettingsController
 import com.franciscor.agendnote.feature.settings.presentation.model.SettingsAction
 import com.franciscor.agendnote.feature.settings.presentation.viewmodel.SettingsViewModel
-import kotlinx.coroutines.launch
 
 @Composable
 fun App() {
@@ -27,14 +25,8 @@ fun App() {
         )
     }
     val settingsController = remember(settingsViewModel) { SettingsController(settingsViewModel) }
-    val notificationService = remember { NotificationServiceProvider.getNotificationService() }
-
     LaunchedEffect(settingsController) {
         settingsController.handle(SettingsAction.Load)
-        // Request notification permissions on app start
-        launch {
-            notificationService.requestPermissions()
-        }
     }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {

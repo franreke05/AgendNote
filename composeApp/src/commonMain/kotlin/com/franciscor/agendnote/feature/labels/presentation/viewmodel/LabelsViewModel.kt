@@ -26,6 +26,10 @@ class LabelsViewModel(
     var uiState by mutableStateOf(LabelsUiState(isRemoteAvailable = hasRemoteAccess))
         private set
 
+    fun loadLabelsAsync() {
+        scope.launch { loadLabels() }
+    }
+
     suspend fun loadLabels() {
         uiState = uiState.copy(isLoading = true, errorMessage = null)
 

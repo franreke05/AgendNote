@@ -71,12 +71,19 @@ class SettingsViewModel(
             return
         }
 
+        val previousTheme = uiState.isDarkMode
+        if (previousTheme == isDark) return
         uiState = uiState.copy(isDarkMode = isDark, errorMessage = null)
 
         scope.launch {
             val result = runCatching { repository.updateThemeMode(isDark) }
-            if (result.isFailure) {
-                uiState = uiState.copy(errorMessage = "No se pudo guardar el tema")
+            if (result.isFailure && uiState.isDarkMode == isDark) {
+                // REVIEW: optimistic updates need rollback or the UI claims a setting was saved
+                // even though the server rejected it.
+                uiState = uiState.copy(
+                    isDarkMode = previousTheme,
+                    errorMessage = "No se pudo guardar el tema",
+                )
             }
         }
     }
@@ -88,12 +95,17 @@ class SettingsViewModel(
         }
 
         val trimmed = url.trim()
+        val previousUrl = uiState.backgroundUrl
+        if (previousUrl == trimmed) return
         uiState = uiState.copy(backgroundUrl = trimmed, errorMessage = null)
 
         scope.launch {
             val result = runCatching { repository.updateBackgroundUrl(trimmed) }
-            if (result.isFailure) {
-                uiState = uiState.copy(errorMessage = "No se pudo guardar el fondo")
+            if (result.isFailure && uiState.backgroundUrl == trimmed) {
+                uiState = uiState.copy(
+                    backgroundUrl = previousUrl,
+                    errorMessage = "No se pudo guardar el fondo",
+                )
             }
         }
     }
