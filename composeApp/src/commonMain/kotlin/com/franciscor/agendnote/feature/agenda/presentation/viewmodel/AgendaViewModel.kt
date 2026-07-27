@@ -115,6 +115,14 @@ class AgendaViewModel(
         }
     }
     
+    private fun cancelNotificationAsync(taskId: String) {
+        runCatching {
+            kotlinx.coroutines.runBlocking {
+                notificationService.cancelTaskNotification(taskId)
+            }
+        }
+    }
+
     private fun scheduleNotificationAsync(task: TaskItem, date: LocalDate) {
         // Note: This runs synchronously on iOS, which is fine for local notifications
         try {
@@ -296,6 +304,11 @@ class AgendaViewModel(
         return runCatching { repository.updateTaskDone(task.id, isDone) }
             .onSuccess { updated ->
                 replaceTask(date, updated)
+                if (isDone) {
+                    cancelNotificationAsync(task.id)
+                } else {
+                    scheduleNotificationAsync(updated, date)
+                }
                 setError(date, null)
             }
             .onFailure {
@@ -313,6 +326,7 @@ class AgendaViewModel(
             .onSuccess { success ->
                 if (success) {
                     removeTask(date, task.id)
+                    cancelNotificationAsync(task.id)
                     setError(date, null)
                 } else {
                     setError(date, "No se pudo eliminar la tarea")

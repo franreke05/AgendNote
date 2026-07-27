@@ -130,7 +130,8 @@ fun CalendarScreen(
                 onVisibleMonthChange = { month ->
                     controller.handleAsync(AgendaAction.LoadMonth(month))
                 },
-                modifier = Modifier.fillMaxSize(),
+                // REVIEW: keep the month grid within the space left after the header/status row.
+                modifier = Modifier.weight(1f),
             )
         }
     }
