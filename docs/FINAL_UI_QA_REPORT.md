@@ -2,6 +2,7 @@
 
 Fecha: 27 de julio de 2026
 Rama de trabajo: `agent/finish-audit-notifications`
+Pull request: https://github.com/franreke05/AgendNote/pull/1
 
 ## Resultado
 
