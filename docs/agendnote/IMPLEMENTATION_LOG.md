@@ -136,3 +136,19 @@ sin implementar código todavía.
   subtareas), sub-fase 4 (recordatorios múltiples en el sistema de notificaciones — la parte
   más riesgosa, toca `AndroidReminderScheduler` e `IosNotificationService`), sub-fase 5
   (pulido: chip de progreso, backfill de datos existentes ya cubierto por la migración).
+
+## 2026-08-04 — Fase 4, sub-fase 3 (parte 1): UI de fecha límite
+
+- **Cambios**: `NewTaskSheet` gana el campo "Fecha límite (opcional)" reutilizando
+  `DatePickerOverlay` (con nuevo parámetro opcional `onClear`); se guarda como fin de día
+  (23:59:59 hora local) — simplificación deliberada, sin selector de hora propio.
+  `TaskDetailsOverlay` muestra el deadline en modo lectura (rojo/`tokens.error`).
+- **Tests**: ninguno nuevo (UI pura, sin `ComposeTestRule` en este proyecto). Suite completa
+  sin regresión: 50/50.
+- **Resultado**: completado y verificado por compilación completa —
+  `testDebugUnitTest`/`testReleaseUnitTest` y **`androidApp:assembleDebug`** (build real del
+  APK, no solo compilación de tests), ambos `BUILD SUCCESSFUL`. Sin verificación visual en
+  emulador/dispositivo.
+- **Pendiente, deliberadamente separado en commits propios**: sección de recordatorios
+  (presets sobre el instante planificado o el deadline) y checklist de subtareas en el mismo
+  sheet; sub-fase 4 (recordatorios múltiples en el scheduler de notificaciones).
