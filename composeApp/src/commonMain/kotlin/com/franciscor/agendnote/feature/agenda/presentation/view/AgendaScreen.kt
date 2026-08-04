@@ -14,10 +14,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.franciscor.agendnote.core.model.LabelTag
+import com.franciscor.agendnote.core.ui.components.GlassSnackbar
 import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.feature.agenda.presentation.controller.AgendaController
 import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaAction
@@ -162,6 +164,31 @@ fun AgendaScreen(
                     showTaskDetailsTaskId = null
                     pendingDeleteTaskId = task.id
                 },
+            )
+        }
+
+        uiState.pendingUndo?.let { pending ->
+            // Auto-dismiss so the "Deshacer" affordance does not linger forever if ignored.
+            // Keyed on `pending` so a newer completion restarts the timer instead of the first
+            // one closing the snackbar for the task the user just completed.
+            LaunchedEffect(pending) {
+                delay(4000)
+                controller.dismissPendingUndo()
+            }
+            GlassSnackbar(
+                message = "Tarea completada: \"${pending.task.title}\"",
+                actionLabel = "Deshacer",
+                onAction = {
+                    controller.toggleTaskDoneAsync(pending.date, pending.task, false)
+                    controller.dismissPendingUndo()
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(
+                        start = contentInset,
+                        end = contentInset,
+                        bottom = layout.height(92.dp, 82.dp),
+                    ),
             )
         }
     }

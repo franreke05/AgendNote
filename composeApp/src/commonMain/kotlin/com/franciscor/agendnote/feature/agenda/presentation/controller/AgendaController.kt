@@ -94,6 +94,10 @@ class AgendaController(
         viewModel.deleteTaskAsync(date, task, onResult)
     }
 
+    fun dismissPendingUndo() {
+        viewModel.dismissPendingUndo()
+    }
+
     fun removeLabelFromTasks(labelId: String) {
         viewModel.removeLabelFromTasks(labelId)
     }

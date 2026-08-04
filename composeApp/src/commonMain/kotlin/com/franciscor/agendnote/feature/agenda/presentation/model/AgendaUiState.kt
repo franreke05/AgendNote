@@ -12,4 +12,5 @@ data class AgendaUiState(
     val isRemoteAvailable: Boolean = true,
     val isMonthLoading: Boolean = false,
     val monthErrorMessage: String? = null,
+    val pendingUndo: PendingUndo? = null,
 )

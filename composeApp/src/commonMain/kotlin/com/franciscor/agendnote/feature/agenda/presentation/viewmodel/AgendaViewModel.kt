@@ -13,6 +13,7 @@ import com.franciscor.agendnote.feature.agenda.domain.SeriesMaterializer
 import com.franciscor.agendnote.feature.agenda.domain.TaskSeriesRepository
 import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaDayUiState
 import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaUiState
+import com.franciscor.agendnote.feature.agenda.presentation.model.PendingUndo
 import com.franciscor.agendnote.feature.agenda.presentation.model.SaveResult
 import io.ktor.client.plugins.ResponseException
 import kotlinx.coroutines.channels.Channel
@@ -305,11 +306,28 @@ class AgendaViewModel(
             .onSuccess { updated ->
                 replaceTask(date, updated)
                 setError(date, null)
+                // Offer "Deshacer" only for the transition that just completed a task, and only
+                // for that exact task - unmarking (isDone = false), whether via undo or any other
+                // path, always clears it instead of leaving a stale snackbar target.
+                uiState = uiState.copy(
+                    pendingUndo = if (isDone) {
+                        PendingUndo(date, updated)
+                    } else if (uiState.pendingUndo?.task?.id == task.id) {
+                        null
+                    } else {
+                        uiState.pendingUndo
+                    },
+                )
             }
             .onFailure {
                 setError(date, "No se pudo actualizar la tarea")
             }
             .isSuccess
+    }
+
+    /** Dismisses the pending "Deshacer" snackbar without changing any task's done state. */
+    fun dismissPendingUndo() {
+        uiState = uiState.copy(pendingUndo = null)
     }
 
     suspend fun deleteTask(date: LocalDate, task: TaskItem): Boolean {
