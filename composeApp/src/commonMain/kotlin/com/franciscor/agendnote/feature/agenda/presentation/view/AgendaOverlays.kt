@@ -89,10 +89,12 @@ import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.Month
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.plus
+import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import kotlin.math.abs
 
@@ -142,6 +144,8 @@ internal fun NewTaskSheet(
     var selectedDate by remember(date, today) { mutableStateOf(if (date < today) today else date) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
+    var deadlineDate by remember { mutableStateOf<LocalDate?>(null) }
+    var showDeadlinePicker by remember { mutableStateOf(false) }
     val selectedLabelIds = remember { mutableStateListOf<String>() }
     var newLabelName by remember { mutableStateOf("") }
     var isCreatingLabel by remember { mutableStateOf(false) }
@@ -302,11 +306,18 @@ internal fun NewTaskSheet(
                                     }
 
                                     val chosenLabels = labels.filter { selectedLabelIds.contains(it.id) }
+                                    // End-of-day deadline: the user only picks a date (see the
+                                    // "Fecha límite" field below), not a time - a deadline of
+                                    // "today" should still be reachable at any point today.
+                                    val deadlineInstant = deadlineDate?.let {
+                                        LocalDateTime(it, LocalTime(23, 59, 59)).toInstant(timeZone)
+                                    }
                                     val draft = TaskDraft(
                                         title = trimmedTitle,
                                         details = details.trim().ifBlank { null },
                                         time = selectedTime,
                                         labels = chosenLabels,
+                                        deadline = deadlineInstant,
                                     )
                                     val rule = when (selectedRecurrence) {
                                         RecurrenceOption.None -> null
@@ -421,6 +432,73 @@ internal fun NewTaskSheet(
                                             fontSize = layout.text(15.sp, 14.sp),
                                         ),
                                         color = if (selectedTime == null) {
+                                            GlassTheme.tokens.textSecondary
+                                        } else {
+                                            GlassTheme.tokens.textPrimary
+                                        },
+                                    )
+                                }
+                                Text(
+                                    text = "Cambiar",
+                                    style = MaterialTheme.typography.titleSmall.copy(
+                                        fontSize = layout.text(14.sp, 13.sp),
+                                    ),
+                                    color = GlassTheme.tokens.textSecondary,
+                                )
+                            }
+                        }
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(layout.height(8.dp, 6.dp))) {
+                        Text(
+                            text = "Fecha límite (opcional)",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = layout.text(15.sp, 14.sp),
+                            ),
+                            color = GlassTheme.tokens.textSecondary,
+                        )
+                        GlassSurface(
+                            shape = RoundedCornerShape(layout.size(18.dp, 16.dp)),
+                            tint = GlassTheme.tokens.glassFill,
+                            shadowElevation = 0.dp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(layout.height(56.dp, 50.dp))
+                                .clip(RoundedCornerShape(layout.size(18.dp, 16.dp)))
+                                .clickable(
+                                    role = Role.Button,
+                                    onClickLabel = "Seleccionar fecha límite",
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = { showDeadlinePicker = true },
+                                ),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(
+                                        horizontal = layout.width(14.dp, 12.dp),
+                                        vertical = layout.height(10.dp, 8.dp),
+                                    ),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.CalendarToday,
+                                        contentDescription = "Seleccionar fecha límite",
+                                        tint = GlassTheme.tokens.textPrimary,
+                                        modifier = Modifier.size(layout.size(20.dp, 18.dp)),
+                                    )
+                                    Text(
+                                        text = deadlineDate?.let(::formatShortDateWithYear) ?: "Sin fecha límite",
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontSize = layout.text(15.sp, 14.sp),
+                                        ),
+                                        color = if (deadlineDate == null) {
                                             GlassTheme.tokens.textSecondary
                                         } else {
                                             GlassTheme.tokens.textPrimary
@@ -687,6 +765,18 @@ internal fun NewTaskSheet(
                     onDismiss = { showTimePicker = false },
                 )
             }
+
+            if (showDeadlinePicker) {
+                DatePickerOverlay(
+                    selectedDate = deadlineDate ?: selectedDate,
+                    onSelect = {
+                        deadlineDate = it
+                        showDeadlinePicker = false
+                    },
+                    onClear = { deadlineDate = null },
+                    onDismiss = { showDeadlinePicker = false },
+                )
+            }
         }
     }
 }
@@ -696,6 +786,8 @@ private fun DatePickerOverlay(
     selectedDate: LocalDate,
     onSelect: (LocalDate) -> Unit,
     onDismiss: () -> Unit,
+    /** When non-null, renders a "Sin fecha" button that calls this instead of [onSelect]. */
+    onClear: (() -> Unit)? = null,
 ) {
     val layout = AppLayout.metrics
     val timeZone = remember { TimeZone.currentSystemDefault() }
@@ -830,6 +922,17 @@ private fun DatePickerOverlay(
                             onDismiss()
                         },
                     )
+                    if (onClear != null) {
+                        GlassActionButton(
+                            text = "Sin fecha",
+                            tint = GlassTheme.tokens.glassFill,
+                            textColor = GlassTheme.tokens.textPrimary,
+                            onClick = {
+                                onClear()
+                                onDismiss()
+                            },
+                        )
+                    }
                     GlassActionButton(
                         text = "Cerrar",
                         tint = GlassTheme.tokens.glassFillStrong,
@@ -1527,6 +1630,7 @@ internal fun TaskDetailsOverlay(
     onRequestDelete: () -> Unit,
 ) {
     val layout = AppLayout.metrics
+    val timeZone = remember { TimeZone.currentSystemDefault() }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -1599,6 +1703,26 @@ internal fun TaskDetailsOverlay(
                             text = timeText,
                             style = MaterialTheme.typography.bodyMedium,
                             color = GlassTheme.tokens.textSecondary,
+                        )
+                    }
+                }
+
+                val taskDeadline = task.deadline
+                if (taskDeadline != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.CalendarToday,
+                            contentDescription = "Fecha límite",
+                            tint = GlassTheme.tokens.error,
+                            modifier = Modifier.size(layout.size(18.dp, 16.dp)),
+                        )
+                        Text(
+                            text = "Límite: " + formatFullDate(taskDeadline.toLocalDateTime(timeZone).date),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = GlassTheme.tokens.errorContent,
                         )
                     }
                 }
