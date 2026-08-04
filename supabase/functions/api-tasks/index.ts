@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { errorResponse, jsonResponse } from "../_shared/response.ts";
+import { errorResponse, internalErrorResponse, jsonResponse } from "../_shared/response.ts";
 import { requireAppSecret } from "../_shared/auth.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("SB_URL");
@@ -298,7 +298,7 @@ serve(async (req) => {
       }
 
       const { data, error } = await query;
-      if (error) return errorResponse(error.message, 500);
+      if (error) return internalErrorResponse(error);
 
       const tasksWithLabels = await attachLabels(data ?? []);
       return jsonResponse({ tasks: tasksWithLabels });
@@ -322,7 +322,7 @@ serve(async (req) => {
             .select(TASK_SELECT)
             .single();
 
-          if (error) return errorResponse(error.message, 500);
+          if (error) return internalErrorResponse(error);
           if (hasLabelSync) {
             await syncTaskLabels(String(existingTask.id), body?.label_ids, body?.label_names);
           }
@@ -339,7 +339,7 @@ serve(async (req) => {
         .select(TASK_SELECT)
         .single();
 
-      if (error) return errorResponse(error.message, 500);
+      if (error) return internalErrorResponse(error);
       if (hasLabelSync) {
         await syncTaskLabels(String(data.id), body?.label_ids, body?.label_names);
       }
@@ -373,7 +373,7 @@ serve(async (req) => {
           .select(TASK_SELECT)
           .single();
 
-        if (error) return errorResponse(error.message, 500);
+        if (error) return internalErrorResponse(error);
         task = data as Record<string, unknown>;
       }
 
@@ -394,7 +394,7 @@ serve(async (req) => {
           .delete()
           .neq("id", "00000000-0000-0000-0000-000000000000");
 
-        if (error) return errorResponse(error.message, 500);
+        if (error) return internalErrorResponse(error);
         return jsonResponse({ success: true });
       }
       const id = url.searchParams.get("id")?.trim();
@@ -405,13 +405,12 @@ serve(async (req) => {
         .delete()
         .eq("id", id);
 
-      if (error) return errorResponse(error.message, 500);
+      if (error) return internalErrorResponse(error);
       return jsonResponse({ success: true });
     }
 
     return errorResponse("method not allowed", 405);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "unknown error";
-    return errorResponse(message, 500);
+    return internalErrorResponse(error);
   }
 });
