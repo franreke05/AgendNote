@@ -82,11 +82,63 @@ Si se quiere una auditoría en vivo real (RLS efectivamente desplegado vs. lo qu
 `policies.sql`, advisories de seguridad/rendimiento reales, logs), hace falta conectar el
 MCP al proyecto Supabase correcto de AgendNote.
 
-## Preguntas abiertas para el usuario
+## Preguntas abiertas para el usuario — respondidas 2026-08-04
 
-1. ¿AgendNote es y seguirá siendo de un solo inquilino (solo tú), o hay intención de
-   soportar más de un usuario en el futuro? Cambia por completo el diseño de seguridad
-   recomendado.
-2. ¿Quieres que conecte el MCP de Supabase al proyecto real de AgendNote para poder hacer
-   auditoría en vivo (advisories, RLS desplegado, logs), o prefieres que me limite a lo que
-   ya está en el repo?
+1. ¿AgendNote es y seguirá siendo de un solo inquilino? → **Sí, siempre.**
+2. ¿Conectar el MCP de Supabase al proyecto real? → **No, auditoría solo con el repo.**
+
+## Fase 2 — resultado (2026-08-04)
+
+### Corregido
+
+- **Fuga de errores internos del backend al cliente (hallazgo confirmado, severidad media).**
+  Las 6 Edge Functions devolvían `error.message` de Postgres/PostgREST crudo en cualquier
+  fallo de base de datos (`if (error) return errorResponse(error.message, 500)`) y en el
+  `catch` de nivel superior. Corregido con un helper compartido
+  `internalErrorResponse(error)` (`_shared/response.ts`) que siempre devuelve un mensaje fijo
+  y genérico, nunca el texto real de la excepción — commit `11b5c26`.
+- **El mismo problema existía en el cliente Kotlin.** `resolveServerError()` reenviaba
+  `ResponseException.message` (texto crudo de Ktor/HTTP) directamente a la UI de creación de
+  tareas. Corregido para devolver siempre un mensaje fijo en español — commit `acf4b10`, con
+  test TDD real (RED por fallo de aserción real, no de compilación).
+- **No verificado en el sentido estricto**: el cambio de Edge Functions no se pudo
+  compilar/ejecutar (no hay Deno instalado en este entorno) — es una sustitución mecánica de
+  patrón, revisada línea por línea vía `git diff`, pero sigue siendo código sin ejecutar.
+
+### Revisado y ya correcto (sin cambios necesarios)
+
+- **Doble tap al guardar una tarea**: el botón "Guardar" de `NewTaskSheet` ya se deshabilita
+  mientras `isSaving == true` (`AgendaOverlays.kt`) — un segundo tap no dispara una segunda
+  petición.
+- **Reintentos automáticos duplicando peticiones**: `AgendaApiClient` no instala el plugin
+  `HttpRequestRetry` de Ktor — no hay reintento automático a nivel de cliente HTTP que pueda
+  duplicar un `POST`.
+- **Log de secretos/contenido privado**: no hay ningún `console.log`/`console.error`/etc. en
+  ninguna Edge Function (`grep` sin resultados) — no hay fuga de `title`/`body`/`client_email`
+  ni del `APP_SECRET` vía logs de plataforma por logging propio del código.
+- **CORS y comparación del secreto**: ya endurecidos en un commit anterior (`2345097`),
+  confirmado leyendo `_shared/auth.ts` y `_shared/cors.ts`.
+
+### Confirmado como riesgo residual aceptado (no una tarea pendiente de "arreglar")
+
+- **`APP_SECRET` embebido en el binario cliente.** Android lo expone vía
+  `BuildConfig.APP_SECRET` (constante de compilación en el APK); iOS vía `Info.plist`. Ambos
+  son extraíbles por cualquiera con el APK/IPA. Esto es inherente a la arquitectura de un solo
+  secreto compartido sin autenticación por usuario que el usuario confirmó mantener
+  ("Un solo usuario, siempre") — no tiene una solución incremental; solo un rediseño a
+  Supabase Auth lo cambiaría, y eso está fuera de alcance por decisión explícita.
+
+### Pendiente, documentado, no implementado en esta pasada (severidad baja para un solo
+inquilino; no crítico ni alto)
+
+- **Rate limiting** en los endpoints de Edge Functions: no existe. Requiere almacenamiento de
+  estado (KV/tabla) y una decisión de límites concretos; se pospone por no ser crítico cuando
+  el único llamante legítimo es el propio dueño de la app.
+- **Idempotencia ante "éxito en el servidor pero fallo de red en el cliente"** (no el doble
+  tap, que ya está cubierto): si un `POST /api-tasks` tiene éxito pero la respuesta se pierde
+  antes de llegar al cliente, un reintento manual del usuario podría crear una tarea
+  duplicada. Necesitaría una idempotency key generada por el cliente y deduplicación en el
+  Edge Function; no implementado.
+- **Límites de longitud de payload** (`title`, `body`, `client_email`, etc. en `api-tasks`):
+  `normalizeOptionalString`/`normalizeRequiredString` validan presencia pero no longitud
+  máxima. Defensa en profundidad de prioridad baja, no una vulnerabilidad activa.

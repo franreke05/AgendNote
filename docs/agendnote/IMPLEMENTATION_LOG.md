@@ -78,3 +78,26 @@ cambios, tests, resultado, deuda restante.
 transversal: ninguno de los tres slices tuvo confirmación visual en emulador/dispositivo real
 en esta pasada — queda como QA visual pendiente antes de considerar la fase 100% cerrada en
 sentido estricto del prompt maestro ("no declares validación visual... si no la hiciste").
+
+## 2026-08-04 — Fase 2: Endurecimiento de seguridad
+
+- **Alcance**: ver `docs/agendnote/SECURITY_AUDIT.md`, sección "Fase 2 — resultado".
+- **Iteraciones**: 1 por slice (lado Kotlin con TDD real; lado Edge Functions sin ciclo
+  RED/GREEN posible — no hay Deno en este entorno).
+- **Cambios**: `resolveServerError` (Kotlin) y `internalErrorResponse` (las 6 Edge Functions +
+  `_shared/response.ts`) dejan de reenviar texto crudo de excepción al cliente/usuario.
+- **Tests**: 1 test nuevo en Kotlin (`AgendaViewModelTest`), suite completa 46/46. Ningún
+  test en el lado TypeScript — no hay tooling de test para Edge Functions en este proyecto.
+- **Resultado**: Kotlin completado y verificado (compilación + test real). Edge Functions
+  completado pero **no verificado** — cambio mecánico revisado a mano, sin compilar.
+- **Deuda restante**: rate limiting, idempotencia ante pérdida de respuesta post-éxito, y
+  límites de longitud de payload — documentados como pendientes de prioridad baja en
+  `SECURITY_AUDIT.md`, no implementados en esta pasada. `APP_SECRET` embebido en el binario
+  queda como riesgo residual aceptado de la arquitectura mono-usuario, no como tarea abierta.
+
+---
+
+**Fase 2 completa** para el alcance decidido (sin hallazgos críticos/altos abiertos). 5
+commits totales en esta sesión sobre Fase 2+3. Antes de Fase 4 hace falta una propuesta
+escrita (cambia `schema.sql` + Edge Functions + 4 capas de Kotlin) — se entrega por separado,
+sin implementar código todavía.
