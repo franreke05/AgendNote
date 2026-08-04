@@ -29,6 +29,7 @@ import com.franciscor.agendnote.core.network.RemoteConfigStatus
 import com.franciscor.agendnote.core.ui.components.GlassBackground
 import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.feature.agenda.domain.SeriesMaterializer
+import com.franciscor.agendnote.feature.agenda.domain.buildTaskExportJson
 import com.franciscor.agendnote.feature.agenda.presentation.controller.AgendaController
 import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaAction
 import com.franciscor.agendnote.feature.agenda.presentation.view.AgendaScreen
@@ -199,6 +200,12 @@ fun AppNavHost(
                             SettingsRoute(
                                 settingsViewModel = settingsViewModel,
                                 settingsController = settingsController,
+                                onExportRequested = {
+                                    buildTaskExportJson(
+                                        agendaViewModel.uiState.tasksByDate,
+                                        labelsViewModel.uiState.labels,
+                                    )
+                                },
                                 onDeleteAllNotes = { agendaController.deleteAllTasks() },
                                 onDeleteAllLabels = {
                                     val success = labelsController.deleteAllLabels()
@@ -303,6 +310,7 @@ private fun LabelsRoute(
 private fun SettingsRoute(
     settingsViewModel: SettingsViewModel,
     settingsController: SettingsController,
+    onExportRequested: () -> String,
     onDeleteAllNotes: suspend () -> Boolean,
     onDeleteAllLabels: suspend () -> Boolean,
     seriesList: List<TaskSeries>,
@@ -311,6 +319,7 @@ private fun SettingsRoute(
     SettingsScreen(
         viewModel = settingsViewModel,
         controller = settingsController,
+        onExportRequested = onExportRequested,
         onDeleteAllNotes = onDeleteAllNotes,
         onDeleteAllLabels = onDeleteAllLabels,
         seriesList = seriesList,
