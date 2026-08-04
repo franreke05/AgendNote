@@ -6,6 +6,7 @@ import com.franciscor.agendnote.core.network.AgendaApiClient
 import com.franciscor.agendnote.core.network.CreateTaskSeriesRequest
 import com.franciscor.agendnote.core.network.TaskSeriesDto
 import com.franciscor.agendnote.core.network.UpdateTaskSeriesRequest
+import com.franciscor.agendnote.feature.agenda.domain.RecurrenceEnd
 import com.franciscor.agendnote.feature.agenda.domain.RecurrenceRule
 import com.franciscor.agendnote.feature.agenda.domain.TaskSeriesRepository
 import kotlinx.datetime.DayOfWeek
@@ -27,6 +28,7 @@ class SupabaseTaskSeriesRepository(
         rule: RecurrenceRule,
         labels: List<LabelTag>,
         startDate: LocalDate,
+        end: RecurrenceEnd,
     ): TaskSeries {
         val request = CreateTaskSeriesRequest(
             title = title,
@@ -37,6 +39,9 @@ class SupabaseTaskSeriesRepository(
             day_of_month = (rule as? RecurrenceRule.Monthly)?.dayOfMonth,
             label_ids = labels.map { it.id },
             start_date = startDate.toString(),
+            end_type = end.toEndType(),
+            end_date = (end as? RecurrenceEnd.OnDate)?.date?.toString(),
+            end_occurrences = (end as? RecurrenceEnd.AfterOccurrences)?.count,
         )
         return api.createTaskSeries(request).toTaskSeries()
     }
@@ -47,6 +52,12 @@ class SupabaseTaskSeriesRepository(
         }.isSuccess
     }
 
+    override suspend fun deactivateSeries(seriesId: String): Boolean {
+        return runCatching {
+            api.updateTaskSeries(UpdateTaskSeriesRequest(id = seriesId, is_active = false))
+        }.isSuccess
+    }
+
     override suspend fun deleteSeries(id: String): Boolean = api.deleteTaskSeries(id)
 }
 
@@ -54,6 +65,22 @@ private fun RecurrenceRule.toRecurrenceType(): String = when (this) {
     is RecurrenceRule.Daily -> "daily"
     is RecurrenceRule.WeeklyDays -> "weekly_days"
     is RecurrenceRule.Monthly -> "monthly"
+}
+
+private fun RecurrenceEnd.toEndType(): String = when (this) {
+    RecurrenceEnd.Never -> "never"
+    is RecurrenceEnd.OnDate -> "on_date"
+    is RecurrenceEnd.AfterOccurrences -> "after_occurrences"
+}
+
+private fun TaskSeriesDto.toRecurrenceEnd(): RecurrenceEnd {
+    return when (end_type) {
+        "on_date" -> end_date?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            ?.let { RecurrenceEnd.OnDate(it) }
+            ?: RecurrenceEnd.Never
+        "after_occurrences" -> end_occurrences?.let { RecurrenceEnd.AfterOccurrences(it) } ?: RecurrenceEnd.Never
+        else -> RecurrenceEnd.Never
+    }
 }
 
 private fun TaskSeriesDto.toTaskSeries(): TaskSeries {
@@ -67,6 +94,7 @@ private fun TaskSeriesDto.toTaskSeries(): TaskSeries {
         startDate = LocalDate.parse(start_date),
         isActive = is_active,
         materializedUntil = LocalDate.parse(materialized_until),
+        end = toRecurrenceEnd(),
     )
 }
 

@@ -1,6 +1,7 @@
 package com.franciscor.agendnote.core.model
 
 import androidx.compose.runtime.Immutable
+import com.franciscor.agendnote.feature.agenda.domain.RecurrenceEnd
 import com.franciscor.agendnote.feature.agenda.domain.RecurrenceRule
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
@@ -62,4 +63,5 @@ data class TaskSeries(
     val startDate: LocalDate,
     val isActive: Boolean,
     val materializedUntil: LocalDate,
+    val end: RecurrenceEnd = RecurrenceEnd.Never,
 )

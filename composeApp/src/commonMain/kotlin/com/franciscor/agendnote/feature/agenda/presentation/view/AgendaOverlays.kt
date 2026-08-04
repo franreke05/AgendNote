@@ -83,6 +83,7 @@ import com.franciscor.agendnote.core.ui.components.labelColorPalette
 import com.franciscor.agendnote.core.ui.components.labelColorName
 import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
+import com.franciscor.agendnote.feature.agenda.domain.RecurrenceEnd
 import com.franciscor.agendnote.feature.agenda.domain.RecurrenceRule
 import com.franciscor.agendnote.feature.agenda.presentation.model.SaveResult
 import kotlinx.coroutines.launch
@@ -119,6 +120,10 @@ private enum class RecurrenceOption {
     None, Daily, WeeklyDays, Monthly
 }
 
+private enum class RecurrenceEndOption {
+    Never, OnDate, AfterOccurrences
+}
+
 @Composable
 internal fun NewTaskSheet(
     date: LocalDate,
@@ -126,7 +131,7 @@ internal fun NewTaskSheet(
     onCreateLabel: suspend (String, String) -> LabelTag?,
     onDismiss: () -> Unit,
     onSave: (LocalDate, TaskDraft, (SaveResult) -> Unit) -> Unit,
-    onSaveRecurring: (LocalDate, TaskDraft, RecurrenceRule, (SaveResult) -> Unit) -> Unit,
+    onSaveRecurring: (LocalDate, TaskDraft, RecurrenceRule, RecurrenceEnd, (SaveResult) -> Unit) -> Unit,
 ) {
     val layout = AppLayout.metrics
     val timeZone = remember { TimeZone.currentSystemDefault() }
@@ -156,6 +161,10 @@ internal fun NewTaskSheet(
     var selectedColor by remember { mutableStateOf(colorOptions.first()) }
     var isSaving by remember { mutableStateOf(false) }
     var selectedRecurrence by remember { mutableStateOf<RecurrenceOption>(RecurrenceOption.None) }
+    var selectedRecurrenceEndOption by remember { mutableStateOf(RecurrenceEndOption.Never) }
+    var recurrenceEndDate by remember { mutableStateOf<LocalDate?>(null) }
+    var showRecurrenceEndDatePicker by remember { mutableStateOf(false) }
+    var recurrenceEndOccurrencesText by remember { mutableStateOf("") }
     val selectedWeekDays = remember { mutableStateListOf<DayOfWeek>() }
     var monthDay by remember(date, today) {
         mutableStateOf((if (date < today) today else date).dayOfMonth)
@@ -334,6 +343,20 @@ internal fun NewTaskSheet(
                                         errorText = "Elegí al menos un día de la semana"
                                         return@GlassActionButton
                                     }
+                                    if (selectedRecurrence != RecurrenceOption.None &&
+                                        selectedRecurrenceEndOption == RecurrenceEndOption.OnDate &&
+                                        recurrenceEndDate == null
+                                    ) {
+                                        errorText = "Elegí la fecha en la que termina la serie"
+                                        return@GlassActionButton
+                                    }
+                                    if (selectedRecurrence != RecurrenceOption.None &&
+                                        selectedRecurrenceEndOption == RecurrenceEndOption.AfterOccurrences &&
+                                        recurrenceEndOccurrencesText.toIntOrNull()?.let { it > 0 } != true
+                                    ) {
+                                        errorText = "Indicá cuántas veces se repite"
+                                        return@GlassActionButton
+                                    }
 
                                     val chosenLabels = labels.filter { selectedLabelIds.contains(it.id) }
                                     // End-of-day deadline: the user only picks a date (see the
@@ -366,6 +389,16 @@ internal fun NewTaskSheet(
                                         RecurrenceOption.WeeklyDays -> RecurrenceRule.WeeklyDays(selectedWeekDays.toSet())
                                         RecurrenceOption.Monthly -> RecurrenceRule.Monthly(monthDay)
                                     }
+                                    val recurrenceEnd = when (selectedRecurrenceEndOption) {
+                                        RecurrenceEndOption.Never -> RecurrenceEnd.Never
+                                        RecurrenceEndOption.OnDate -> recurrenceEndDate
+                                            ?.let { RecurrenceEnd.OnDate(it) }
+                                            ?: RecurrenceEnd.Never
+                                        RecurrenceEndOption.AfterOccurrences -> recurrenceEndOccurrencesText
+                                            .toIntOrNull()
+                                            ?.let { RecurrenceEnd.AfterOccurrences(it) }
+                                            ?: RecurrenceEnd.Never
+                                    }
                                     isSaving = true
                                     val onResult: (SaveResult) -> Unit = { result ->
                                         isSaving = false
@@ -376,7 +409,7 @@ internal fun NewTaskSheet(
                                         }
                                     }
                                     if (rule != null) {
-                                        onSaveRecurring(selectedDate, draft, rule, onResult)
+                                        onSaveRecurring(selectedDate, draft, rule, recurrenceEnd, onResult)
                                     } else {
                                         onSave(selectedDate, draft, onResult)
                                     }
@@ -755,6 +788,86 @@ internal fun NewTaskSheet(
                                 }
                             }
                         }
+
+                        if (selectedRecurrence != RecurrenceOption.None) {
+                            Text(
+                                text = "Termina",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = GlassTheme.tokens.textSecondary,
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .selectableGroup(),
+                                horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
+                            ) {
+                                RecurrenceOptionChip(
+                                    text = "Nunca",
+                                    selected = selectedRecurrenceEndOption == RecurrenceEndOption.Never,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { selectedRecurrenceEndOption = RecurrenceEndOption.Never },
+                                )
+                                RecurrenceOptionChip(
+                                    text = "En fecha",
+                                    selected = selectedRecurrenceEndOption == RecurrenceEndOption.OnDate,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { selectedRecurrenceEndOption = RecurrenceEndOption.OnDate },
+                                )
+                                RecurrenceOptionChip(
+                                    text = "Después de N",
+                                    selected = selectedRecurrenceEndOption == RecurrenceEndOption.AfterOccurrences,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { selectedRecurrenceEndOption = RecurrenceEndOption.AfterOccurrences },
+                                )
+                            }
+                            if (selectedRecurrenceEndOption == RecurrenceEndOption.OnDate) {
+                                GlassSurface(
+                                    shape = RoundedCornerShape(layout.size(16.dp, 14.dp)),
+                                    tint = GlassTheme.tokens.glassFill,
+                                    shadowElevation = 0.dp,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(layout.height(48.dp, 46.dp))
+                                        .clip(RoundedCornerShape(layout.size(16.dp, 14.dp)))
+                                        .clickable(
+                                            role = Role.Button,
+                                            onClickLabel = "Seleccionar fecha de fin de la serie",
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null,
+                                            onClick = { showRecurrenceEndDatePicker = true },
+                                        ),
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = layout.width(14.dp, 12.dp)),
+                                        contentAlignment = Alignment.CenterStart,
+                                    ) {
+                                        Text(
+                                            text = recurrenceEndDate?.let(::formatShortDateWithYear)
+                                                ?: "Elegí la última fecha",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = if (recurrenceEndDate == null) {
+                                                GlassTheme.tokens.textSecondary
+                                            } else {
+                                                GlassTheme.tokens.textPrimary
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                            if (selectedRecurrenceEndOption == RecurrenceEndOption.AfterOccurrences) {
+                                GlassTextField(
+                                    value = recurrenceEndOccurrencesText,
+                                    onValueChange = { input ->
+                                        recurrenceEndOccurrencesText = input.filter { it.isDigit() }.take(4)
+                                    },
+                                    placeholder = "Número de repeticiones",
+                                    label = "Número de repeticiones",
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
                     }
 
                     if (isPastSelected) {
@@ -921,6 +1034,18 @@ internal fun NewTaskSheet(
                     },
                     onClear = { deadlineDate = null },
                     onDismiss = { showDeadlinePicker = false },
+                )
+            }
+
+            if (showRecurrenceEndDatePicker) {
+                DatePickerOverlay(
+                    selectedDate = recurrenceEndDate ?: selectedDate,
+                    onSelect = {
+                        recurrenceEndDate = it
+                        showRecurrenceEndDatePicker = false
+                    },
+                    onClear = { recurrenceEndDate = null },
+                    onDismiss = { showRecurrenceEndDatePicker = false },
                 )
             }
         }

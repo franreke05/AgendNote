@@ -8,6 +8,7 @@ import com.franciscor.agendnote.core.model.TaskItem
 import com.franciscor.agendnote.core.notifications.NotificationServiceProvider
 import com.franciscor.agendnote.core.platform.currentTimeMillis
 import com.franciscor.agendnote.feature.agenda.domain.AgendaTaskRepository
+import com.franciscor.agendnote.feature.agenda.domain.RecurrenceEnd
 import com.franciscor.agendnote.feature.agenda.domain.RecurrenceRule
 import com.franciscor.agendnote.feature.agenda.domain.SeriesMaterializer
 import com.franciscor.agendnote.feature.agenda.domain.TaskSeriesRepository
@@ -257,7 +258,12 @@ class AgendaViewModel(
             )
     }
 
-    suspend fun saveRecurringTask(date: LocalDate, draft: TaskDraft, rule: RecurrenceRule): SaveResult {
+    suspend fun saveRecurringTask(
+        date: LocalDate,
+        draft: TaskDraft,
+        rule: RecurrenceRule,
+        end: RecurrenceEnd = RecurrenceEnd.Never,
+    ): SaveResult {
         val trimmedTitle = draft.title.trim()
         if (trimmedTitle.isEmpty()) return SaveResult(false, "Título requerido")
         val taskSeriesRepository = taskSeriesRepository ?: run {
@@ -277,6 +283,7 @@ class AgendaViewModel(
                 rule = rule,
                 labels = draft.labels,
                 startDate = date,
+                end = end,
             )
         }
 
@@ -402,9 +409,10 @@ class AgendaViewModel(
         date: LocalDate,
         draft: TaskDraft,
         rule: RecurrenceRule,
+        end: RecurrenceEnd = RecurrenceEnd.Never,
         onResult: (SaveResult) -> Unit = {},
     ) {
-        viewModelScope.launch { onResult(saveRecurringTask(date, draft, rule)) }
+        viewModelScope.launch { onResult(saveRecurringTask(date, draft, rule, end)) }
     }
 
     fun toggleTaskDoneAsync(

@@ -2,6 +2,7 @@ package com.franciscor.agendnote.feature.agenda.presentation.controller
 
 import com.franciscor.agendnote.core.model.TaskDraft
 import com.franciscor.agendnote.core.model.TaskItem
+import com.franciscor.agendnote.feature.agenda.domain.RecurrenceEnd
 import com.franciscor.agendnote.feature.agenda.domain.RecurrenceRule
 import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaAction
 import com.franciscor.agendnote.feature.agenda.presentation.model.SaveResult
@@ -37,8 +38,13 @@ class AgendaController(
         return viewModel.saveTask(date, draft)
     }
 
-    suspend fun saveRecurringTask(date: LocalDate, draft: TaskDraft, rule: RecurrenceRule): SaveResult {
-        return viewModel.saveRecurringTask(date, draft, rule)
+    suspend fun saveRecurringTask(
+        date: LocalDate,
+        draft: TaskDraft,
+        rule: RecurrenceRule,
+        end: RecurrenceEnd = RecurrenceEnd.Never,
+    ): SaveResult {
+        return viewModel.saveRecurringTask(date, draft, rule, end)
     }
 
     suspend fun toggleTaskDone(date: LocalDate, task: TaskItem, isDone: Boolean): Boolean {
@@ -76,9 +82,10 @@ class AgendaController(
         date: LocalDate,
         draft: TaskDraft,
         rule: RecurrenceRule,
+        end: RecurrenceEnd = RecurrenceEnd.Never,
         onResult: (SaveResult) -> Unit = {},
     ) {
-        viewModel.saveRecurringTaskAsync(date, draft, rule, onResult)
+        viewModel.saveRecurringTaskAsync(date, draft, rule, end, onResult)
     }
 
     fun toggleTaskDoneAsync(

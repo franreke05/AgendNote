@@ -134,6 +134,10 @@ data class TaskSeriesDto(
     val start_date: String,
     val is_active: Boolean = true,
     val materialized_until: String,
+    /** "never" (default when absent, for series created before Fase 5), "on_date" or "after_occurrences". */
+    val end_type: String? = null,
+    val end_date: String? = null,
+    val end_occurrences: Int? = null,
 )
 
 @Serializable
@@ -146,6 +150,9 @@ data class CreateTaskSeriesRequest(
     val day_of_month: Int? = null,
     val label_ids: List<String> = emptyList(),
     val start_date: String,
+    val end_type: String? = null,
+    val end_date: String? = null,
+    val end_occurrences: Int? = null,
 )
 
 @Serializable

@@ -15,9 +15,13 @@ interface TaskSeriesRepository {
         rule: RecurrenceRule,
         labels: List<LabelTag>,
         startDate: LocalDate,
+        end: RecurrenceEnd = RecurrenceEnd.Never,
     ): TaskSeries
 
     suspend fun markMaterialized(seriesId: String, until: LocalDate): Boolean
+
+    /** Sets `is_active = false`; called once a series reaches its [RecurrenceEnd]. */
+    suspend fun deactivateSeries(seriesId: String): Boolean
 
     suspend fun deleteSeries(id: String): Boolean
 }

@@ -135,8 +135,8 @@ fun AgendaScreen(
                 onSave = { targetDate, draft, onResult ->
                     controller.saveTaskAsync(targetDate, draft, onResult)
                 },
-                onSaveRecurring = { targetDate, draft, rule, onResult ->
-                    controller.saveRecurringTaskAsync(targetDate, draft, rule, onResult)
+                onSaveRecurring = { targetDate, draft, rule, end, onResult ->
+                    controller.saveRecurringTaskAsync(targetDate, draft, rule, end, onResult)
                 },
             )
         }

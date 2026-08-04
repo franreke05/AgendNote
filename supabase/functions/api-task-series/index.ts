@@ -6,7 +6,7 @@ import { requireAppSecret } from "../_shared/auth.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("SB_URL");
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SERVICE_ROLE_KEY");
-const SERIES_SELECT = "id,title,body,time,recurrence_type,days_of_week,day_of_month,label_ids,start_date,is_active,materialized_until,created_at";
+const SERIES_SELECT = "id,title,body,time,recurrence_type,days_of_week,day_of_month,label_ids,start_date,is_active,materialized_until,created_at,end_type,end_date,end_occurrences";
 
 if (!supabaseUrl || !serviceKey) {
   throw new Error("Missing SUPABASE_URL/SB_URL or SUPABASE_SERVICE_ROLE_KEY/SB_SERVICE_ROLE_KEY");
@@ -50,6 +50,26 @@ function dayBefore(dateStr: string): string {
   return date.toISOString().slice(0, 10);
 }
 
+function buildEndFields(body: Record<string, unknown>, startDate: string) {
+  const endType = normalizeOptionalString(body.end_type) ?? "never";
+  if (!["never", "on_date", "after_occurrences"].includes(endType)) {
+    throw new Error("end_type must be never, on_date, or after_occurrences");
+  }
+  if (endType === "on_date") {
+    const endDate = normalizeDate(body.end_date, "end_date");
+    if (endDate < startDate) throw new Error("end_date must be on or after start_date");
+    return { end_type: endType, end_date: endDate, end_occurrences: null };
+  }
+  if (endType === "after_occurrences") {
+    const count = Number(body.end_occurrences);
+    if (!Number.isInteger(count) || count < 1) {
+      throw new Error("end_occurrences must be a positive integer");
+    }
+    return { end_type: endType, end_date: null, end_occurrences: count };
+  }
+  return { end_type: "never", end_date: null, end_occurrences: null };
+}
+
 function buildInsertPayload(body: Record<string, unknown>) {
   const recurrenceType = normalizeRequiredString(body.recurrence_type, "recurrence_type");
   if (!["daily", "weekly_days", "monthly"].includes(recurrenceType)) {
@@ -67,6 +87,7 @@ function buildInsertPayload(body: Record<string, unknown>) {
     start_date: startDate,
     is_active: true,
     materialized_until: dayBefore(startDate),
+    ...buildEndFields(body, startDate),
   };
 }
 
