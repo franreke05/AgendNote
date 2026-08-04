@@ -18,9 +18,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.foundation.layout.size
@@ -36,6 +38,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CalendarToday
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.EventAvailable
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -77,6 +80,7 @@ import com.franciscor.agendnote.core.platform.currentTimeMillis
 import com.franciscor.agendnote.core.ui.components.ColorSwatch
 import com.franciscor.agendnote.core.ui.components.GlassActionButton
 import com.franciscor.agendnote.core.ui.components.GlassConfirmDialog
+import com.franciscor.agendnote.core.ui.components.GlassEmptyState
 import com.franciscor.agendnote.core.ui.components.GlassIconButton
 import com.franciscor.agendnote.core.ui.components.GlassSurface
 import com.franciscor.agendnote.core.ui.components.GlassTextField
@@ -87,6 +91,8 @@ import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
 import com.franciscor.agendnote.feature.agenda.domain.RecurrenceEnd
 import com.franciscor.agendnote.feature.agenda.domain.RecurrenceRule
+import com.franciscor.agendnote.feature.agenda.domain.SmartList
+import com.franciscor.agendnote.feature.agenda.domain.smartListTasks
 import com.franciscor.agendnote.feature.agenda.presentation.model.SaveResult
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DateTimeUnit
@@ -125,6 +131,179 @@ internal fun ConfirmDeleteDialog(
         onDismiss = onDismiss,
         confirmText = "Eliminar",
     )
+}
+
+private val SMART_LIST_LABELS: List<Pair<SmartList, String>> = listOf(
+    SmartList.Overdue to "Atrasadas",
+    SmartList.Next7Days to "Próximos 7 días",
+    SmartList.WithoutTime to "Sin hora",
+    SmartList.WithReminder to "Con recordatorio",
+    SmartList.Recurring to "Recurrentes",
+)
+
+/**
+ * Vista de solo lectura sobre lo que ya está cargado en `tasksByDate` (ver [smartListTasks] -
+ * no es una consulta al backend, así que una tarea en un mes nunca visitado no aparece aquí
+ * todavía).
+ */
+@Composable
+internal fun SmartListsOverlay(
+    tasksByDate: Map<LocalDate, List<TaskItem>>,
+    today: LocalDate,
+    onSelectDate: (LocalDate) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val layout = AppLayout.metrics
+    var selectedList by remember { mutableStateOf(SmartList.Overdue) }
+    val results = remember(selectedList, tasksByDate, today) {
+        smartListTasks(selectedList, tasksByDate, today)
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(modifier = Modifier.fillMaxSize().safeContentPadding()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(GlassTheme.tokens.scrim)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onDismiss,
+                    ),
+            )
+
+            GlassSurface(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = layout.width(18.dp, 16.dp))
+                    .fillMaxWidth()
+                    .heightIn(max = layout.height(560.dp, 520.dp)),
+                shape = RoundedCornerShape(layout.size(28.dp, 24.dp)),
+                tint = GlassTheme.tokens.modalFill,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(layout.size(18.dp, 16.dp))
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
+                ) {
+                    Text(
+                        text = "Listas inteligentes",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontSize = layout.text(22.sp, 20.sp),
+                        ),
+                        color = GlassTheme.tokens.textPrimary,
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .selectableGroup()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 5.dp)),
+                    ) {
+                        SMART_LIST_LABELS.forEach { (list, label) ->
+                            RecurrenceOptionChip(
+                                text = label,
+                                selected = selectedList == list,
+                                onClick = { selectedList = list },
+                            )
+                        }
+                    }
+                    Box(modifier = Modifier.weight(1f)) {
+                        if (results.isEmpty()) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                GlassEmptyState(
+                                    icon = Icons.Rounded.EventAvailable,
+                                    title = "Nada por aquí",
+                                    subtitle = "No hay tareas en esta vista por ahora.",
+                                )
+                            }
+                        } else {
+                            LazyColumn(
+                                verticalArrangement = Arrangement.spacedBy(layout.height(8.dp, 6.dp)),
+                            ) {
+                                items(results, key = { (date, task) -> "$date:${task.id}" }) { (date, task) ->
+                                    SmartListRow(
+                                        date = date,
+                                        task = task,
+                                        onClick = {
+                                            onSelectDate(date)
+                                            onDismiss()
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    GlassActionButton(
+                        text = "Cerrar",
+                        tint = GlassTheme.tokens.glassFillStrong,
+                        textColor = GlassTheme.tokens.textPrimary,
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .height(layout.height(48.dp, 46.dp)),
+                        onClick = onDismiss,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SmartListRow(
+    date: LocalDate,
+    task: TaskItem,
+    onClick: () -> Unit,
+) {
+    val layout = AppLayout.metrics
+    GlassSurface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = layout.height(56.dp, 52.dp))
+            .clickable(
+                role = Role.Button,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+        shape = RoundedCornerShape(layout.size(16.dp, 14.dp)),
+        tint = GlassTheme.tokens.glassFill,
+        shadowElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = layout.width(14.dp, 12.dp), vertical = layout.height(10.dp, 8.dp)),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp)),
+        ) {
+            Text(
+                text = formatShortDateWithYear(date),
+                style = MaterialTheme.typography.labelMedium,
+                color = GlassTheme.tokens.textSecondary,
+                maxLines = 1,
+            )
+            Text(
+                text = task.title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = GlassTheme.tokens.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            task.time?.let {
+                Text(
+                    text = formatTime(it),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = GlassTheme.tokens.textSecondary,
+                )
+            }
+        }
+    }
 }
 
 private enum class RecurrenceOption {

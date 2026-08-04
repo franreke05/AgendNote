@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Delete
@@ -78,6 +79,7 @@ internal fun AgendaHeader(
     isToday: Boolean,
     onPreviousDay: () -> Unit,
     onNextDay: () -> Unit,
+    onOpenSmartLists: () -> Unit = {},
 ) {
     val layout = AppLayout.metrics
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -95,6 +97,11 @@ internal fun AgendaHeader(
                 color = GlassTheme.tokens.textPrimary,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp))) {
+                GlassIconButton(
+                    icon = Icons.Rounded.Checklist,
+                    contentDescription = "Listas inteligentes",
+                    onClick = onOpenSmartLists,
+                )
                 GlassIconButton(
                     icon = Icons.Rounded.ChevronLeft,
                     contentDescription = "Día anterior",
