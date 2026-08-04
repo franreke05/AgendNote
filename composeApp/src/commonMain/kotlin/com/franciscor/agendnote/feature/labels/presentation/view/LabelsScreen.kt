@@ -35,7 +35,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.franciscor.agendnote.app.navigation.SectionHeader
@@ -43,6 +42,7 @@ import com.franciscor.agendnote.core.model.LabelTag
 import com.franciscor.agendnote.core.ui.components.ColorSwatch
 import com.franciscor.agendnote.core.ui.components.GlassActionButton
 import com.franciscor.agendnote.core.ui.components.GlassConfirmDialog
+import com.franciscor.agendnote.core.ui.components.GlassEmptyState
 import com.franciscor.agendnote.core.ui.components.GlassSurface
 import com.franciscor.agendnote.core.ui.components.GlassTextField
 import com.franciscor.agendnote.core.ui.components.colorFromHex
@@ -234,34 +234,17 @@ fun LabelsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
                     ) {
-                        Column(
+                        GlassEmptyState(
+                            icon = Icons.AutoMirrored.Rounded.Label,
+                            title = "Sin etiquetas creadas",
+                            subtitle = "Elige un color y crea la primera arriba",
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(
                                     horizontal = layout.width(16.dp, 14.dp),
                                     vertical = layout.height(28.dp, 22.dp),
                                 ),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(layout.height(10.dp, 8.dp)),
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Rounded.Label,
-                                contentDescription = null,
-                                tint = GlassTheme.tokens.textSecondary.copy(alpha = 0.5f),
-                                modifier = Modifier.size(layout.size(56.dp, 48.dp)),
-                            )
-                            Text(
-                                text = "Sin etiquetas creadas",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = GlassTheme.tokens.textSecondary,
-                            )
-                            Text(
-                                text = "Elige un color y crea la primera arriba",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = GlassTheme.tokens.textSecondary.copy(alpha = 0.75f),
-                                textAlign = TextAlign.Center,
-                            )
-                        }
+                        )
                     }
                 }
             } else {

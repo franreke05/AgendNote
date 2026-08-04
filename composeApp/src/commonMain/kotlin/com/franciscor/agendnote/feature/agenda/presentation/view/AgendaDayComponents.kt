@@ -52,13 +52,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.franciscor.agendnote.core.model.TaskItem
 import com.franciscor.agendnote.core.ui.components.GlassActionButton
+import com.franciscor.agendnote.core.ui.components.GlassEmptyState
 import com.franciscor.agendnote.core.ui.components.GlassIconButton
 import com.franciscor.agendnote.core.ui.components.GlassSearchBar
 import com.franciscor.agendnote.core.ui.components.GlassSurface
@@ -248,30 +248,11 @@ internal fun DayAgenda(
                     modifier = Modifier.fillParentMaxHeight(0.6f),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(layout.height(10.dp, 8.dp)),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.EventAvailable,
-                            contentDescription = null,
-                            tint = GlassTheme.tokens.textSecondary.copy(alpha = 0.5f),
-                            modifier = Modifier.size(layout.size(72.dp, 60.dp)),
-                        )
-                        Text(
-                            text = if (searchQuery.isBlank()) "Sin tareas para este día" else "Sin resultados",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = GlassTheme.tokens.textSecondary,
-                        )
-                        if (searchQuery.isBlank()) {
-                            Text(
-                                text = "Toca + para crear tu primera tarea de este día",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = GlassTheme.tokens.textSecondary.copy(alpha = 0.7f),
-                                textAlign = TextAlign.Center,
-                            )
-                        }
-                    }
+                    GlassEmptyState(
+                        icon = Icons.Rounded.EventAvailable,
+                        title = if (searchQuery.isBlank()) "Sin tareas para este día" else "Sin resultados",
+                        subtitle = "Toca + para crear tu primera tarea de este día".takeIf { searchQuery.isBlank() },
+                    )
                 }
             }
         } else {
