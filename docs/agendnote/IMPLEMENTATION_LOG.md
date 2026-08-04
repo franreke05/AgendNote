@@ -208,3 +208,38 @@ verificación visual/funcional en emulador o dispositivo real en toda la fase; S
 Functions sin compilar (sin Deno/acceso en vivo); iOS sin compilar (sin Xcode); multi-
 notificación real por tarea diferida a una fase futura con verificación en dispositivo; no
 existe edición de una tarea ya creada en toda la app (hallazgo preexistente, no de esta fase).
+
+## 2026-08-04 — Fase 5: recurrencia robusta
+
+- **Verificación (sin cambios de producción)**: 5 tests nuevos prueban que
+  `occurrencesBetween` no tiene superficie de bug de DST (opera solo sobre `LocalDate`),
+  maneja correctamente años bisiestos (día 29 de febrero) y cruces de año — todos pasaron al
+  primer intento.
+- **Fin de serie por fecha o número de ocurrencias**: `RecurrenceEnd` (Never/OnDate/
+  AfterOccurrences) nuevo en el dominio. Lógica extraída a una función pura
+  `planMaterialization` con 7 tests TDD reales + 3 tests de integración sobre
+  `SeriesMaterializer.materializeSeries` real (no solo la función pura) confirmando que
+  `TaskSeriesRepository.deactivateSeries()` se llama en el momento correcto. Cadena completa:
+  migración SQL (`task_series.end_type/end_date/end_occurrences`, con constraint de
+  coherencia), `api-task-series` validando y persistiendo, DTOs, repositorio, sección
+  "Termina" en `NewTaskSheet`.
+- **"Editar esta ocurrencia" (excepciones)**: resultó no necesitar infraestructura nueva —
+  `SeriesMaterializer` nunca reintenta una fecha ya pasada por su cursor, así que borrar una
+  tarea materializada ya actúa como excepción. Se aclaró explícitamente en
+  `ConfirmDeleteDialog` para que ese comportamiento deje de ser invisible.
+- **"Editar esta y las siguientes"**: **no implementado, bloqueado a propósito** por el
+  hallazgo ya documentado de que no existe edición de tareas en ningún lugar de la app.
+  Construir la lógica de split de serie sin un punto de entrada de UI que la dispare sería
+  scaffolding sin uso.
+- **Tests**: 67/67 en verde, debug y release. `androidApp:assembleDebug` también verde.
+- **Resultado**: completado dentro del alcance realista (fin de serie + verificación +
+  aclaración de excepciones). SQL y Edge Function sin ejecutar (mismas limitaciones de
+  siempre en este entorno).
+
+---
+
+**Fase 5 completa.** 3 commits. Recurrencia verificada contra DST/bisiesto/cruce de año (sin
+bugs encontrados), fin de serie por fecha o número de repeticiones de punta a punta,
+excepción de ocurrencia individual aclarada como comportamiento ya existente. "Editar esta y
+las siguientes" queda bloqueada, no evitada — depende de que exista edición de tareas en la
+app, que no existe todavía en ningún lado.
