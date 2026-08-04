@@ -243,3 +243,36 @@ bugs encontrados), fin de serie por fecha o número de repeticiones de punta a p
 excepción de ocurrencia individual aclarada como comportamiento ya existente. "Editar esta y
 las siguientes" queda bloqueada, no evitada — depende de que exista edición de tareas en la
 app, que no existe todavía en ningún lado.
+
+## 2026-08-04 — Fase 6: captura rápida NLP es-ES + listas inteligentes
+
+- **Captura rápida**: `parseQuickCapture` (patrones acotados: hoy/mañana/pasado mañana, día de
+  semana, en N días, "a las HH:MM [de la mañana/tarde/noche]"), 12 tests TDD. Conectada como
+  sugerencia confirmable en `NewTaskSheet` — nunca aplica nada sin que el usuario toque
+  "Aplicar".
+- **Listas inteligentes**: `smartListTasks` (Atrasadas/Próximos 7 días/Sin hora/Con
+  recordatorio/Recurrentes), 6 tests TDD. Documentado como vista del lado del cliente sobre lo
+  ya cargado, no una consulta nueva al backend — "Sin fecha" del prompt maestro se adaptó a
+  "Sin hora" porque el esquema exige que toda tarea tenga día. Conectada vía un botón nuevo en
+  `AgendaHeader` que abre `SmartListsOverlay`.
+- **Tests**: 75/75 en verde, debug y release. `androidApp:assembleDebug` verde.
+- **Resultado**: completas las dos funcionalidades de prioridad "AHORA" del bucle de
+  funcionalidades del prompt maestro.
+
+## 2026-08-04 — Fase 7: funcionalidades "después" evaluadas, dos implementadas
+
+- **Evaluación** (`docs/agendnote/FASE7_EVALUACION.md`): las 7 candidatas del prompt maestro
+  con problema/valor/complejidad/recomendación. Solo plantillas y exportación pasan el corte
+  de esta sesión — el resto (biometría, deep links, calendario del sistema, time blocking,
+  widgets) necesita APIs de plataforma o iteración visual que este entorno no puede verificar
+  de forma responsable.
+- **Plantillas**: `TaskTemplate` persistido como JSON en `api-settings` (sin tabla nueva),
+  chips para aplicar + botón "Guardar como plantilla" en `NewTaskSheet`. Bug real encontrado y
+  corregido en el camino: `encodeToString`/`decodeFromString` sin el import explícito de
+  `kotlinx.serialization` resuelven al overload equivocado — test de regresión nuevo.
+- **Exportación**: `buildTaskExportJson` + botón "Exportar mis datos" en Ajustes, alcance
+  reducido a copiar al portapapeles (no compartir archivo, por el mismo motivo de riesgo de
+  plataforma no verificable).
+- **Tests**: 90/90 en verde, debug y release. `androidApp:assembleDebug` verde.
+- **Resultado**: completo dentro del alcance responsable — ver
+  `FASE7_EVALUACION.md` para el porqué de cada "después".
