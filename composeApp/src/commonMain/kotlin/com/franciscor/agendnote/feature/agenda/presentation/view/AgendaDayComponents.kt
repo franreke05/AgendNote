@@ -52,6 +52,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -468,6 +470,28 @@ private fun TaskCard(
                             tint = GlassTheme.tokens.textSecondary,
                             modifier = Modifier.size(layout.size(16.dp, 14.dp)),
                         )
+                    }
+                    if (task.subtasks.isNotEmpty()) {
+                        val doneCount = task.subtasks.count { it.isDone }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(layout.width(2.dp, 2.dp)),
+                            modifier = Modifier.semantics(mergeDescendants = true) {
+                                contentDescription = "$doneCount de ${task.subtasks.size} subtareas hechas"
+                            },
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Check,
+                                contentDescription = null,
+                                tint = GlassTheme.tokens.textSecondary,
+                                modifier = Modifier.size(layout.size(14.dp, 12.dp)),
+                            )
+                            Text(
+                                text = "$doneCount/${task.subtasks.size}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = GlassTheme.tokens.textSecondary,
+                            )
+                        }
                     }
                 }
                 Row(
