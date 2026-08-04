@@ -2,9 +2,11 @@
 
 ## Current task
 Executing the phased plan in `docs/agendnote/IMPLEMENTATION_PLAN.md` (all phases, per user
-direction). Fase 3 (accessibility/state gaps) is complete and verified. Next up: Fase 2
-(security hardening) and a written proposal for Fase 4 (expanded task model) before touching
-schema/Edge Functions/domain/UI for it.
+direction). Fase 3 and Fase 2 complete and verified. Fase 4 (expanded task model) in
+progress: sub-fase 1 (schema+DTOs) and sub-fase 2 (Kotlin domain+mapper) done. Next:
+sub-fase 3 (NewTaskSheet/detail UI for deadline+reminders+subtasks), sub-fase 4 (multi-
+reminder notification scheduling - the riskiest part, touches AndroidReminderScheduler +
+IosNotificationService), sub-fase 5 (polish).
 
 ## Files touched this session
 - `docs/agendnote/*.md` (discovery/audit docs + implementation log).
