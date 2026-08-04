@@ -2,48 +2,53 @@
 
 ## Current task
 Executing the phased plan in `docs/agendnote/IMPLEMENTATION_PLAN.md` (all phases, per user
-direction). Fase 3 and Fase 2 complete and verified. Fase 4 (expanded task model) in
-progress: sub-fase 1 (schema+DTOs) and sub-fase 2 (Kotlin domain+mapper) done. Next:
-sub-fase 3 (NewTaskSheet/detail UI for deadline+reminders+subtasks), sub-fase 4 (multi-
-reminder notification scheduling - the riskiest part, touches AndroidReminderScheduler +
-IosNotificationService), sub-fase 5 (polish).
+direction). Fases 2, 3, and 4 are complete and verified (by compilation + full Android
+builds, not by device/emulator testing - none was launched this session). Next up per the
+plan: Fase 5 (recurrencia robusta), Fase 6 (captura rápida NLP es-ES + listas inteligentes),
+Fase 7 (funcionalidades "después", evaluar una por una), Fase 8 (regresión final).
 
 ## Files touched this session
-- `docs/agendnote/*.md` (discovery/audit docs + implementation log).
-- Fase 3 code: `PendingUndo`/`AgendaUiState`/`AgendaViewModel`/`AgendaController`/
-  `AgendaScreen` (undo-on-complete snackbar), `GlassSnackbar` (new component),
-  `AccessibilityPreferences` expect/actual + `ReduceMotion.kt` + `GlassBackground` (reduce
-  motion/transparency), `GlassEmptyState` (new shared component) + Agenda/Labels call sites.
-- Tests: `AgendaViewModelTest.kt` (+4), `ReduceMotionTest.kt` (new, +2). 45/45 passing,
-  debug and release.
+27 commits on `agent/finish-audit-notifications`. Summary by phase:
+- Docs: `docs/agendnote/*.md` (discovery, audits, implementation plan/log, Fase 4 proposal).
+- Fase 3: undo-on-complete (`GlassSnackbar`, `PendingUndo`), reduce motion/transparency
+  (`AccessibilityPreferences` expect/actual, `ReduceMotion.kt`), `GlassEmptyState`.
+- Fase 2: sanitized error responses (Kotlin `resolveServerError`, all 6 Edge Functions'
+  `internalErrorResponse`).
+- Fase 4: SQL migration (`deadline_at`, `task_reminders`, `task_subtasks`), `api-tasks`
+  Edge Function extended, Kotlin DTOs/domain (`Subtask`, `TaskItem`/`TaskDraft` extended),
+  `NewTaskSheet` UI (deadline/reminders/subtasks), `TaskDetailsOverlay` read-only display,
+  notification scheduler wired to `earliestReminderInstant`, `TaskCard` subtask progress chip.
+- Tests: 52/52 passing (debug + release), up from 39 at session start.
 
 ## Decisions made
-- Corrected the master prompt's security model assumption (single-tenant, no RLS-per-user)
-  and stopped exploring the unrelated Supabase MCP project - see `docs/AI_DECISION_LOG.md`.
-- User confirmed: stays single-tenant permanently; Supabase audit stays repo-based (no MCP
-  reconnect); execute all phases of the plan, not just one.
-- Followed real TDD (RED via compile error, then GREEN) for every piece of new logic that
-  could be tested without Compose UI test tooling (which this repo doesn't have). Platform
-  `actual` code (Android Settings observer, iOS UIAccessibility reads) has no test harness in
-  this repo and was verified only by compiling the Android variant for real; iOS actuals are
-  unverified (no macOS/Xcode here) and documented as such everywhere they appear.
+- See `docs/AI_DECISION_LOG.md` for durable architectural decisions (security model
+  correction, Supabase MCP scope, TDD-where-testable discipline).
+- Reminders modeled as explicit stored instants (not offsets) per the user's delegation of
+  that product decision back to my own recommendation in `FASE4_PROPUESTA.md`.
+- Deliberately did NOT rewrite the working `AndroidReminderScheduler`/`AndroidReminderStore`
+  to support N simultaneous alarms per task - too risky to do unverified. Only the earliest
+  reminder is actually scheduled today; this is documented as explicit deferred work.
+- Preserved existing behavior: a task with a time still gets a default reminder even if the
+  user never opens the reminders section (LaunchedEffect defaulting to "en el momento").
 
 ## Pending work
-- Fase 2 (security hardening: rate limiting, idempotency, log/payload audit, APP_SECRET
-  client storage review).
-- Fase 4 (expanded task model: planificada/deadline/recordatorio, subtasks, multiple
-  reminders) - needs a written proposal (schema + API shape) before implementation, since it
-  touches `schema.sql` + Edge Functions + 4 Kotlin layers.
-- Fases 5-8 depend on Fase 4's model.
-- Visual/on-device QA for all three Fase 3 slices - no emulator was launched this session.
+- Visual/on-device QA for everything built this session - no emulator was launched.
+- iOS: nothing compiled this session (no macOS/Xcode); every iOS file touched is flagged
+  unverified in its commit.
+- SQL migration and Edge Function changes: not applied/tested against a live Supabase project
+  (user chose repo-only auditing).
+- Known gap (not this session's to fix): no way to edit an already-created task anywhere in
+  the app (only create/toggle-done/delete) - limits deadline/reminders/subtasks to
+  creation-time only for now.
+- Fases 5-8 of the plan not started.
 
 ## Commands run
-- `.\gradlew.bat :composeApp:testDebugUnitTest` / `:testReleaseUnitTest` (several times,
-  each after a RED or GREEN step) - all green, 45/45, both variants.
-- Read-only Supabase MCP calls against the unrelated `oposibots-ui` project (see
-  `docs/agendnote/SECURITY_AUDIT.md`), stopped once the mismatch was confirmed.
+Repeated `:composeApp:testDebugUnitTest`/`:testReleaseUnitTest` (after every RED and GREEN
+step) and `:androidApp:assembleDebug` (after every UI-touching change) - all green throughout.
+No `deno`, no live Supabase MCP calls against AgendNote's real project (none available/opted
+out), no Android emulator launched.
 
 ## Failures / blockers
-- iOS (`iosMain`) code cannot be compiled or verified in this Windows environment - same
-  known constraint as the 2026-07-27 audit. Every iOS-affecting change this session is
-  flagged as unverified in its commit message.
+- Same as before: iOS compilation and Supabase live verification are unavailable in this
+  environment. Both are called out explicitly in every commit message and doc that touches
+  them - never silently assumed correct.

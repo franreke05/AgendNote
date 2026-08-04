@@ -169,3 +169,42 @@ sin implementar código todavía.
 - **Con esto se cierra la sub-fase 3.** Sigue la sub-fase 4 (recordatorios múltiples en el
   scheduler real de notificaciones) — hoy los recordatorios ya se guardan en el backend y se
   ven en la UI, pero todavía no disparan más de una notificación por tarea.
+
+## 2026-08-04 — Fase 4, sub-fase 4: recordatorios en el scheduler de notificaciones
+
+- **Decisión de alcance deliberada**: no se reescribió `AndroidReminderScheduler`/
+  `AndroidReminderStore` para soportar N alarmas independientes por tarea — ese sistema está
+  probado en dispositivo real (auditoría de julio) y este entorno no puede verificar una
+  reescritura de su esquema de `PendingIntent`/`SharedPreferences` sin emulador. En su lugar,
+  se programa una sola notificación por tarea usando el recordatorio explícito más próximo
+  (`earliestReminderInstant`, nuevo, con test TDD real), cayendo al cálculo legado
+  (`task.time`) para tareas que no tienen recordatorios explícitos todavía.
+- **Regresión evitada, encontrada revisando el código antes de tocarlo**:
+  `reconcileDayNotifications` solo programaba/cancelaba en base a `task.time` — una tarea con
+  deadline+recordatorio pero sin hora planificada no habría programado nada. Corregido:
+  programa/cancela si hay hora O al menos un recordatorio explícito.
+- **Tests**: 2 nuevos (`ReminderResolutionTest`), TDD real. Suite completa: 52/52.
+- **Resultado**: Android completado y verificado por compilación completa + build de APK real
+  (`androidApp:assembleDebug`). iOS implementado con el mismo patrón pero **no compilado ni
+  verificado** (sin macOS/Xcode). **Ninguno de los dos lados se probó en un
+  dispositivo/emulador real disparando una notificación** — eso sigue pendiente.
+- **Deuda explícita para una fase futura**: multi-notificación real (N alarmas simultáneas por
+  tarea) necesita su propia pasada con verificación en dispositivo antes de confiar en ella.
+
+## 2026-08-04 — Fase 4, sub-fase 5: pulido (chip de progreso de subtareas)
+
+- **Cambios**: `TaskCard` muestra "N/M" de subtareas completadas junto al icono de
+  recurrencia, con semántica fusionada para lectores de pantalla.
+- **Resultado**: completado y verificado por compilación completa + `assembleDebug`.
+- **Backfill de datos existentes**: ya cubierto por la migración SQL de la sub-fase 1, sin
+  trabajo adicional aquí.
+
+---
+
+**Fase 4 completa: las 5 sub-fases, 8 commits.** Deadline, recordatorios y subtareas
+funcionan de punta a punta (esquema → Edge Function → dominio → creación en UI →
+visualización → notificación) para tareas nuevas. Deuda transversal explícita: sin
+verificación visual/funcional en emulador o dispositivo real en toda la fase; SQL y Edge
+Functions sin compilar (sin Deno/acceso en vivo); iOS sin compilar (sin Xcode); multi-
+notificación real por tarea diferida a una fase futura con verificación en dispositivo; no
+existe edición de una tarea ya creada en toda la app (hallazgo preexistente, no de esta fase).
