@@ -74,6 +74,18 @@ sealed interface RecurrenceRule {
   `kotlinx.datetime` a `kotlin.time.Instant` y estado beta de `expect`/`actual` — no bloquea
   hoy, pero hay que revisarla antes de invertir mucho en el modelo de recurrencia.
 
+## Gap encontrado el 2026-08-04 (durante Fase 4): no existe edición de tarea existente
+
+`AgendaTaskRepository` solo expone `createTask`, `updateTaskDone` (toggle) y `deleteTask` —
+no hay ningún método para cambiar título, hora, etiquetas, etc. de una tarea ya creada, y
+`TaskDetailsOverlay` no ofrece esa acción tampoco (confirmado por ausencia total de una acción
+de edición en `AgendaOverlays.kt`). Hoy, la única forma de "editar" una tarea es borrarla y
+crearla de nuevo. Esto es anterior a esta sesión, no una regresión introducida por Fase 4 —
+pero limita el alcance de deadline/recordatorios/subtareas (sub-fase 2 de
+`FASE4_PROPUESTA.md`): por ahora solo se pueden fijar al crear la tarea, no editar después.
+Un `updateTask(id, draft)` genérico en el repositorio es candidato natural para una fase
+futura, fuera del alcance actual.
+
 ## Notificaciones
 
 Ya auditado y verificado en julio (`FINAL_UI_QA_REPORT.md`): cola FIFO común para

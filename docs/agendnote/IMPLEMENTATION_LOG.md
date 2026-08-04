@@ -101,3 +101,38 @@ sentido estricto del prompt maestro ("no declares validación visual... si no la
 commits totales en esta sesión sobre Fase 2+3. Antes de Fase 4 hace falta una propuesta
 escrita (cambia `schema.sql` + Edge Functions + 4 capas de Kotlin) — se entrega por separado,
 sin implementar código todavía.
+
+## 2026-08-04 — Fase 4, sub-fase 1: esquema + DTOs
+
+- **Alcance**: ver `docs/agendnote/FASE4_PROPUESTA.md`. Decisión de producto (recordatorios
+  como instantes explícitos, no offsets en el backend) tomada según la recomendación propia
+  de la propuesta — el usuario delegó la decisión con "sigue trabajando".
+- **Cambios**: migración SQL aditiva (`deadline_at`, `task_reminders`, `task_subtasks`, RLS
+  deny-all, backfill idempotente de recordatorios implícitos existentes); corregida una
+  omisión preexistente en `policies.sql` (`task_series` nunca se había agregado ahí);
+  `api-tasks/index.ts` gana `attachReminders`/`attachSubtasks`/`attachTaskExtras` y
+  `syncTaskReminders`/`syncTaskSubtasks` (mismo patrón que labels); DTOs Kotlin extendidos
+  (cambio puramente aditivo, sin romper ningún call site existente).
+- **Tests**: ninguno nuevo en este slice (cambio de contrato, sin lógica propia todavía);
+  suite completa 46/46 sin regresión.
+- **Resultado**: Kotlin (DTOs) compilado y verificado. SQL y Edge Functions **no
+  verificados** — sin Deno ni acceso en vivo a Supabase en este entorno.
+
+## 2026-08-04 — Fase 4, sub-fase 2: dominio Kotlin
+
+- **Cambios**: nuevo `core/model/Subtask`; `TaskItem`/`TaskDraft` ganan
+  `deadline: Instant?`, `reminders: List<Instant>`, `subtasks: List<Subtask>`;
+  `SupabaseAgendaTaskRepository.toTaskItem` pasa a `internal` y mapea los tres campos nuevos;
+  `createTask` los envía al backend cuando el draft los trae.
+- **Tests**: 4 tests nuevos (`SupabaseAgendaTaskRepositoryMappingTest`), TDD real (RED por
+  compilación → GREEN). Suite completa: 50/50, debug y release.
+- **Resultado**: completado y verificado (primera cobertura de test que existe para el mapeo
+  DTO↔dominio de este repositorio — antes no había ninguna).
+- **Hallazgo registrado** (ver `ARCHITECTURE_AUDIT.md`): no existe ningún método de edición de
+  tarea existente en todo el repositorio/app (solo crear, alternar hecho/no-hecho, borrar).
+  Preexistente, no introducido por este cambio. Limita el alcance de esta fase:
+  deadline/recordatorios/subtareas solo se pueden fijar al crear la tarea por ahora.
+- **Deuda restante de la fase**: sub-fase 3 (UI de creación con deadline/recordatorios/
+  subtareas), sub-fase 4 (recordatorios múltiples en el sistema de notificaciones — la parte
+  más riesgosa, toca `AndroidReminderScheduler` e `IosNotificationService`), sub-fase 5
+  (pulido: chip de progreso, backfill de datos existentes ya cubierto por la migración).
