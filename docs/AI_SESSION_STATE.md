@@ -1,37 +1,47 @@
 # AI Session State
 
 ## Current task
-Reconciling a comprehensive Spanish-language "master prompt" (professionalization roadmap:
-design system, screen-by-screen polish, security/RLS audit, recurrence/timezone hardening,
-feature roadmap) against the real state of the repo. Produced discovery/audit docs under
-`docs/agendnote/`; no code changed yet. Waiting on user direction for which implementation
-phase to run next.
+Executing the phased plan in `docs/agendnote/IMPLEMENTATION_PLAN.md` (all phases, per user
+direction). Fase 3 (accessibility/state gaps) is complete and verified. Next up: Fase 2
+(security hardening) and a written proposal for Fase 4 (expanded task model) before touching
+schema/Edge Functions/domain/UI for it.
 
 ## Files touched this session
-- Created `docs/agendnote/SCREEN_INVENTORY.md`, `DESIGN_AUDIT.md`, `ARCHITECTURE_AUDIT.md`,
-  `SECURITY_AUDIT.md`, `IMPLEMENTATION_PLAN.md`, `DECISIONS.md`.
-- No source code modified.
+- `docs/agendnote/*.md` (discovery/audit docs + implementation log).
+- Fase 3 code: `PendingUndo`/`AgendaUiState`/`AgendaViewModel`/`AgendaController`/
+  `AgendaScreen` (undo-on-complete snackbar), `GlassSnackbar` (new component),
+  `AccessibilityPreferences` expect/actual + `ReduceMotion.kt` + `GlassBackground` (reduce
+  motion/transparency), `GlassEmptyState` (new shared component) + Agenda/Labels call sites.
+- Tests: `AgendaViewModelTest.kt` (+4), `ReduceMotionTest.kt` (new, +2). 45/45 passing,
+  debug and release.
 
 ## Decisions made
-- Reuse the 2026-07-27 UI/UX audit instead of re-doing it; new work targets only the gaps.
-- Corrected the master prompt's security assumption: AgendNote is single-tenant, no
-  Supabase Auth/RLS-per-user — Edge Functions gate access with one static shared secret,
-  RLS is enabled with zero policies (deny-all direct client access) by design.
-- Stopped exploring the connected Supabase MCP project (`ndiooyyqtaeysnedywer`,
-  "oposibots-ui's Project") once confirmed it's an unrelated product's backend, not
-  AgendNote's. Security audit is based on versioned `supabase/` files only.
+- Corrected the master prompt's security model assumption (single-tenant, no RLS-per-user)
+  and stopped exploring the unrelated Supabase MCP project - see `docs/AI_DECISION_LOG.md`.
+- User confirmed: stays single-tenant permanently; Supabase audit stays repo-based (no MCP
+  reconnect); execute all phases of the plan, not just one.
+- Followed real TDD (RED via compile error, then GREEN) for every piece of new logic that
+  could be tested without Compose UI test tooling (which this repo doesn't have). Platform
+  `actual` code (Android Settings observer, iOS UIAccessibility reads) has no test harness in
+  this repo and was verified only by compiling the Android variant for real; iOS actuals are
+  unverified (no macOS/Xcode here) and documented as such everywhere they appear.
 
 ## Pending work
-- User must answer: (1) single-tenant permanently or multi-user later? (2) connect the
-  correct Supabase project for a live audit, or stay repo-based? (3) which
-  `docs/agendnote/IMPLEMENTATION_PLAN.md` phase to execute first.
-- No verification run this session (no build/tests executed) — nothing changed that would
-  need it yet.
+- Fase 2 (security hardening: rate limiting, idempotency, log/payload audit, APP_SECRET
+  client storage review).
+- Fase 4 (expanded task model: planificada/deadline/recordatorio, subtasks, multiple
+  reminders) - needs a written proposal (schema + API shape) before implementation, since it
+  touches `schema.sql` + Edge Functions + 4 Kotlin layers.
+- Fases 5-8 depend on Fase 4's model.
+- Visual/on-device QA for all three Fase 3 slices - no emulator was launched this session.
 
 ## Commands run
-- Read-only: git log, git status, file globs/greps, Supabase `list_projects`/`list_tables`/
-  `get_advisors` (read-only, against the unrelated connected project only).
+- `.\gradlew.bat :composeApp:testDebugUnitTest` / `:testReleaseUnitTest` (several times,
+  each after a RED or GREEN step) - all green, 45/45, both variants.
+- Read-only Supabase MCP calls against the unrelated `oposibots-ui` project (see
+  `docs/agendnote/SECURITY_AUDIT.md`), stopped once the mismatch was confirmed.
 
 ## Failures / blockers
-- Supabase MCP connector is scoped to the wrong project for AgendNote; live DB security
-  audit isn't possible until the user reconnects it or confirms repo-based review is enough.
+- iOS (`iosMain`) code cannot be compiled or verified in this Windows environment - same
+  known constraint as the 2026-07-27 audit. Every iOS-affecting change this session is
+  flagged as unverified in its commit message.

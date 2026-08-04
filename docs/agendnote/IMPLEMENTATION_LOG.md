@@ -28,3 +28,53 @@ cambios, tests, resultado, deuda restante.
   ningún emulador en esta pasada) — pendiente antes de dar el slice por cerrado en un
   sentido de QA visual. El mensaje del snackbar usa un literal en línea (no hay
   `strings.xml` en el proyecto — consistente con el resto del código existente).
+
+## 2026-08-04 — Fase 3, slice 2: Reduced motion / reduced transparency (GlassBackground)
+
+- **Pantalla**: transversal (`GlassBackground` es compartido por las 4 pestañas).
+- **Iteraciones**: 1 para la parte testeable (`glassImageFadeDurationMillis`, RED por error
+  de compilación → GREEN); el resto (señal de plataforma + cableado en `GlassBackground`) no
+  tiene un ciclo RED/GREEN propio porque el repo no tiene tooling para probarlo
+  automáticamente (sin Robolectric/instrumented tests para leer `Settings.Global` en Android
+  ni un target de test iOS para UIKit).
+- **Cambios**:
+  - `core/platform/AccessibilityPreferences.kt` (commonMain): `@Composable expect fun
+    rememberReduceMotionEnabled()` / `rememberReduceTransparencyEnabled()`.
+  - Android `actual`: `ContentObserver` reactivo sobre
+    `Settings.Global.ANIMATOR_DURATION_SCALE`; reduce transparency siempre `false` (Android no
+    tiene equivalente público estable).
+  - iOS `actual`: lectura puntual (no reactiva) de `UIAccessibilityIsReduceMotionEnabled()` /
+    `UIAccessibilityIsReduceTransparencyEnabled()` — se evitó a propósito la variante reactiva
+    con `NSNotificationCenter` porque no se pudo compilar ni verificar en este entorno.
+  - `core/ui/motion/ReduceMotion.kt`: `glassImageFadeDurationMillis(reduceMotion)`, función
+    pura, con test unitario real.
+  - `GlassBackground`: el fade de imagen de fondo usa esa duración; las 3 manchas de luz
+    decorativas + el grano se ocultan con reduce transparency.
+- **Tests**: 2 tests nuevos (`ReduceMotionTest.kt`). Suite completa: 45/45 en verde,
+  debug y release.
+- **Resultado**: Completado en Android (compilado de verdad). **No completado/verificado en
+  iOS** — sin macOS/Xcode en este entorno, es código no compilado.
+- **Deuda restante**: aplicar reduce transparency a `GlassSurface` (tarjetas, diálogos,
+  chips) — se dejó fuera para no tocar la opacidad de todo el sistema Glass sin QA visual.
+  Reactividad de iOS a mitad de sesión (NSNotificationCenter) queda pendiente de una máquina
+  con Xcode.
+
+## 2026-08-04 — Fase 3, slice 3: GlassEmptyState compartido (Agenda + Etiquetas)
+
+- **Pantallas**: Agenda, Etiquetas.
+- **Iteraciones**: 1 (refactor puro, sin comportamiento nuevo).
+- **Cambios**: nuevo `core/ui/components/GlassEmptyState.kt`; ambas pantallas lo consumen
+  conservando su propio contenedor. Delta visual deliberado: opacidad del subtítulo unificada
+  a 0.7 (Etiquetas usaba 0.75).
+- **Tests**: ninguno nuevo (refactor sin lógica nueva); la suite existente (45 tests) actúa
+  de red de regresión.
+- **Resultado**: Completado y verificado por compilación (debug + release, ambos
+  `BUILD SUCCESSFUL`).
+- **Deuda restante**: sin verificación visual en dispositivo/emulador.
+
+---
+
+**Fase 3 completa.** 3 slices, 3 commits, 45/45 tests en verde en ambas variantes. Deuda
+transversal: ninguno de los tres slices tuvo confirmación visual en emulador/dispositivo real
+en esta pasada — queda como QA visual pendiente antes de considerar la fase 100% cerrada en
+sentido estricto del prompt maestro ("no declares validación visual... si no la hiciste").
