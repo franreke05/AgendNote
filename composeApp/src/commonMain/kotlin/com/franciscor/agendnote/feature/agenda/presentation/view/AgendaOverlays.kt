@@ -71,6 +71,8 @@ import com.franciscor.agendnote.core.model.LabelTag
 import com.franciscor.agendnote.core.model.Subtask
 import com.franciscor.agendnote.core.model.TaskDraft
 import com.franciscor.agendnote.core.model.TaskItem
+import com.franciscor.agendnote.core.nlp.QuickCaptureResult
+import com.franciscor.agendnote.core.nlp.parseQuickCapture
 import com.franciscor.agendnote.core.platform.currentTimeMillis
 import com.franciscor.agendnote.core.ui.components.ColorSwatch
 import com.franciscor.agendnote.core.ui.components.GlassActionButton
@@ -191,6 +193,14 @@ internal fun NewTaskSheet(
 
     val isPastSelected = selectedDate < today
     val sheetBlur = if (showTimePicker) layout.size(14.dp, 10.dp) else 0.dp
+
+    // Sugerencia de captura rapida: se recalcula en cada cambio de titulo, pero nunca aplica
+    // nada por si sola - el usuario tiene que tocar "Aplicar" (ver docs/agendnote/
+    // IMPLEMENTATION_PLAN.md, Fase 6). Al aplicarla, el titulo queda limpio y la sugerencia
+    // desaparece sola porque el texto resultante ya no tiene nada que reconocer.
+    val quickCaptureSuggestion = remember(title, today) {
+        parseQuickCapture(title, today).takeIf { it.date != null || it.time != null }
+    }
 
     // Recordatorios se calculan como offsets sobre un instante de referencia: la hora
     // planificada si hay una, si no el fin del día límite. Sin ninguna de las dos no hay nada
@@ -445,6 +455,58 @@ internal fun NewTaskSheet(
                                 fontSize = layout.text(18.sp, 16.sp),
                             ),
                         )
+                        if (quickCaptureSuggestion != null) {
+                            GlassSurface(
+                                shape = RoundedCornerShape(layout.size(14.dp, 12.dp)),
+                                tint = GlassTheme.tokens.glassFillStrong,
+                                shadowElevation = 0.dp,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(
+                                            horizontal = layout.width(12.dp, 10.dp),
+                                            vertical = layout.height(8.dp, 6.dp),
+                                        ),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text(
+                                        text = "Detecté: " + describeQuickCaptureSuggestion(quickCaptureSuggestion),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = GlassTheme.tokens.textSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false),
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                            .clickable(
+                                                role = Role.Button,
+                                                onClickLabel = "Aplicar fecha y hora detectadas",
+                                                interactionSource = remember { MutableInteractionSource() },
+                                                indication = null,
+                                                onClick = {
+                                                    title = quickCaptureSuggestion.title
+                                                    quickCaptureSuggestion.date?.let {
+                                                        if (it >= today) selectedDate = it
+                                                    }
+                                                    quickCaptureSuggestion.time?.let { selectedTime = it }
+                                                },
+                                            ),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            text = "Aplicar",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = GlassTheme.tokens.accentOnLight,
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     Column(verticalArrangement = Arrangement.spacedBy(layout.height(6.dp, 5.dp))) {
@@ -2126,6 +2188,14 @@ private fun currentTime(timeZone: TimeZone): LocalTime {
 
 private fun formatShortDateWithYear(date: LocalDate): String {
     return "${date.dayOfMonth} ${monthName(date.month, short = true)} ${date.year}"
+}
+
+private fun describeQuickCaptureSuggestion(suggestion: QuickCaptureResult): String {
+    val parts = listOfNotNull(
+        suggestion.date?.let(::formatShortDateWithYear),
+        suggestion.time?.let(::formatTime),
+    )
+    return parts.joinToString(", ")
 }
 
 private fun weekDayLabels(): List<String> {
