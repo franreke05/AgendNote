@@ -17,3 +17,6 @@ Do not request notifications at startup. Start the notification and exact-alarm 
 
 ## 2026-07-27 — Serialize reminder mutations
 Use one common FIFO channel to process schedule/cancel commands off the UI thread. This preserves mutation order, avoids stale alarms and keeps common JVM tests independent of a Main dispatcher.
+
+## 2026-08-04 — AgendNote's security model is single-tenant by design, not RLS-per-user
+`tasks`/`notes`/`labels`/etc. have no `user_id` column and no Supabase Auth. RLS is enabled with zero policies (deny-all direct client access); Edge Functions running under `service_role` gate access with one static shared secret (`x-app-secret`, timing-safe compared). Full detail in `docs/agendnote/SECURITY_AUDIT.md`. Do not "fix" this by adding `auth.uid()` policies without a deliberate multi-user redesign decision.
