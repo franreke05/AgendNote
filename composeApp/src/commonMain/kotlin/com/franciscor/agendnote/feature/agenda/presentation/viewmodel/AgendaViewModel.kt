@@ -15,7 +15,6 @@ import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaDayUiSta
 import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaUiState
 import com.franciscor.agendnote.feature.agenda.presentation.model.PendingUndo
 import com.franciscor.agendnote.feature.agenda.presentation.model.SaveResult
-import io.ktor.client.plugins.ResponseException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -282,8 +281,9 @@ class AgendaViewModel(
         }
 
         val series = seriesResult.getOrElse { error ->
-            setError(date, resolveServerError(error))
-            return SaveResult(false, resolveServerError(error))
+            val message = resolveServerError(error, fallback = "No se pudo crear la serie recurrente")
+            setError(date, message)
+            return SaveResult(false, message)
         }
 
         val materialized = runCatching { materializer.materializeSeries(series, date) }
@@ -487,11 +487,17 @@ class AgendaViewModel(
     }
 }
 
-private fun resolveServerError(error: Throwable): String {
-    if (error is ResponseException) {
-        error.message?.takeIf { it.isNotBlank() }?.let { return it }
-    }
-    return error.message?.takeIf { it.isNotBlank() } ?: "No se pudo guardar la tarea"
+/**
+ * Always a fixed, human, Spanish message - never [error]'s own text. `ResponseException` and
+ * the Postgres/Edge Function errors it wraps carry raw HTTP body text (constraint names, table
+ * names, English diagnostic strings); surfacing that directly in the UI leaks internal schema
+ * details and reads as a bug even when the underlying failure is mundane (see
+ * docs/agendnote/SECURITY_AUDIT.md). If per-failure detail is ever needed, log [error] to a
+ * developer-only channel instead of returning it to the caller - this project has none today.
+ */
+@Suppress("UNUSED_PARAMETER")
+private fun resolveServerError(error: Throwable, fallback: String = "No se pudo guardar la tarea"): String {
+    return fallback
 }
 
 private fun currentDate(timeZone: TimeZone): LocalDate {

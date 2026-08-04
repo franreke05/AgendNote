@@ -300,6 +300,33 @@ class AgendaViewModelTest {
     }
 
     @Test
+    fun `saveTask never surfaces the raw backend exception message`() = runTest {
+        // Simulates what a Ktor ResponseException / Postgres error actually looks like: a
+        // technical, English, schema-revealing string that must never reach the UI as-is (see
+        // docs/agendnote/SECURITY_AUDIT.md - "nunca mostrar directamente excepciones... de
+        // Postgres").
+        val repository = FakeAgendaTaskRepository(
+            createTaskHandler = { _, _ ->
+                error(
+                    "Client request(POST https://x.supabase.co/api-tasks) invalid: 500 " +
+                        "Internal Server Error. Text: \"{\\\"error\\\":\\\"duplicate key value " +
+                        "violates unique constraint tasks_appointment_id_key\\\"}\"",
+                )
+            },
+        )
+        val viewModel = AgendaViewModel(repository, timeZone = timeZone, initialDate = baseDate)
+
+        val result = viewModel.saveTask(
+            date = baseDate,
+            draft = TaskDraft(title = "Nueva", details = null, time = null, labels = emptyList()),
+        )
+
+        assertFalse(result.success)
+        assertEquals("No se pudo guardar la tarea", result.errorMessage)
+        assertEquals("No se pudo guardar la tarea", viewModel.dayUiState(baseDate).errorMessage)
+    }
+
+    @Test
     fun `loadMonth populates tasksByDate for every day in the month`() = runTest {
         val month = LocalDate(2026, 3, 1)
         val taskOnDay5 = task("t-1", "Reunion")
@@ -391,6 +418,7 @@ private class FakeAgendaTaskRepository(
     private val fetchTasksInRangeHandler: suspend (LocalDate, LocalDate) -> Map<LocalDate, List<TaskItem>> =
         { _, _ -> emptyMap() },
     private val updateTaskDoneHandler: (suspend (String, Boolean) -> TaskItem)? = null,
+    private val createTaskHandler: (suspend (LocalDate, TaskDraft) -> TaskItem)? = null,
 ) : AgendaTaskRepository {
     override suspend fun fetchTasks(date: LocalDate): List<TaskItem> = fetchTasksHandler(date)
 
@@ -398,6 +426,7 @@ private class FakeAgendaTaskRepository(
         fetchTasksInRangeHandler(from, to)
 
     override suspend fun createTask(date: LocalDate, draft: TaskDraft): TaskItem {
+        createTaskHandler?.let { return it(date, draft) }
         return TaskItem(
             id = "created-${date.dayOfMonth}",
             title = draft.title,
