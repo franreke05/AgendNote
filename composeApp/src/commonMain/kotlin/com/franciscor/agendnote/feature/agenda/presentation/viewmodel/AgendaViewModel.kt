@@ -431,15 +431,21 @@ class AgendaViewModel(
     }
 
     private suspend fun reconcileDayNotifications(command: NotificationCommand.ReconcileDay) {
+        // A task can now request a native alarm/notification either via an explicit reminder
+        // (task.reminders, see ReminderResolution.earliestReminderInstant) or, for tasks that
+        // predate that model, via a plain planned time (task.time). Either is enough to need
+        // scheduling; neither is enough to cancel.
+        fun hasSchedulableReminder(task: TaskItem) = task.time != null || task.reminders.isNotEmpty()
+
         val currentById = command.currentTasks.associateBy { it.id }
         command.previousTasks.forEach { previous ->
             val current = currentById[previous.id]
-            if (current == null || current.isDone || current.time == null) {
+            if (current == null || current.isDone || !hasSchedulableReminder(current)) {
                 runCatching { notificationService.cancelTaskNotification(previous.id) }
             }
         }
         command.currentTasks
-            .filter { !it.isDone && it.time != null }
+            .filter { !it.isDone && hasSchedulableReminder(it) }
             .forEach { task ->
                 runCatching { notificationService.scheduleTaskNotification(task, command.date) }
             }

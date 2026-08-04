@@ -52,11 +52,7 @@ object AndroidNotificationService : NotificationService {
 
     override suspend fun scheduleTaskNotification(task: TaskItem, taskDate: LocalDate) {
         val context = applicationContext ?: return
-        val time = task.time ?: return
-        val triggerAt = Calendar.getInstance().apply {
-            clear()
-            set(taskDate.year, taskDate.month.ordinal, taskDate.day, time.hour, time.minute, 0)
-        }.timeInMillis
+        val triggerAt = triggerAtMillis(task, taskDate) ?: return
         AndroidReminderScheduler.schedule(
             context = context,
             reminder = StoredReminder(
@@ -66,6 +62,22 @@ object AndroidNotificationService : NotificationService {
                 triggerAtMillis = triggerAt,
             ),
         )
+    }
+
+    /**
+     * Prefers the earliest of [TaskItem.reminders] (see [earliestReminderInstant]); falls back
+     * to the legacy planned-time computation for tasks that predate that field. Only one alarm
+     * is scheduled per task even when there are several reminders - see
+     * [com.franciscor.agendnote.core.notifications.earliestReminderInstant]'s doc comment for
+     * why, and docs/agendnote/FASE4_PROPUESTA.md for the follow-up.
+     */
+    private fun triggerAtMillis(task: TaskItem, taskDate: LocalDate): Long? {
+        earliestReminderInstant(task)?.let { return it.toEpochMilliseconds() }
+        val time = task.time ?: return null
+        return Calendar.getInstance().apply {
+            clear()
+            set(taskDate.year, taskDate.month.ordinal, taskDate.day, time.hour, time.minute, 0)
+        }.timeInMillis
     }
 
     override suspend fun cancelTaskNotification(taskId: String) {
