@@ -106,10 +106,19 @@ internal fun ConfirmDeleteDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    // Borrar una tarea materializada de una serie ya actúa como "saltar esta ocurrencia": el
+    // generador de series nunca vuelve a intentar una fecha que su cursor ya dejó atrás (ver
+    // SeriesMaterializer/planMaterialization). Deja explícito que las demás apariciones no se
+    // tocan, en vez de que el usuario tenga que asumirlo.
+    val message = if (task.seriesId != null) {
+        "Se borrará \"${task.title}\". Es parte de una tarea recurrente: las demás apariciones de la serie no se ven afectadas."
+    } else {
+        "Se borrará \"${task.title}\""
+    }
     GlassConfirmDialog(
         visible = true,
         title = "¿Eliminar tarea?",
-        message = "Se borrará \"${task.title}\"",
+        message = message,
         onConfirm = onConfirm,
         onDismiss = onDismiss,
         confirmText = "Eliminar",
