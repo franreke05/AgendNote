@@ -152,3 +152,20 @@ sin implementar código todavía.
 - **Pendiente, deliberadamente separado en commits propios**: sección de recordatorios
   (presets sobre el instante planificado o el deadline) y checklist de subtareas en el mismo
   sheet; sub-fase 4 (recordatorios múltiples en el scheduler de notificaciones).
+
+## 2026-08-04 — Fase 4, sub-fase 3 (partes 2-3): recordatorios y subtareas en el sheet
+
+- **Cambios**: sección "Recordatorios" (presets En el momento/10 min/1 hora/1 día antes,
+  multi-selección, oculta si no hay hora planificada ni deadline); checklist de "Subtareas"
+  (añadir/quitar, sin editar `is_done` al crear). `TaskDetailsOverlay` muestra ambas cosas en
+  modo lectura.
+- **Bug encontrado durante la implementación, no llegó a commitearse roto**: smart cast
+  imposible sobre `selectedTime`/`deadlineDate` (propiedades delegadas por `remember`) dentro
+  del cálculo de `reminderReferenceInstant` — corregido copiando a locales antes del `when`.
+  Detectado por la propia compilación, no por inspección manual.
+- **Tests**: ninguno nuevo (UI pura). Suite sin regresión: 50/50.
+- **Resultado**: completado y verificado — `testDebugUnitTest`, `testReleaseUnitTest` y
+  `androidApp:assembleDebug`, los tres `BUILD SUCCESSFUL`. Sin verificación visual.
+- **Con esto se cierra la sub-fase 3.** Sigue la sub-fase 4 (recordatorios múltiples en el
+  scheduler real de notificaciones) — hoy los recordatorios ya se guardan en el backend y se
+  ven en la UI, pero todavía no disparan más de una notificación por tarea.
