@@ -6,7 +6,7 @@ import { requireAppSecret } from "../_shared/auth.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("SB_URL");
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SERVICE_ROLE_KEY");
-const TASK_SELECT = "id,title,body,day,due_at,slot_end_at,is_done,order_index,created_at,updated_at,notified_at,source,booking_status,appointment_id,client_name,client_email,client_phone,series_id";
+const TASK_SELECT = "id,title,body,day,due_at,slot_end_at,deadline_at,is_done,order_index,created_at,updated_at,notified_at,source,booking_status,appointment_id,client_name,client_email,client_phone,series_id";
 const DEFAULT_LABEL_COLOR = "#8C94A6";
 
 if (!supabaseUrl || !serviceKey) {
@@ -80,6 +80,7 @@ function buildInsertPayload(body: Record<string, unknown>) {
     day: normalizeRequiredDay(body.day),
     due_at: normalizeOptionalString(body.due_at),
     slot_end_at: normalizeOptionalString(body.slot_end_at),
+    deadline_at: normalizeOptionalString(body.deadline_at),
     is_done: Boolean(body.is_done ?? false),
     order_index: Number(body.order_index ?? 0),
     source: resolveSource(body, appointmentId) ?? "manual",
@@ -112,6 +113,9 @@ function buildUpdatePayload(body: Record<string, unknown>, options: { inferBooki
   }
   if (hasField(body, "slot_end_at")) {
     updates.slot_end_at = normalizeOptionalString(body.slot_end_at);
+  }
+  if (hasField(body, "deadline_at")) {
+    updates.deadline_at = normalizeOptionalString(body.deadline_at);
   }
   if (hasField(body, "is_done")) {
     updates.is_done = Boolean(body.is_done);
@@ -167,6 +171,68 @@ async function attachLabels(tasks: Array<Record<string, unknown>>) {
     ...task,
     labels: labelMap.get(String(task.id)) ?? [],
   }));
+}
+
+async function attachReminders(tasks: Array<Record<string, unknown>>) {
+  if (tasks.length === 0) return [];
+  const ids = tasks.map((task) => String(task.id));
+
+  const { data, error } = await supabase
+    .from("task_reminders")
+    .select("task_id,remind_at")
+    .in("task_id", ids)
+    .order("remind_at", { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  const reminderMap = new Map<string, string[]>();
+  for (const row of data ?? []) {
+    const taskId = String(row.task_id);
+    if (!reminderMap.has(taskId)) reminderMap.set(taskId, []);
+    reminderMap.get(taskId)?.push(String(row.remind_at));
+  }
+
+  return tasks.map((task) => ({
+    ...task,
+    reminders: reminderMap.get(String(task.id)) ?? [],
+  }));
+}
+
+async function attachSubtasks(tasks: Array<Record<string, unknown>>) {
+  if (tasks.length === 0) return [];
+  const ids = tasks.map((task) => String(task.id));
+
+  const { data, error } = await supabase
+    .from("task_subtasks")
+    .select("id,task_id,title,is_done,order_index")
+    .in("task_id", ids)
+    .order("order_index", { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  const subtaskMap = new Map<string, Array<Record<string, unknown>>>();
+  for (const row of data ?? []) {
+    const taskId = String(row.task_id);
+    if (!subtaskMap.has(taskId)) subtaskMap.set(taskId, []);
+    subtaskMap.get(taskId)?.push({
+      id: row.id,
+      title: row.title,
+      is_done: row.is_done,
+      order_index: row.order_index,
+    });
+  }
+
+  return tasks.map((task) => ({
+    ...task,
+    subtasks: subtaskMap.get(String(task.id)) ?? [],
+  }));
+}
+
+/** Attaches labels, reminders and subtasks in one call - the shape every response needs. */
+async function attachTaskExtras(tasks: Array<Record<string, unknown>>) {
+  const withLabels = await attachLabels(tasks);
+  const withReminders = await attachReminders(withLabels);
+  return attachSubtasks(withReminders);
 }
 
 async function fetchTaskByAppointmentId(appointmentId: string) {
@@ -269,6 +335,78 @@ async function syncTaskLabels(taskId: string, labelIds: unknown, labelNames: unk
   if (insertError) throw new Error(insertError.message);
 }
 
+/** Replaces all reminders for a task with the given list of ISO instants (deduplicated). */
+async function syncTaskReminders(taskId: string, reminders: unknown) {
+  const normalized = normalizeStringArray(reminders) ?? [];
+
+  const { error: deleteError } = await supabase
+    .from("task_reminders")
+    .delete()
+    .eq("task_id", taskId);
+  if (deleteError) throw new Error(deleteError.message);
+
+  if (normalized.length === 0) return;
+
+  const rows = normalized.map((remindAt) => ({
+    task_id: taskId,
+    remind_at: remindAt,
+  }));
+  const { error: insertError } = await supabase.from("task_reminders").insert(rows);
+  if (insertError) throw new Error(insertError.message);
+}
+
+interface SubtaskInput {
+  title: string;
+  is_done: boolean;
+  order_index: number;
+}
+
+function normalizeSubtaskArray(value: unknown): SubtaskInput[] {
+  if (!Array.isArray(value)) return [];
+  const normalized: SubtaskInput[] = [];
+  value.forEach((item, index) => {
+    if (typeof item !== "object" || item === null) return;
+    const record = item as Record<string, unknown>;
+    const title = normalizeOptionalString(record.title);
+    if (!title) return;
+    normalized.push({
+      title,
+      is_done: Boolean(record.is_done ?? false),
+      order_index: Number(record.order_index ?? index),
+    });
+  });
+  return normalized;
+}
+
+/**
+ * Replaces all subtasks for a task with the given list. NOTE: like syncTaskLabels/
+ * syncTaskReminders, this deletes and reinserts rather than upserting by id - every synced
+ * subtask gets a new id. Acceptable because this only runs when the client explicitly sends an
+ * updated "subtasks" array (see hasField(body, "subtasks") below), not on unrelated task
+ * edits; still, client-side list keys should not assume a subtask's id survives a save that
+ * touches the subtasks array.
+ */
+async function syncTaskSubtasks(taskId: string, subtasks: unknown) {
+  const normalized = normalizeSubtaskArray(subtasks);
+
+  const { error: deleteError } = await supabase
+    .from("task_subtasks")
+    .delete()
+    .eq("task_id", taskId);
+  if (deleteError) throw new Error(deleteError.message);
+
+  if (normalized.length === 0) return;
+
+  const rows = normalized.map((subtask) => ({
+    task_id: taskId,
+    title: subtask.title,
+    is_done: subtask.is_done,
+    order_index: subtask.order_index,
+  }));
+  const { error: insertError } = await supabase.from("task_subtasks").insert(rows);
+  if (insertError) throw new Error(insertError.message);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -300,8 +438,8 @@ serve(async (req) => {
       const { data, error } = await query;
       if (error) return internalErrorResponse(error);
 
-      const tasksWithLabels = await attachLabels(data ?? []);
-      return jsonResponse({ tasks: tasksWithLabels });
+      const tasksWithExtras = await attachTaskExtras(data ?? []);
+      return jsonResponse({ tasks: tasksWithExtras });
     }
 
     if (req.method === "POST") {
@@ -310,6 +448,8 @@ serve(async (req) => {
       normalizeRequiredDay(body?.day);
       const appointmentId = normalizeOptionalString(body?.appointment_id);
       const hasLabelSync = hasField(body, "label_ids") || hasField(body, "label_names");
+      const hasReminderSync = hasField(body, "reminders");
+      const hasSubtaskSync = hasField(body, "subtasks");
 
       if (appointmentId) {
         const existingTask = await fetchTaskByAppointmentId(appointmentId);
@@ -326,9 +466,15 @@ serve(async (req) => {
           if (hasLabelSync) {
             await syncTaskLabels(String(existingTask.id), body?.label_ids, body?.label_names);
           }
+          if (hasReminderSync) {
+            await syncTaskReminders(String(existingTask.id), body?.reminders);
+          }
+          if (hasSubtaskSync) {
+            await syncTaskSubtasks(String(existingTask.id), body?.subtasks);
+          }
 
-          const tasksWithLabels = await attachLabels([data as Record<string, unknown>]);
-          return jsonResponse({ task: tasksWithLabels[0] });
+          const tasksWithExtras = await attachTaskExtras([data as Record<string, unknown>]);
+          return jsonResponse({ task: tasksWithExtras[0] });
         }
       }
 
@@ -343,9 +489,15 @@ serve(async (req) => {
       if (hasLabelSync) {
         await syncTaskLabels(String(data.id), body?.label_ids, body?.label_names);
       }
+      if (hasReminderSync) {
+        await syncTaskReminders(String(data.id), body?.reminders);
+      }
+      if (hasSubtaskSync) {
+        await syncTaskSubtasks(String(data.id), body?.subtasks);
+      }
 
-      const tasksWithLabels = await attachLabels([data as Record<string, unknown>]);
-      return jsonResponse({ task: tasksWithLabels[0] }, 201);
+      const tasksWithExtras = await attachTaskExtras([data as Record<string, unknown>]);
+      return jsonResponse({ task: tasksWithExtras[0] }, 201);
     }
 
     if (req.method === "PATCH") {
@@ -380,9 +532,15 @@ serve(async (req) => {
       if (hasField(body, "label_ids") || hasField(body, "label_names")) {
         await syncTaskLabels(taskId, body?.label_ids, body?.label_names);
       }
+      if (hasField(body, "reminders")) {
+        await syncTaskReminders(taskId, body?.reminders);
+      }
+      if (hasField(body, "subtasks")) {
+        await syncTaskSubtasks(taskId, body?.subtasks);
+      }
 
-      const tasksWithLabels = await attachLabels([task as Record<string, unknown>]);
-      return jsonResponse({ task: tasksWithLabels[0] });
+      const tasksWithExtras = await attachTaskExtras([task as Record<string, unknown>]);
+      return jsonResponse({ task: tasksWithExtras[0] });
     }
 
     if (req.method === "DELETE") {

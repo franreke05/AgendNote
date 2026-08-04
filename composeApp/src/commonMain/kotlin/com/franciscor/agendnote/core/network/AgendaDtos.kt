@@ -10,6 +10,14 @@ data class LabelDto(
 )
 
 @Serializable
+data class SubtaskDto(
+    val id: String = "",
+    val title: String,
+    val is_done: Boolean = false,
+    val order_index: Int = 0,
+)
+
+@Serializable
 data class TaskDto(
     val id: String,
     val title: String,
@@ -17,10 +25,13 @@ data class TaskDto(
     val day: String,
     val due_at: String? = null,
     val slot_end_at: String? = null,
+    val deadline_at: String? = null,
     val is_done: Boolean = false,
     val order_index: Int = 0,
     val labels: List<LabelDto> = emptyList(),
     val series_id: String? = null,
+    val reminders: List<String> = emptyList(),
+    val subtasks: List<SubtaskDto> = emptyList(),
 )
 
 @Serializable
@@ -56,11 +67,14 @@ data class CreateTaskRequest(
     val day: String,
     val due_at: String? = null,
     val slot_end_at: String? = null,
+    val deadline_at: String? = null,
     val is_done: Boolean = false,
     val order_index: Int = 0,
     val label_ids: List<String> = emptyList(),
     val label_names: List<String> = emptyList(),
     val series_id: String? = null,
+    val reminders: List<String>? = null,
+    val subtasks: List<SubtaskDto>? = null,
 )
 
 @Serializable
@@ -71,10 +85,13 @@ data class UpdateTaskRequest(
     val day: String? = null,
     val due_at: String? = null,
     val slot_end_at: String? = null,
+    val deadline_at: String? = null,
     val is_done: Boolean? = null,
     val order_index: Int? = null,
     val label_ids: List<String>? = null,
     val label_names: List<String>? = null,
+    val reminders: List<String>? = null,
+    val subtasks: List<SubtaskDto>? = null,
 )
 
 @Serializable
