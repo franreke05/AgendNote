@@ -190,6 +190,16 @@ internal fun NewTaskSheet(
     // Los offsets elegidos no se limpian si la referencia cambia (p. ej. el usuario quita la
     // hora y deja solo el deadline) - siguen siendo válidos relativos a la nueva referencia.
 
+    // Preserva el comportamiento previo a esta fase: una tarea con hora siempre generaba un
+    // aviso a esa hora, sin que el usuario tuviera que pensar en "recordatorios" como concepto
+    // aparte. Si hay hora y todavía no se eligió ningún preset, se preselecciona "En el
+    // momento" (visible y desmarcable, no un valor oculto que solo aparece al guardar).
+    LaunchedEffect(selectedTime) {
+        if (selectedTime != null && selectedReminderOffsetMinutes.isEmpty()) {
+            selectedReminderOffsetMinutes.add(0L)
+        }
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
