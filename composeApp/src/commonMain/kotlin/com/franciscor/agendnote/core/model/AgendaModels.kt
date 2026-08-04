@@ -6,6 +6,7 @@ import com.franciscor.agendnote.feature.agenda.domain.RecurrenceRule
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
+import kotlinx.serialization.Serializable
 
 @Immutable
 data class LabelTag(
@@ -50,6 +51,25 @@ data class TaskDraft(
     val deadline: Instant? = null,
     val reminders: List<Instant> = emptyList(),
     val subtasks: List<Subtask> = emptyList(),
+)
+
+/**
+ * A reusable task shape the user saved for quick reuse (Fase 7 - see
+ * docs/agendnote/FASE7_EVALUACION.md). Persisted client-side as JSON under a single
+ * `api-settings` key (`SettingsRepository.fetchTaskTemplates`/`saveTaskTemplates`) - no new
+ * backend table. Deliberately carries no absolute date/time: applying a template only fills
+ * title/details/labels/reminder offsets/subtasks, the user still picks when.
+ */
+@Immutable
+@Serializable
+data class TaskTemplate(
+    val id: String,
+    val name: String,
+    val title: String,
+    val details: String? = null,
+    val labelIds: List<String> = emptyList(),
+    val reminderOffsetMinutes: List<Long> = emptyList(),
+    val subtaskTitles: List<String> = emptyList(),
 )
 
 @Immutable

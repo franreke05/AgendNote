@@ -74,6 +74,7 @@ import com.franciscor.agendnote.core.model.LabelTag
 import com.franciscor.agendnote.core.model.Subtask
 import com.franciscor.agendnote.core.model.TaskDraft
 import com.franciscor.agendnote.core.model.TaskItem
+import com.franciscor.agendnote.core.model.TaskTemplate
 import com.franciscor.agendnote.core.nlp.QuickCaptureResult
 import com.franciscor.agendnote.core.nlp.parseQuickCapture
 import com.franciscor.agendnote.core.platform.currentTimeMillis
@@ -322,6 +323,8 @@ internal fun NewTaskSheet(
     onDismiss: () -> Unit,
     onSave: (LocalDate, TaskDraft, (SaveResult) -> Unit) -> Unit,
     onSaveRecurring: (LocalDate, TaskDraft, RecurrenceRule, RecurrenceEnd, (SaveResult) -> Unit) -> Unit,
+    templates: List<TaskTemplate> = emptyList(),
+    onSaveTemplate: suspend (TaskTemplate) -> Boolean = { false },
 ) {
     val layout = AppLayout.metrics
     val timeZone = remember { TimeZone.currentSystemDefault() }
@@ -345,6 +348,7 @@ internal fun NewTaskSheet(
     val selectedReminderOffsetMinutes = remember { mutableStateListOf<Long>() }
     val subtaskTitles = remember { mutableStateListOf<String>() }
     var newSubtaskTitle by remember { mutableStateOf("") }
+    var isSavingTemplate by remember { mutableStateOf(false) }
     val selectedLabelIds = remember { mutableStateListOf<String>() }
     var newLabelName by remember { mutableStateOf("") }
     var isCreatingLabel by remember { mutableStateOf(false) }
@@ -507,6 +511,33 @@ internal fun NewTaskSheet(
                                 }
                             }
                         }
+
+                        if (templates.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 5.dp)),
+                            ) {
+                                templates.forEach { template ->
+                                    RecurrenceOptionChip(
+                                        text = template.name,
+                                        selected = false,
+                                        onClick = {
+                                            title = template.title
+                                            details = template.details.orEmpty()
+                                            selectedLabelIds.clear()
+                                            selectedLabelIds.addAll(
+                                                template.labelIds.filter { id -> labels.any { it.id == id } },
+                                            )
+                                            selectedReminderOffsetMinutes.clear()
+                                            selectedReminderOffsetMinutes.addAll(template.reminderOffsetMinutes)
+                                            subtaskTitles.clear()
+                                            subtaskTitles.addAll(template.subtaskTitles)
+                                        },
+                                    )
+                                }
+                            }
+                        }
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
@@ -943,6 +974,34 @@ internal fun NewTaskSheet(
                                 },
                             )
                         }
+                        GlassActionButton(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(layout.height(46.dp, 44.dp)),
+                            text = if (isSavingTemplate) "Guardando plantilla..." else "Guardar como plantilla",
+                            enabled = title.isNotBlank() && !isSavingTemplate,
+                            tint = GlassTheme.tokens.glassFill,
+                            textColor = GlassTheme.tokens.textSecondary,
+                            onClick = {
+                                val trimmedTitle = title.trim()
+                                if (trimmedTitle.isEmpty()) return@GlassActionButton
+                                isSavingTemplate = true
+                                scope.launch {
+                                    val template = TaskTemplate(
+                                        id = "",
+                                        name = trimmedTitle,
+                                        title = trimmedTitle,
+                                        details = details.trim().ifBlank { null },
+                                        labelIds = labels.filter { selectedLabelIds.contains(it.id) }.map { it.id },
+                                        reminderOffsetMinutes = selectedReminderOffsetMinutes.toList(),
+                                        subtaskTitles = subtaskTitles.toList(),
+                                    )
+                                    val success = onSaveTemplate(template)
+                                    isSavingTemplate = false
+                                    if (!success) errorText = "No se pudo guardar la plantilla"
+                                }
+                            },
+                        )
                     }
 
                     Column(verticalArrangement = Arrangement.spacedBy(layout.height(8.dp, 6.dp))) {

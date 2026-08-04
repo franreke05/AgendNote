@@ -24,6 +24,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.franciscor.agendnote.app.di.AppServices
 import com.franciscor.agendnote.core.model.TaskSeries
+import com.franciscor.agendnote.core.model.TaskTemplate
 import com.franciscor.agendnote.core.network.RemoteConfigStatus
 import com.franciscor.agendnote.core.ui.components.GlassBackground
 import com.franciscor.agendnote.core.ui.layout.AppLayout
@@ -85,6 +86,24 @@ fun AppNavHost(
             .getOrNull() ?: emptyList()
     }
 
+    var taskTemplates by remember { mutableStateOf<List<TaskTemplate>>(emptyList()) }
+
+    suspend fun refreshTaskTemplates() {
+        taskTemplates = runCatching { AppServices.settingsRepository?.fetchTaskTemplates() }
+            .getOrNull() ?: emptyList()
+    }
+
+    suspend fun saveTaskTemplate(template: TaskTemplate): Boolean {
+        val settingsRepository = AppServices.settingsRepository ?: return false
+        // Lectura-modificacion-escritura sobre la lista completa (mismo patron que el resto de
+        // settings, que no son una tabla propia). Reemplaza una plantilla existente con el mismo
+        // nombre en vez de duplicarla.
+        val updated = taskTemplates.filterNot { it.name == template.name } + template
+        val success = settingsRepository.saveTaskTemplates(updated)
+        if (success) taskTemplates = updated
+        return success
+    }
+
     LaunchedEffect(agendaController) {
         val taskSeriesRepository = AppServices.taskSeriesRepository
         val agendaTaskRepository = AppServices.agendaTaskRepository
@@ -94,6 +113,7 @@ fun AppNavHost(
             agendaController.handleAsync(AgendaAction.RefreshSelectedDate)
         }
         refreshRecurringSeries()
+        refreshTaskTemplates()
     }
 
     val navigateToMainTab: (MainTab) -> Unit = { tab ->
@@ -153,6 +173,8 @@ fun AppNavHost(
                                 agendaController = agendaController,
                                 labelsViewModel = labelsViewModel,
                                 labelsController = labelsController,
+                                templates = taskTemplates,
+                                onSaveTemplate = { template -> saveTaskTemplate(template) },
                             )
                         }
                         composable(AppRoute.Calendar.route) {
@@ -221,6 +243,8 @@ private fun AgendaRoute(
     agendaController: AgendaController,
     labelsViewModel: LabelsViewModel,
     labelsController: LabelsController,
+    templates: List<TaskTemplate>,
+    onSaveTemplate: suspend (TaskTemplate) -> Boolean,
 ) {
     AgendaScreen(
         viewModel = agendaViewModel,
@@ -229,6 +253,8 @@ private fun AgendaRoute(
         onCreateLabel = { name, colorHex ->
             labelsController.createLabel(name, colorHex)
         },
+        templates = templates,
+        onSaveTemplate = onSaveTemplate,
         modifier = Modifier.fillMaxSize(),
     )
 }

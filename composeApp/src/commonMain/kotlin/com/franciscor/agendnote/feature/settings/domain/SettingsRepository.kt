@@ -1,5 +1,7 @@
 package com.franciscor.agendnote.feature.settings.domain
 
+import com.franciscor.agendnote.core.model.TaskTemplate
+
 interface SettingsRepository {
     suspend fun fetchBackgroundUrl(): String?
 
@@ -8,4 +10,9 @@ interface SettingsRepository {
     suspend fun fetchThemeMode(): Boolean?
 
     suspend fun updateThemeMode(isDark: Boolean)
+
+    suspend fun fetchTaskTemplates(): List<TaskTemplate>
+
+    /** Replaces the whole list - read-modify-write, same pattern as every other setting here. */
+    suspend fun saveTaskTemplates(templates: List<TaskTemplate>): Boolean
 }

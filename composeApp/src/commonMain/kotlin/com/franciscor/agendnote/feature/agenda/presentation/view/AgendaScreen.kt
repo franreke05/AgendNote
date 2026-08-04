@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.franciscor.agendnote.core.model.LabelTag
+import com.franciscor.agendnote.core.model.TaskTemplate
 import com.franciscor.agendnote.core.ui.components.GlassSnackbar
 import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.feature.agenda.presentation.controller.AgendaController
@@ -35,6 +36,8 @@ fun AgendaScreen(
     controller: AgendaController,
     labels: List<LabelTag>,
     onCreateLabel: suspend (String, String) -> LabelTag?,
+    templates: List<TaskTemplate> = emptyList(),
+    onSaveTemplate: suspend (TaskTemplate) -> Boolean = { false },
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
@@ -145,6 +148,8 @@ fun AgendaScreen(
                 date = selectedDate,
                 labels = labels,
                 onCreateLabel = onCreateLabel,
+                templates = templates,
+                onSaveTemplate = onSaveTemplate,
                 onDismiss = { showTaskSheet = false },
                 onSave = { targetDate, draft, onResult ->
                     controller.saveTaskAsync(targetDate, draft, onResult)
