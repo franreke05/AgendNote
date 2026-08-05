@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -283,7 +284,7 @@ fun AppNavHost(
                     // REVIEW: franjas de solo-borde, no un gesto de pantalla completa — ver el
                     // comentario en EdgeSwipeZone y AgendaScreen.kt:126-128 sobre por que un
                     // swipe libre choca con el swipe de las tarjetas de tarea en Agenda.
-                    val edgeSwipeWidth = layout.width(24.dp, 20.dp)
+                    val edgeSwipeWidth = layout.width(12.dp, 10.dp)
                     val edgeSwipeThresholdPx = with(LocalDensity.current) {
                         layout.width(64.dp, 56.dp).toPx()
                     }
@@ -338,6 +339,7 @@ private fun EdgeSwipeZone(
     thresholdPx: Float,
     modifier: Modifier = Modifier,
 ) {
+    val currentOnSwipe by rememberUpdatedState(onSwipe)
     Box(
         modifier = modifier.pointerInput(thresholdPx) {
             var accumulatedDrag = 0f
@@ -348,8 +350,8 @@ private fun EdgeSwipeZone(
                 },
                 onDragEnd = {
                     when {
-                        accumulatedDrag <= -thresholdPx -> onSwipe(SwipeDirection.NEXT)
-                        accumulatedDrag >= thresholdPx -> onSwipe(SwipeDirection.PREVIOUS)
+                        accumulatedDrag <= -thresholdPx -> currentOnSwipe(SwipeDirection.NEXT)
+                        accumulatedDrag >= thresholdPx -> currentOnSwipe(SwipeDirection.PREVIOUS)
                     }
                     accumulatedDrag = 0f
                 },
