@@ -1,12 +1,15 @@
 package com.franciscor.agendnote.app.navigation
 
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeContentPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterTransition
@@ -24,6 +27,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -274,6 +279,37 @@ fun AppNavHost(
                             )
                         }
                     }
+
+                    // REVIEW: franjas de solo-borde, no un gesto de pantalla completa — ver el
+                    // comentario en EdgeSwipeZone y AgendaScreen.kt:126-128 sobre por que un
+                    // swipe libre choca con el swipe de las tarjetas de tarea en Agenda.
+                    val edgeSwipeWidth = layout.width(24.dp, 20.dp)
+                    val edgeSwipeThresholdPx = with(LocalDensity.current) {
+                        layout.width(64.dp, 56.dp).toPx()
+                    }
+                    val onEdgeSwipe: (SwipeDirection) -> Unit = { direction ->
+                        val target = when (direction) {
+                            SwipeDirection.NEXT -> selectedTab.next()
+                            SwipeDirection.PREVIOUS -> selectedTab.previous()
+                        }
+                        target?.let { navigateToMainTab(it) }
+                    }
+                    EdgeSwipeZone(
+                        onSwipe = onEdgeSwipe,
+                        thresholdPx = edgeSwipeThresholdPx,
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .fillMaxHeight()
+                            .width(edgeSwipeWidth),
+                    )
+                    EdgeSwipeZone(
+                        onSwipe = onEdgeSwipe,
+                        thresholdPx = edgeSwipeThresholdPx,
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .fillMaxHeight()
+                            .width(edgeSwipeWidth),
+                    )
                 }
 
                 // REVIEW: navigation participates in layout instead of floating over content.
@@ -287,6 +323,40 @@ fun AppNavHost(
             }
         }
     }
+}
+
+/**
+ * Franja invisible pegada a un borde de la pantalla que reconoce un arrastre horizontal y
+ * dispara [onSwipe] al soltar si el arrastre acumulado supera [thresholdPx] en esa dirección.
+ * Deliberadamente angosta y solo en los bordes (ver Global Constraints del plan de swipe): las
+ * tarjetas de tarea en Agenda ya tienen su propio gesto de arrastre horizontal, y un intento
+ * previo de un gesto de pantalla completa chocó con él (ver AgendaScreen.kt).
+ */
+@Composable
+private fun EdgeSwipeZone(
+    onSwipe: (SwipeDirection) -> Unit,
+    thresholdPx: Float,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier.pointerInput(thresholdPx) {
+            var accumulatedDrag = 0f
+            detectHorizontalDragGestures(
+                onDragStart = { accumulatedDrag = 0f },
+                onHorizontalDrag = { _, dragAmount ->
+                    accumulatedDrag += dragAmount
+                },
+                onDragEnd = {
+                    when {
+                        accumulatedDrag <= -thresholdPx -> onSwipe(SwipeDirection.NEXT)
+                        accumulatedDrag >= thresholdPx -> onSwipe(SwipeDirection.PREVIOUS)
+                    }
+                    accumulatedDrag = 0f
+                },
+                onDragCancel = { accumulatedDrag = 0f },
+            )
+        },
+    )
 }
 
 @Composable
