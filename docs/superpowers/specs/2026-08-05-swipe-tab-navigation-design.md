@@ -36,15 +36,18 @@ exactamente en el tab Agenda.
 
 ### Zonas de detección
 
-Dos `Box` invisibles, de ancho `layout.width(24.dp, 20.dp)` y alto completo, superpuestos sobre
+Dos `Box` invisibles, de ancho `layout.width(12.dp, 10.dp)` y alto completo, superpuestos sobre
 el contenido del `NavHost` dentro de `AppNavHost`, pegados al borde izquierdo y al borde derecho
 del área de contenido (dentro del `Box(modifier = Modifier.weight(1f))` que ya envuelve el
 `NavHost`, para quedar por encima de las pantallas pero no de la `BottomBar`).
 
 Esta franja queda fuera del área donde las tarjetas de tarea son interactivas: `AgendaScreen`
-aplica su propio `contentInset` (`16dp`/`14dp`) además del margen exterior de `AppNavHost`
-(`contentHorizontalMargin`, `4dp`/`4dp`), así que las tarjetas ya empiezan varios `dp` más
-adentro que el borde real de la pantalla.
+aplica su propio `contentInset` (`16dp`/`14dp`) *dentro* de ese mismo `Box(weight(1f))` — el
+`contentHorizontalMargin` de `AppNavHost` (`4dp`/`4dp`) se aplica en un `Box` exterior distinto y
+no reduce más ese espacio compartido, así que no cuenta para este cálculo. Con ancho de franja
+`24dp`/`20dp` (valor original de este documento) la franja se solapaba unos `8dp` con el borde de
+las tarjetas — lo detectó la revisión final del plan de implementación y se corrigió a
+`12dp`/`10dp`, que sí queda dentro del `contentInset` de `16dp`/`14dp` sin tocar las tarjetas.
 
 Cada franja usa `Modifier.pointerInput` + `detectHorizontalDragGestures` para acumular el delta
 horizontal del arrastre. Al soltar (`onDragEnd`):
