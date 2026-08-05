@@ -8,6 +8,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -22,6 +29,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavBackStackEntry
 import com.franciscor.agendnote.app.di.AppServices
 import com.franciscor.agendnote.core.model.TaskSeries
 import com.franciscor.agendnote.core.model.TaskTemplate
@@ -44,6 +52,39 @@ import com.franciscor.agendnote.feature.settings.presentation.view.SettingsScree
 import com.franciscor.agendnote.feature.settings.presentation.viewmodel.SettingsViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+
+// REVIEW: se reutiliza la misma lógica para enter/popEnter y exit/popExit — la dirección se
+// calcula a partir del orden fijo de pestañas (tabSlideDirection), no de si la navegación es un
+// push o un pop, así que el resultado ya es correcto en ambos sentidos sin duplicar la lógica.
+private fun tabEnterTransition(
+    scope: AnimatedContentTransitionScope<NavBackStackEntry>,
+): EnterTransition {
+    return when (
+        tabSlideDirection(
+            fromRoute = scope.initialState.destination.route,
+            toRoute = scope.targetState.destination.route,
+        )
+    ) {
+        SwipeDirection.NEXT -> slideInHorizontally(initialOffsetX = { it }) + fadeIn()
+        SwipeDirection.PREVIOUS -> slideInHorizontally(initialOffsetX = { -it }) + fadeIn()
+        null -> fadeIn()
+    }
+}
+
+private fun tabExitTransition(
+    scope: AnimatedContentTransitionScope<NavBackStackEntry>,
+): ExitTransition {
+    return when (
+        tabSlideDirection(
+            fromRoute = scope.initialState.destination.route,
+            toRoute = scope.targetState.destination.route,
+        )
+    ) {
+        SwipeDirection.NEXT -> slideOutHorizontally(targetOffsetX = { -it }) + fadeOut()
+        SwipeDirection.PREVIOUS -> slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+        null -> fadeOut()
+    }
+}
 
 @Composable
 fun AppNavHost(
@@ -167,6 +208,10 @@ fun AppNavHost(
                         navController = navController,
                         startDestination = AppRoute.Agenda.route,
                         modifier = Modifier.fillMaxSize(),
+                        enterTransition = { tabEnterTransition(this) },
+                        exitTransition = { tabExitTransition(this) },
+                        popEnterTransition = { tabEnterTransition(this) },
+                        popExitTransition = { tabExitTransition(this) },
                     ) {
                         composable(AppRoute.Agenda.route) {
                             AgendaRoute(
