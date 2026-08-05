@@ -27,3 +27,6 @@ google-services.json
 .android/
 .claude/
 plan_mejora_codex.md
+
+# Scratch git worktrees used for isolated agent implementation work.
+.worktrees/
