@@ -18,7 +18,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import com.franciscor.agendnote.core.platform.rememberReduceMotionEnabled
+import com.franciscor.agendnote.core.platform.rememberReduceTransparencyEnabled
 import com.franciscor.agendnote.core.ui.layout.AppLayout
+import com.franciscor.agendnote.core.ui.motion.glassImageFadeDurationMillis
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
 import io.kamel.image.KamelImage
 import io.kamel.image.asyncPainterResource
@@ -31,9 +34,11 @@ fun GlassBackground(
 ) {
     val layout = AppLayout.metrics
     val tokens = GlassTheme.tokens
+    val reduceMotion = rememberReduceMotionEnabled()
+    val reduceTransparency = rememberReduceTransparencyEnabled()
     val imageAlpha by animateFloatAsState(
         targetValue = if (imageUrl.isNullOrBlank()) 0f else 1f,
-        animationSpec = tween(durationMillis = 700),
+        animationSpec = tween(durationMillis = glassImageFadeDurationMillis(reduceMotion)),
         label = "backgroundImageAlpha",
     )
     Box(
@@ -74,53 +79,60 @@ fun GlassBackground(
             )
         }
 
-        Box(
-            modifier = Modifier
-                .offset(
-                    x = -layout.width(80.dp, 60.dp),
-                    y = -layout.height(120.dp, 90.dp),
-                )
-                .size(layout.size(280.dp, 220.dp))
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(Color(0x66FFFFFF), Color.Transparent),
+        // The soft light blobs and film grain are purely decorative layers of translucency on
+        // top of the base gradient. "Reduce transparency" is meant to cut down on stacked
+        // translucent/blurred layers competing with content, so skip them in that mode instead
+        // of leaving the full effect in place - the base two-color gradient above still gives a
+        // themed, non-flat background underneath.
+        if (!reduceTransparency) {
+            Box(
+                modifier = Modifier
+                    .offset(
+                        x = -layout.width(80.dp, 60.dp),
+                        y = -layout.height(120.dp, 90.dp),
+                    )
+                    .size(layout.size(280.dp, 220.dp))
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(Color(0x66FFFFFF), Color.Transparent),
+                        ),
+                        shape = CircleShape,
                     ),
-                    shape = CircleShape,
-                ),
-        )
-        Box(
-            modifier = Modifier
-                .offset(
-                    x = layout.width(220.dp, 180.dp),
-                    y = layout.height(80.dp, 60.dp),
-                )
-                .size(layout.size(220.dp, 180.dp))
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(Color(0x33FFFFFF), Color.Transparent),
+            )
+            Box(
+                modifier = Modifier
+                    .offset(
+                        x = layout.width(220.dp, 180.dp),
+                        y = layout.height(80.dp, 60.dp),
+                    )
+                    .size(layout.size(220.dp, 180.dp))
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(Color(0x33FFFFFF), Color.Transparent),
+                        ),
+                        shape = CircleShape,
                     ),
-                    shape = CircleShape,
-                ),
-        )
-        Box(
-            modifier = Modifier
-                .offset(
-                    x = layout.width(40.dp, 30.dp),
-                    y = layout.height(420.dp, 300.dp),
-                )
-                .size(layout.size(320.dp, 240.dp))
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(Color(0x55C7E6FF), Color.Transparent),
+            )
+            Box(
+                modifier = Modifier
+                    .offset(
+                        x = layout.width(40.dp, 30.dp),
+                        y = layout.height(420.dp, 300.dp),
+                    )
+                    .size(layout.size(320.dp, 240.dp))
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(Color(0x55C7E6FF), Color.Transparent),
+                        ),
+                        shape = CircleShape,
                     ),
-                    shape = CircleShape,
-                ),
-        )
+            )
 
-        GrainOverlay(
-            modifier = Modifier.fillMaxSize(),
-            intensity = 0.06f,
-        )
+            GrainOverlay(
+                modifier = Modifier.fillMaxSize(),
+                intensity = 0.06f,
+            )
+        }
     }
 }
 

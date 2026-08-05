@@ -4,6 +4,7 @@ import com.franciscor.agendnote.core.model.LabelTag
 import com.franciscor.agendnote.core.model.TaskDraft
 import com.franciscor.agendnote.core.model.TaskItem
 import com.franciscor.agendnote.feature.agenda.domain.AgendaTaskRepository
+import com.franciscor.agendnote.feature.agenda.presentation.model.PendingUndo
 import com.franciscor.agendnote.feature.agenda.presentation.viewmodel.AgendaViewModel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -205,6 +206,66 @@ class AgendaViewModelTest {
     }
 
     @Test
+    fun `marking a task as done exposes it as pendingUndo`() = runTest {
+        val original = task("t-1", "Regar plantas")
+        val repository = FakeAgendaTaskRepository(fetchTasksHandler = { listOf(original) })
+        val viewModel = AgendaViewModel(repository, timeZone = timeZone, initialDate = baseDate)
+        viewModel.loadTasksForDate(baseDate)
+
+        val succeeded = viewModel.toggleTaskDone(baseDate, original, true)
+
+        assertTrue(succeeded)
+        val pendingUndo = viewModel.uiState.pendingUndo
+        assertEquals(baseDate, pendingUndo?.date)
+        assertEquals("t-1", pendingUndo?.task?.id)
+        assertTrue(pendingUndo?.task?.isDone == true)
+    }
+
+    @Test
+    fun `undoing a completion via toggleTaskDone clears pendingUndo`() = runTest {
+        val original = task("t-1", "Regar plantas")
+        val repository = FakeAgendaTaskRepository(fetchTasksHandler = { listOf(original) })
+        val viewModel = AgendaViewModel(repository, timeZone = timeZone, initialDate = baseDate)
+        viewModel.loadTasksForDate(baseDate)
+        viewModel.toggleTaskDone(baseDate, original, true)
+
+        viewModel.toggleTaskDone(baseDate, original, false)
+
+        assertNull(viewModel.uiState.pendingUndo)
+    }
+
+    @Test
+    fun `dismissPendingUndo clears pendingUndo without mutating tasks`() = runTest {
+        val original = task("t-1", "Regar plantas")
+        val repository = FakeAgendaTaskRepository(fetchTasksHandler = { listOf(original) })
+        val viewModel = AgendaViewModel(repository, timeZone = timeZone, initialDate = baseDate)
+        viewModel.loadTasksForDate(baseDate)
+        viewModel.toggleTaskDone(baseDate, original, true)
+        val tasksBeforeDismiss = viewModel.uiState.tasksByDate[baseDate]
+
+        viewModel.dismissPendingUndo()
+
+        assertNull(viewModel.uiState.pendingUndo)
+        assertEquals(tasksBeforeDismiss, viewModel.uiState.tasksByDate[baseDate])
+    }
+
+    @Test
+    fun `a failed completion does not expose pendingUndo`() = runTest {
+        val original = task("t-1", "Regar plantas")
+        val repository = FakeAgendaTaskRepository(
+            fetchTasksHandler = { listOf(original) },
+            updateTaskDoneHandler = { _, _ -> error("boom") },
+        )
+        val viewModel = AgendaViewModel(repository, timeZone = timeZone, initialDate = baseDate)
+        viewModel.loadTasksForDate(baseDate)
+
+        val succeeded = viewModel.toggleTaskDone(baseDate, original, true)
+
+        assertFalse(succeeded)
+        assertNull(viewModel.uiState.pendingUndo)
+    }
+
+    @Test
     fun `loadTasksForDate without remote repository exposes config error`() = runTest {
         val viewModel = AgendaViewModel(
             repository = null,
@@ -236,6 +297,33 @@ class AgendaViewModelTest {
         assertFalse(result.success)
         assertEquals("Falta APP_SECRET", result.errorMessage)
         assertTrue(viewModel.uiState.tasksByDate[baseDate].isNullOrEmpty())
+    }
+
+    @Test
+    fun `saveTask never surfaces the raw backend exception message`() = runTest {
+        // Simulates what a Ktor ResponseException / Postgres error actually looks like: a
+        // technical, English, schema-revealing string that must never reach the UI as-is (see
+        // docs/agendnote/SECURITY_AUDIT.md - "nunca mostrar directamente excepciones... de
+        // Postgres").
+        val repository = FakeAgendaTaskRepository(
+            createTaskHandler = { _, _ ->
+                error(
+                    "Client request(POST https://x.supabase.co/api-tasks) invalid: 500 " +
+                        "Internal Server Error. Text: \"{\\\"error\\\":\\\"duplicate key value " +
+                        "violates unique constraint tasks_appointment_id_key\\\"}\"",
+                )
+            },
+        )
+        val viewModel = AgendaViewModel(repository, timeZone = timeZone, initialDate = baseDate)
+
+        val result = viewModel.saveTask(
+            date = baseDate,
+            draft = TaskDraft(title = "Nueva", details = null, time = null, labels = emptyList()),
+        )
+
+        assertFalse(result.success)
+        assertEquals("No se pudo guardar la tarea", result.errorMessage)
+        assertEquals("No se pudo guardar la tarea", viewModel.dayUiState(baseDate).errorMessage)
     }
 
     @Test
@@ -329,6 +417,8 @@ private class FakeAgendaTaskRepository(
     private val fetchTasksHandler: suspend (LocalDate) -> List<TaskItem> = { emptyList() },
     private val fetchTasksInRangeHandler: suspend (LocalDate, LocalDate) -> Map<LocalDate, List<TaskItem>> =
         { _, _ -> emptyMap() },
+    private val updateTaskDoneHandler: (suspend (String, Boolean) -> TaskItem)? = null,
+    private val createTaskHandler: (suspend (LocalDate, TaskDraft) -> TaskItem)? = null,
 ) : AgendaTaskRepository {
     override suspend fun fetchTasks(date: LocalDate): List<TaskItem> = fetchTasksHandler(date)
 
@@ -336,6 +426,7 @@ private class FakeAgendaTaskRepository(
         fetchTasksInRangeHandler(from, to)
 
     override suspend fun createTask(date: LocalDate, draft: TaskDraft): TaskItem {
+        createTaskHandler?.let { return it(date, draft) }
         return TaskItem(
             id = "created-${date.dayOfMonth}",
             title = draft.title,
@@ -346,6 +437,7 @@ private class FakeAgendaTaskRepository(
     }
 
     override suspend fun updateTaskDone(id: String, isDone: Boolean): TaskItem {
+        updateTaskDoneHandler?.let { return it(id, isDone) }
         return TaskItem(
             id = id,
             title = "updated",

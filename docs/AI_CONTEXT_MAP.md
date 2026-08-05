@@ -57,5 +57,13 @@ graph TD
 - Bottom navigation reserves layout space; destinations must not add legacy 110-140 dp compensation.
 - Interactive controls target at least 48 dp, except calendar grids constrained to seven columns.
 - Modal forms use the opaque `modalFill` token and remain vertically scrollable.
-- Debug and release common unit-test tasks each contain 39 passing tests as of 2026-07-27.
-- The detailed handoff is in `docs/FINAL_UI_QA_REPORT.md`.
+- Debug and release common unit-test tasks each contain 90 passing tests as of 2026-08-04
+  (was 39 as of 2026-07-27).
+- The 2026-07-27 handoff is in `docs/FINAL_UI_QA_REPORT.md`. The 2026-08-04 professionalization
+  pass (deadline/reminders/subtasks, recurrence end conditions, quick-capture NLP, smart
+  lists, templates, export, security error sanitization) is in `docs/agendnote/`, with
+  `docs/agendnote/INFORME_FINAL.md` as the top-level summary.
+- AgendNote is single-tenant by design (confirmed by the user 2026-08-04) - no Supabase Auth,
+  no per-user RLS. See `docs/agendnote/SECURITY_AUDIT.md`.
+- No task-editing capability exists anywhere in the app (only create/toggle-done/delete) -
+  known, documented gap, not yet scheduled.

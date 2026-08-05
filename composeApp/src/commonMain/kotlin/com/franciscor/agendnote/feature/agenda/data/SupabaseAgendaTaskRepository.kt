@@ -1,11 +1,13 @@
 package com.franciscor.agendnote.feature.agenda.data
 
 import com.franciscor.agendnote.core.model.LabelTag
+import com.franciscor.agendnote.core.model.Subtask
 import com.franciscor.agendnote.core.model.TaskDraft
 import com.franciscor.agendnote.core.model.TaskItem
 import com.franciscor.agendnote.core.network.AgendaApiClient
 import com.franciscor.agendnote.core.network.CreateTaskRequest
 import com.franciscor.agendnote.core.network.LabelDto
+import com.franciscor.agendnote.core.network.SubtaskDto
 import com.franciscor.agendnote.core.network.TaskDto
 import com.franciscor.agendnote.core.network.UpdateTaskRequest
 import com.franciscor.agendnote.feature.agenda.domain.AgendaTaskRepository
@@ -39,10 +41,13 @@ class SupabaseAgendaTaskRepository(
             body = draft.details,
             day = date.toString(),
             due_at = dueAt,
+            deadline_at = draft.deadline?.toString(),
             is_done = false,
             order_index = 0,
             label_ids = draft.labels.map { it.id },
             series_id = draft.seriesId,
+            reminders = draft.reminders.takeIf { it.isNotEmpty() }?.map { it.toString() },
+            subtasks = draft.subtasks.takeIf { it.isNotEmpty() }?.map { it.toSubtaskDto() },
         )
         return api.createTask(request).toTaskItem(timeZone)
     }
@@ -60,9 +65,12 @@ class SupabaseAgendaTaskRepository(
     override suspend fun deleteAllTasks(): Boolean = api.deleteAllTasks()
 }
 
-private fun TaskDto.toTaskItem(timeZone: TimeZone): TaskItem {
+/** Internal (not private) so [SupabaseAgendaTaskRepositoryMappingTest] can exercise it directly. */
+internal fun TaskDto.toTaskItem(timeZone: TimeZone): TaskItem {
     val time = due_at?.let { parseTime(it, timeZone) }
     val endTime = slot_end_at?.let { parseTime(it, timeZone) }
+    val deadline = deadline_at?.let { parseInstant(it) }
+    val reminderInstants = reminders.mapNotNull { parseInstant(it) }
     return TaskItem(
         id = id,
         title = title,
@@ -72,6 +80,9 @@ private fun TaskDto.toTaskItem(timeZone: TimeZone): TaskItem {
         labels = labels.map { it.toLabelTag() },
         isDone = is_done,
         seriesId = series_id,
+        deadline = deadline,
+        reminders = reminderInstants,
+        subtasks = subtasks.map { it.toSubtask() },
     )
 }
 
@@ -81,9 +92,22 @@ private fun LabelDto.toLabelTag(): LabelTag = LabelTag(
     colorHex = color_hex,
 )
 
+private fun SubtaskDto.toSubtask(): Subtask = Subtask(
+    id = id,
+    title = title,
+    isDone = is_done,
+    orderIndex = order_index,
+)
+
+private fun Subtask.toSubtaskDto(): SubtaskDto = SubtaskDto(
+    id = id,
+    title = title,
+    is_done = isDone,
+    order_index = orderIndex,
+)
+
 private fun parseTime(value: String, timeZone: TimeZone): LocalTime? {
-    return runCatching {
-        val instant = Instant.parse(value)
-        instant.toLocalDateTime(timeZone).time
-    }.getOrNull()
+    return parseInstant(value)?.toLocalDateTime(timeZone)?.time
 }
+
+private fun parseInstant(value: String): Instant? = runCatching { Instant.parse(value) }.getOrNull()

@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { errorResponse, jsonResponse } from "../_shared/response.ts";
+import { errorResponse, internalErrorResponse, jsonResponse } from "../_shared/response.ts";
 import { requireAppSecret } from "../_shared/auth.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("SB_URL");
@@ -181,14 +181,14 @@ serve(async (req) => {
       .is("notified_at", null)
       .lte("due_at", nowIso);
 
-    if (error) return errorResponse(error.message, 500);
+    if (error) return internalErrorResponse(error);
     if (!tasks || tasks.length === 0) return jsonResponse({ sent: 0 });
 
     const { data: devices, error: devicesError } = await supabase
       .from("devices")
       .select("platform,token");
 
-    if (devicesError) return errorResponse(devicesError.message, 500);
+    if (devicesError) return internalErrorResponse(devicesError);
 
     let sentTotal = 0;
     for (const task of tasks) {
@@ -204,7 +204,6 @@ serve(async (req) => {
 
     return jsonResponse({ sent: sentTotal, tasks: tasks.length });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "unknown error";
-    return errorResponse(message, 500);
+    return internalErrorResponse(error);
   }
 });

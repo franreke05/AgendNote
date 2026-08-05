@@ -5,6 +5,7 @@ import com.franciscor.agendnote.core.model.TaskDraft
 import com.franciscor.agendnote.core.model.TaskItem
 import com.franciscor.agendnote.core.model.TaskSeries
 import com.franciscor.agendnote.feature.agenda.domain.AgendaTaskRepository
+import com.franciscor.agendnote.feature.agenda.domain.RecurrenceEnd
 import com.franciscor.agendnote.feature.agenda.domain.RecurrenceRule
 import com.franciscor.agendnote.feature.agenda.domain.SeriesMaterializer
 import com.franciscor.agendnote.feature.agenda.domain.TaskSeriesRepository
@@ -19,6 +20,7 @@ private class FakeTaskSeriesRepositoryForMaterializer(
 ) : TaskSeriesRepository {
     private val series = initialSeries.toMutableList()
     val markedUntil = mutableMapOf<String, LocalDate>()
+    val deactivatedIds = mutableListOf<String>()
 
     override suspend fun fetchActiveSeries(): List<TaskSeries> = series.filter { it.isActive }
 
@@ -29,6 +31,7 @@ private class FakeTaskSeriesRepositoryForMaterializer(
         rule: RecurrenceRule,
         labels: List<LabelTag>,
         startDate: LocalDate,
+        end: RecurrenceEnd,
     ): TaskSeries {
         error("not used in this test")
     }
@@ -38,6 +41,15 @@ private class FakeTaskSeriesRepositoryForMaterializer(
         val index = series.indexOfFirst { it.id == seriesId }
         if (index >= 0) {
             series[index] = series[index].copy(materializedUntil = until)
+        }
+        return true
+    }
+
+    override suspend fun deactivateSeries(seriesId: String): Boolean {
+        deactivatedIds.add(seriesId)
+        val index = series.indexOfFirst { it.id == seriesId }
+        if (index >= 0) {
+            series[index] = series[index].copy(isActive = false)
         }
         return true
     }
@@ -85,7 +97,7 @@ private class FakeAgendaTaskRepositoryForMaterializer : AgendaTaskRepository {
 class SeriesMaterializerTest {
     private val today = LocalDate(2026, 8, 1)
 
-    private fun dailySeries(materializedUntil: LocalDate) = TaskSeries(
+    private fun dailySeries(materializedUntil: LocalDate, end: RecurrenceEnd = RecurrenceEnd.Never) = TaskSeries(
         id = "series-1",
         title = "Tomar vitaminas",
         details = null,
@@ -95,6 +107,7 @@ class SeriesMaterializerTest {
         startDate = LocalDate(2026, 8, 1),
         isActive = true,
         materializedUntil = materializedUntil,
+        end = end,
     )
 
     @Test
@@ -154,5 +167,53 @@ class SeriesMaterializerTest {
         assertEquals(16, taskRepo.createdDrafts.size)
         assertEquals(LocalDate(2026, 8, 8), seriesRepo.markedUntil["series-a"])
         assertEquals(LocalDate(2026, 8, 8), seriesRepo.markedUntil["series-b"])
+    }
+
+    @Test
+    fun `materializeSeries deactivates the series once its end date is reached`() = runTest {
+        val series = dailySeries(
+            materializedUntil = LocalDate(2026, 7, 31),
+            end = RecurrenceEnd.OnDate(LocalDate(2026, 8, 3)),
+        )
+        val seriesRepo = FakeTaskSeriesRepositoryForMaterializer(listOf(series))
+        val taskRepo = FakeAgendaTaskRepositoryForMaterializer()
+        val materializer = SeriesMaterializer(seriesRepo, taskRepo, horizonWeeks = 1)
+
+        val success = materializer.materializeSeries(series, today)
+
+        assertTrue(success)
+        // 1, 2 y 3 de agosto - se detiene en la fecha de fin aunque el horizonte llegaria al 8.
+        assertEquals(3, taskRepo.createdDrafts.size)
+        assertEquals(LocalDate(2026, 8, 3), seriesRepo.markedUntil[series.id])
+        assertEquals(listOf(series.id), seriesRepo.deactivatedIds)
+    }
+
+    @Test
+    fun `materializeSeries deactivates the series once its occurrence count is reached`() = runTest {
+        val series = dailySeries(
+            materializedUntil = LocalDate(2026, 7, 31),
+            end = RecurrenceEnd.AfterOccurrences(3),
+        )
+        val seriesRepo = FakeTaskSeriesRepositoryForMaterializer(listOf(series))
+        val taskRepo = FakeAgendaTaskRepositoryForMaterializer()
+        val materializer = SeriesMaterializer(seriesRepo, taskRepo, horizonWeeks = 1)
+
+        val success = materializer.materializeSeries(series, today)
+
+        assertTrue(success)
+        assertEquals(3, taskRepo.createdDrafts.size)
+        assertEquals(listOf(series.id), seriesRepo.deactivatedIds)
+    }
+
+    @Test
+    fun `materializeSeries does not deactivate a never-ending series`() = runTest {
+        val series = dailySeries(materializedUntil = LocalDate(2026, 7, 31), end = RecurrenceEnd.Never)
+        val seriesRepo = FakeTaskSeriesRepositoryForMaterializer(listOf(series))
+        val taskRepo = FakeAgendaTaskRepositoryForMaterializer()
+        val materializer = SeriesMaterializer(seriesRepo, taskRepo, horizonWeeks = 1)
+
+        materializer.materializeSeries(series, today)
+
+        assertEquals(emptyList(), seriesRepo.deactivatedIds)
     }
 }

@@ -1,12 +1,12 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { errorResponse, jsonResponse } from "../_shared/response.ts";
+import { errorResponse, internalErrorResponse, jsonResponse } from "../_shared/response.ts";
 import { requireAppSecret } from "../_shared/auth.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("SB_URL");
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SERVICE_ROLE_KEY");
-const SERIES_SELECT = "id,title,body,time,recurrence_type,days_of_week,day_of_month,label_ids,start_date,is_active,materialized_until,created_at";
+const SERIES_SELECT = "id,title,body,time,recurrence_type,days_of_week,day_of_month,label_ids,start_date,is_active,materialized_until,created_at,end_type,end_date,end_occurrences";
 
 if (!supabaseUrl || !serviceKey) {
   throw new Error("Missing SUPABASE_URL/SB_URL or SUPABASE_SERVICE_ROLE_KEY/SB_SERVICE_ROLE_KEY");
@@ -50,6 +50,26 @@ function dayBefore(dateStr: string): string {
   return date.toISOString().slice(0, 10);
 }
 
+function buildEndFields(body: Record<string, unknown>, startDate: string) {
+  const endType = normalizeOptionalString(body.end_type) ?? "never";
+  if (!["never", "on_date", "after_occurrences"].includes(endType)) {
+    throw new Error("end_type must be never, on_date, or after_occurrences");
+  }
+  if (endType === "on_date") {
+    const endDate = normalizeDate(body.end_date, "end_date");
+    if (endDate < startDate) throw new Error("end_date must be on or after start_date");
+    return { end_type: endType, end_date: endDate, end_occurrences: null };
+  }
+  if (endType === "after_occurrences") {
+    const count = Number(body.end_occurrences);
+    if (!Number.isInteger(count) || count < 1) {
+      throw new Error("end_occurrences must be a positive integer");
+    }
+    return { end_type: endType, end_date: null, end_occurrences: count };
+  }
+  return { end_type: "never", end_date: null, end_occurrences: null };
+}
+
 function buildInsertPayload(body: Record<string, unknown>) {
   const recurrenceType = normalizeRequiredString(body.recurrence_type, "recurrence_type");
   if (!["daily", "weekly_days", "monthly"].includes(recurrenceType)) {
@@ -67,6 +87,7 @@ function buildInsertPayload(body: Record<string, unknown>) {
     start_date: startDate,
     is_active: true,
     materialized_until: dayBefore(startDate),
+    ...buildEndFields(body, startDate),
   };
 }
 
@@ -86,7 +107,7 @@ serve(async (req) => {
         .eq("is_active", true)
         .order("created_at", { ascending: true });
 
-      if (error) return errorResponse(error.message, 500);
+      if (error) return internalErrorResponse(error);
       return jsonResponse({ series: data ?? [] });
     }
 
@@ -100,7 +121,7 @@ serve(async (req) => {
         .select(SERIES_SELECT)
         .single();
 
-      if (error) return errorResponse(error.message, 500);
+      if (error) return internalErrorResponse(error);
       return jsonResponse({ series: data }, 201);
     }
 
@@ -123,7 +144,7 @@ serve(async (req) => {
         .select(SERIES_SELECT)
         .single();
 
-      if (error) return errorResponse(error.message, 500);
+      if (error) return internalErrorResponse(error);
       return jsonResponse({ series: data });
     }
 
@@ -141,20 +162,19 @@ serve(async (req) => {
         .eq("is_done", false)
         .gte("day", today);
 
-      if (deleteTasksError) return errorResponse(deleteTasksError.message, 500);
+      if (deleteTasksError) return internalErrorResponse(deleteTasksError);
 
       const { error } = await supabase
         .from("task_series")
         .delete()
         .eq("id", id);
 
-      if (error) return errorResponse(error.message, 500);
+      if (error) return internalErrorResponse(error);
       return jsonResponse({ success: true });
     }
 
     return errorResponse("method not allowed", 405);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "unknown error";
-    return errorResponse(message, 500);
+    return internalErrorResponse(error);
   }
 });

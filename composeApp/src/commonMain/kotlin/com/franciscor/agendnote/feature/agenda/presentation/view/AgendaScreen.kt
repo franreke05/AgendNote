@@ -14,10 +14,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.plus
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.franciscor.agendnote.core.model.LabelTag
+import com.franciscor.agendnote.core.model.TaskTemplate
+import com.franciscor.agendnote.core.ui.components.GlassSnackbar
 import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.feature.agenda.presentation.controller.AgendaController
 import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaAction
@@ -30,6 +36,8 @@ fun AgendaScreen(
     controller: AgendaController,
     labels: List<LabelTag>,
     onCreateLabel: suspend (String, String) -> LabelTag?,
+    templates: List<TaskTemplate> = emptyList(),
+    onSaveTemplate: suspend (TaskTemplate) -> Boolean = { false },
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
@@ -41,6 +49,7 @@ fun AgendaScreen(
     val sourceTasks = dayUiState.tasks
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var showTaskSheet by rememberSaveable { mutableStateOf(false) }
+    var showSmartLists by rememberSaveable { mutableStateOf(false) }
     var pendingDeleteTaskId by rememberSaveable { mutableStateOf<String?>(null) }
     var showTaskDetailsTaskId by rememberSaveable { mutableStateOf<String?>(null) }
     val pendingDelete = pendingDeleteTaskId?.let { id ->
@@ -72,6 +81,16 @@ fun AgendaScreen(
                 },
                 onNextDay = {
                     controller.handleAsync(AgendaAction.MoveDay(1))
+                },
+                onOpenSmartLists = {
+                    // Las listas inteligentes solo ven lo que ya esta cargado en tasksByDate
+                    // (ver smartListTasks) - se piden el mes actual y el siguiente para que
+                    // "Proximos 7 dias" tenga datos utiles aunque el usuario nunca haya abierto
+                    // Calendario todavia.
+                    val currentMonth = LocalDate(selectedDate.year, selectedDate.monthNumber, 1)
+                    controller.handleAsync(AgendaAction.LoadMonth(currentMonth))
+                    controller.handleAsync(AgendaAction.LoadMonth(currentMonth.plus(1, DateTimeUnit.MONTH)))
+                    showSmartLists = true
                 },
             )
 
@@ -129,12 +148,14 @@ fun AgendaScreen(
                 date = selectedDate,
                 labels = labels,
                 onCreateLabel = onCreateLabel,
+                templates = templates,
+                onSaveTemplate = onSaveTemplate,
                 onDismiss = { showTaskSheet = false },
                 onSave = { targetDate, draft, onResult ->
                     controller.saveTaskAsync(targetDate, draft, onResult)
                 },
-                onSaveRecurring = { targetDate, draft, rule, onResult ->
-                    controller.saveRecurringTaskAsync(targetDate, draft, rule, onResult)
+                onSaveRecurring = { targetDate, draft, rule, end, onResult ->
+                    controller.saveRecurringTaskAsync(targetDate, draft, rule, end, onResult)
                 },
             )
         }
@@ -162,6 +183,42 @@ fun AgendaScreen(
                     showTaskDetailsTaskId = null
                     pendingDeleteTaskId = task.id
                 },
+            )
+        }
+
+        if (showSmartLists) {
+            SmartListsOverlay(
+                tasksByDate = uiState.tasksByDate,
+                today = viewModel.today(),
+                onSelectDate = { date ->
+                    controller.handleAsync(AgendaAction.SelectDate(date))
+                },
+                onDismiss = { showSmartLists = false },
+            )
+        }
+
+        uiState.pendingUndo?.let { pending ->
+            // Auto-dismiss so the "Deshacer" affordance does not linger forever if ignored.
+            // Keyed on `pending` so a newer completion restarts the timer instead of the first
+            // one closing the snackbar for the task the user just completed.
+            LaunchedEffect(pending) {
+                delay(4000)
+                controller.dismissPendingUndo()
+            }
+            GlassSnackbar(
+                message = "Tarea completada: \"${pending.task.title}\"",
+                actionLabel = "Deshacer",
+                onAction = {
+                    controller.toggleTaskDoneAsync(pending.date, pending.task, false)
+                    controller.dismissPendingUndo()
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(
+                        start = contentInset,
+                        end = contentInset,
+                        bottom = layout.height(92.dp, 82.dp),
+                    ),
             )
         }
     }

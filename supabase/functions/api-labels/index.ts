@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { errorResponse, jsonResponse } from "../_shared/response.ts";
+import { errorResponse, internalErrorResponse, jsonResponse } from "../_shared/response.ts";
 import { requireAppSecret } from "../_shared/auth.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("SB_URL");
@@ -30,7 +30,7 @@ serve(async (req) => {
         .select("id,name,color_hex,created_at,updated_at")
         .order("created_at", { ascending: true });
 
-      if (error) return errorResponse(error.message, 500);
+      if (error) return internalErrorResponse(error);
       return jsonResponse({ labels: data ?? [] });
     }
 
@@ -48,7 +48,7 @@ serve(async (req) => {
         .select("id,name,color_hex,created_at,updated_at")
         .single();
 
-      if (error) return errorResponse(error.message, 500);
+      if (error) return internalErrorResponse(error);
       return jsonResponse({ label: data }, 201);
     }
 
@@ -68,7 +68,7 @@ serve(async (req) => {
         .select("id,name,color_hex,created_at,updated_at")
         .single();
 
-      if (error) return errorResponse(error.message, 500);
+      if (error) return internalErrorResponse(error);
       return jsonResponse({ label: data });
     }
 
@@ -81,7 +81,7 @@ serve(async (req) => {
           .delete()
           .neq("id", "00000000-0000-0000-0000-000000000000");
 
-        if (error) return errorResponse(error.message, 500);
+        if (error) return internalErrorResponse(error);
         return jsonResponse({ success: true });
       }
       const id = url.searchParams.get("id")?.trim();
@@ -92,13 +92,12 @@ serve(async (req) => {
         .delete()
         .eq("id", id);
 
-      if (error) return errorResponse(error.message, 500);
+      if (error) return internalErrorResponse(error);
       return jsonResponse({ success: true });
     }
 
     return errorResponse("method not allowed", 405);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "unknown error";
-    return errorResponse(message, 500);
+    return internalErrorResponse(error);
   }
 });

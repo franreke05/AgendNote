@@ -18,9 +18,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.foundation.layout.size
@@ -36,6 +38,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CalendarToday
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.EventAvailable
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -68,12 +71,17 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.franciscor.agendnote.core.model.LabelTag
+import com.franciscor.agendnote.core.model.Subtask
 import com.franciscor.agendnote.core.model.TaskDraft
 import com.franciscor.agendnote.core.model.TaskItem
+import com.franciscor.agendnote.core.model.TaskTemplate
+import com.franciscor.agendnote.core.nlp.QuickCaptureResult
+import com.franciscor.agendnote.core.nlp.parseQuickCapture
 import com.franciscor.agendnote.core.platform.currentTimeMillis
 import com.franciscor.agendnote.core.ui.components.ColorSwatch
 import com.franciscor.agendnote.core.ui.components.GlassActionButton
 import com.franciscor.agendnote.core.ui.components.GlassConfirmDialog
+import com.franciscor.agendnote.core.ui.components.GlassEmptyState
 import com.franciscor.agendnote.core.ui.components.GlassIconButton
 import com.franciscor.agendnote.core.ui.components.GlassSurface
 import com.franciscor.agendnote.core.ui.components.GlassTextField
@@ -82,17 +90,22 @@ import com.franciscor.agendnote.core.ui.components.labelColorPalette
 import com.franciscor.agendnote.core.ui.components.labelColorName
 import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
+import com.franciscor.agendnote.feature.agenda.domain.RecurrenceEnd
 import com.franciscor.agendnote.feature.agenda.domain.RecurrenceRule
+import com.franciscor.agendnote.feature.agenda.domain.SmartList
+import com.franciscor.agendnote.feature.agenda.domain.smartListTasks
 import com.franciscor.agendnote.feature.agenda.presentation.model.SaveResult
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.Month
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.plus
+import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import kotlin.math.abs
 
@@ -102,18 +115,204 @@ internal fun ConfirmDeleteDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    // Borrar una tarea materializada de una serie ya actúa como "saltar esta ocurrencia": el
+    // generador de series nunca vuelve a intentar una fecha que su cursor ya dejó atrás (ver
+    // SeriesMaterializer/planMaterialization). Deja explícito que las demás apariciones no se
+    // tocan, en vez de que el usuario tenga que asumirlo.
+    val message = if (task.seriesId != null) {
+        "Se borrará \"${task.title}\". Es parte de una tarea recurrente: las demás apariciones de la serie no se ven afectadas."
+    } else {
+        "Se borrará \"${task.title}\""
+    }
     GlassConfirmDialog(
         visible = true,
         title = "¿Eliminar tarea?",
-        message = "Se borrará \"${task.title}\"",
+        message = message,
         onConfirm = onConfirm,
         onDismiss = onDismiss,
         confirmText = "Eliminar",
     )
 }
 
+private val SMART_LIST_LABELS: List<Pair<SmartList, String>> = listOf(
+    SmartList.Overdue to "Atrasadas",
+    SmartList.Next7Days to "Próximos 7 días",
+    SmartList.WithoutTime to "Sin hora",
+    SmartList.WithReminder to "Con recordatorio",
+    SmartList.Recurring to "Recurrentes",
+)
+
+/**
+ * Vista de solo lectura sobre lo que ya está cargado en `tasksByDate` (ver [smartListTasks] -
+ * no es una consulta al backend, así que una tarea en un mes nunca visitado no aparece aquí
+ * todavía).
+ */
+@Composable
+internal fun SmartListsOverlay(
+    tasksByDate: Map<LocalDate, List<TaskItem>>,
+    today: LocalDate,
+    onSelectDate: (LocalDate) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val layout = AppLayout.metrics
+    var selectedList by remember { mutableStateOf(SmartList.Overdue) }
+    val results = remember(selectedList, tasksByDate, today) {
+        smartListTasks(selectedList, tasksByDate, today)
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(modifier = Modifier.fillMaxSize().safeContentPadding()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(GlassTheme.tokens.scrim)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onDismiss,
+                    ),
+            )
+
+            GlassSurface(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = layout.width(18.dp, 16.dp))
+                    .fillMaxWidth()
+                    .heightIn(max = layout.height(560.dp, 520.dp)),
+                shape = RoundedCornerShape(layout.size(28.dp, 24.dp)),
+                tint = GlassTheme.tokens.modalFill,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(layout.size(18.dp, 16.dp))
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
+                ) {
+                    Text(
+                        text = "Listas inteligentes",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontSize = layout.text(22.sp, 20.sp),
+                        ),
+                        color = GlassTheme.tokens.textPrimary,
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .selectableGroup()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 5.dp)),
+                    ) {
+                        SMART_LIST_LABELS.forEach { (list, label) ->
+                            RecurrenceOptionChip(
+                                text = label,
+                                selected = selectedList == list,
+                                onClick = { selectedList = list },
+                            )
+                        }
+                    }
+                    Box(modifier = Modifier.weight(1f)) {
+                        if (results.isEmpty()) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                GlassEmptyState(
+                                    icon = Icons.Rounded.EventAvailable,
+                                    title = "Nada por aquí",
+                                    subtitle = "No hay tareas en esta vista por ahora.",
+                                )
+                            }
+                        } else {
+                            LazyColumn(
+                                verticalArrangement = Arrangement.spacedBy(layout.height(8.dp, 6.dp)),
+                            ) {
+                                items(results, key = { (date, task) -> "$date:${task.id}" }) { (date, task) ->
+                                    SmartListRow(
+                                        date = date,
+                                        task = task,
+                                        onClick = {
+                                            onSelectDate(date)
+                                            onDismiss()
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    GlassActionButton(
+                        text = "Cerrar",
+                        tint = GlassTheme.tokens.glassFillStrong,
+                        textColor = GlassTheme.tokens.textPrimary,
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .height(layout.height(48.dp, 46.dp)),
+                        onClick = onDismiss,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SmartListRow(
+    date: LocalDate,
+    task: TaskItem,
+    onClick: () -> Unit,
+) {
+    val layout = AppLayout.metrics
+    GlassSurface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = layout.height(56.dp, 52.dp))
+            .clickable(
+                role = Role.Button,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+        shape = RoundedCornerShape(layout.size(16.dp, 14.dp)),
+        tint = GlassTheme.tokens.glassFill,
+        shadowElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = layout.width(14.dp, 12.dp), vertical = layout.height(10.dp, 8.dp)),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp)),
+        ) {
+            Text(
+                text = formatShortDateWithYear(date),
+                style = MaterialTheme.typography.labelMedium,
+                color = GlassTheme.tokens.textSecondary,
+                maxLines = 1,
+            )
+            Text(
+                text = task.title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = GlassTheme.tokens.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            task.time?.let {
+                Text(
+                    text = formatTime(it),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = GlassTheme.tokens.textSecondary,
+                )
+            }
+        }
+    }
+}
+
 private enum class RecurrenceOption {
     None, Daily, WeeklyDays, Monthly
+}
+
+private enum class RecurrenceEndOption {
+    Never, OnDate, AfterOccurrences
 }
 
 @Composable
@@ -123,7 +322,9 @@ internal fun NewTaskSheet(
     onCreateLabel: suspend (String, String) -> LabelTag?,
     onDismiss: () -> Unit,
     onSave: (LocalDate, TaskDraft, (SaveResult) -> Unit) -> Unit,
-    onSaveRecurring: (LocalDate, TaskDraft, RecurrenceRule, (SaveResult) -> Unit) -> Unit,
+    onSaveRecurring: (LocalDate, TaskDraft, RecurrenceRule, RecurrenceEnd, (SaveResult) -> Unit) -> Unit,
+    templates: List<TaskTemplate> = emptyList(),
+    onSaveTemplate: suspend (TaskTemplate) -> Boolean = { false },
 ) {
     val layout = AppLayout.metrics
     val timeZone = remember { TimeZone.currentSystemDefault() }
@@ -142,12 +343,22 @@ internal fun NewTaskSheet(
     var selectedDate by remember(date, today) { mutableStateOf(if (date < today) today else date) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
+    var deadlineDate by remember { mutableStateOf<LocalDate?>(null) }
+    var showDeadlinePicker by remember { mutableStateOf(false) }
+    val selectedReminderOffsetMinutes = remember { mutableStateListOf<Long>() }
+    val subtaskTitles = remember { mutableStateListOf<String>() }
+    var newSubtaskTitle by remember { mutableStateOf("") }
+    var isSavingTemplate by remember { mutableStateOf(false) }
     val selectedLabelIds = remember { mutableStateListOf<String>() }
     var newLabelName by remember { mutableStateOf("") }
     var isCreatingLabel by remember { mutableStateOf(false) }
     var selectedColor by remember { mutableStateOf(colorOptions.first()) }
     var isSaving by remember { mutableStateOf(false) }
     var selectedRecurrence by remember { mutableStateOf<RecurrenceOption>(RecurrenceOption.None) }
+    var selectedRecurrenceEndOption by remember { mutableStateOf(RecurrenceEndOption.Never) }
+    var recurrenceEndDate by remember { mutableStateOf<LocalDate?>(null) }
+    var showRecurrenceEndDatePicker by remember { mutableStateOf(false) }
+    var recurrenceEndOccurrencesText by remember { mutableStateOf("") }
     val selectedWeekDays = remember { mutableStateListOf<DayOfWeek>() }
     var monthDay by remember(date, today) {
         mutableStateOf((if (date < today) today else date).dayOfMonth)
@@ -165,6 +376,40 @@ internal fun NewTaskSheet(
 
     val isPastSelected = selectedDate < today
     val sheetBlur = if (showTimePicker) layout.size(14.dp, 10.dp) else 0.dp
+
+    // Sugerencia de captura rapida: se recalcula en cada cambio de titulo, pero nunca aplica
+    // nada por si sola - el usuario tiene que tocar "Aplicar" (ver docs/agendnote/
+    // IMPLEMENTATION_PLAN.md, Fase 6). Al aplicarla, el titulo queda limpio y la sugerencia
+    // desaparece sola porque el texto resultante ya no tiene nada que reconocer.
+    val quickCaptureSuggestion = remember(title, today) {
+        parseQuickCapture(title, today).takeIf { it.date != null || it.time != null }
+    }
+
+    // Recordatorios se calculan como offsets sobre un instante de referencia: la hora
+    // planificada si hay una, si no el fin del día límite. Sin ninguna de las dos no hay nada
+    // sobre lo que anclar un recordatorio, así que la sección queda oculta (ver
+    // docs/agendnote/FASE4_PROPUESTA.md).
+    val reminderReferenceInstant = remember(selectedDate, selectedTime, deadlineDate, timeZone) {
+        val time = selectedTime
+        val deadline = deadlineDate
+        when {
+            time != null -> LocalDateTime(selectedDate, time).toInstant(timeZone)
+            deadline != null -> LocalDateTime(deadline, LocalTime(23, 59, 59)).toInstant(timeZone)
+            else -> null
+        }
+    }
+    // Los offsets elegidos no se limpian si la referencia cambia (p. ej. el usuario quita la
+    // hora y deja solo el deadline) - siguen siendo válidos relativos a la nueva referencia.
+
+    // Preserva el comportamiento previo a esta fase: una tarea con hora siempre generaba un
+    // aviso a esa hora, sin que el usuario tuviera que pensar en "recordatorios" como concepto
+    // aparte. Si hay hora y todavía no se eligió ningún preset, se preselecciona "En el
+    // momento" (visible y desmarcable, no un valor oculto que solo aparece al guardar).
+    LaunchedEffect(selectedTime) {
+        if (selectedTime != null && selectedReminderOffsetMinutes.isEmpty()) {
+            selectedReminderOffsetMinutes.add(0L)
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -266,6 +511,33 @@ internal fun NewTaskSheet(
                                 }
                             }
                         }
+
+                        if (templates.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 5.dp)),
+                            ) {
+                                templates.forEach { template ->
+                                    RecurrenceOptionChip(
+                                        text = template.name,
+                                        selected = false,
+                                        onClick = {
+                                            title = template.title
+                                            details = template.details.orEmpty()
+                                            selectedLabelIds.clear()
+                                            selectedLabelIds.addAll(
+                                                template.labelIds.filter { id -> labels.any { it.id == id } },
+                                            )
+                                            selectedReminderOffsetMinutes.clear()
+                                            selectedReminderOffsetMinutes.addAll(template.reminderOffsetMinutes)
+                                            subtaskTitles.clear()
+                                            subtaskTitles.addAll(template.subtaskTitles)
+                                        },
+                                    )
+                                }
+                            }
+                        }
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
@@ -300,19 +572,61 @@ internal fun NewTaskSheet(
                                         errorText = "Elegí al menos un día de la semana"
                                         return@GlassActionButton
                                     }
+                                    if (selectedRecurrence != RecurrenceOption.None &&
+                                        selectedRecurrenceEndOption == RecurrenceEndOption.OnDate &&
+                                        recurrenceEndDate == null
+                                    ) {
+                                        errorText = "Elegí la fecha en la que termina la serie"
+                                        return@GlassActionButton
+                                    }
+                                    if (selectedRecurrence != RecurrenceOption.None &&
+                                        selectedRecurrenceEndOption == RecurrenceEndOption.AfterOccurrences &&
+                                        recurrenceEndOccurrencesText.toIntOrNull()?.let { it > 0 } != true
+                                    ) {
+                                        errorText = "Indicá cuántas veces se repite"
+                                        return@GlassActionButton
+                                    }
 
                                     val chosenLabels = labels.filter { selectedLabelIds.contains(it.id) }
+                                    // End-of-day deadline: the user only picks a date (see the
+                                    // "Fecha límite" field below), not a time - a deadline of
+                                    // "today" should still be reachable at any point today.
+                                    val deadlineInstant = deadlineDate?.let {
+                                        LocalDateTime(it, LocalTime(23, 59, 59)).toInstant(timeZone)
+                                    }
+                                    val reminderInstants = reminderReferenceInstant?.let { reference ->
+                                        selectedReminderOffsetMinutes.map { minutes ->
+                                            Instant.fromEpochMilliseconds(
+                                                reference.toEpochMilliseconds() - minutes * 60_000L,
+                                            )
+                                        }
+                                    } ?: emptyList()
                                     val draft = TaskDraft(
                                         title = trimmedTitle,
                                         details = details.trim().ifBlank { null },
                                         time = selectedTime,
                                         labels = chosenLabels,
+                                        deadline = deadlineInstant,
+                                        reminders = reminderInstants,
+                                        subtasks = subtaskTitles.mapIndexed { index, subtaskTitle ->
+                                            Subtask(title = subtaskTitle, orderIndex = index)
+                                        },
                                     )
                                     val rule = when (selectedRecurrence) {
                                         RecurrenceOption.None -> null
                                         RecurrenceOption.Daily -> RecurrenceRule.Daily
                                         RecurrenceOption.WeeklyDays -> RecurrenceRule.WeeklyDays(selectedWeekDays.toSet())
                                         RecurrenceOption.Monthly -> RecurrenceRule.Monthly(monthDay)
+                                    }
+                                    val recurrenceEnd = when (selectedRecurrenceEndOption) {
+                                        RecurrenceEndOption.Never -> RecurrenceEnd.Never
+                                        RecurrenceEndOption.OnDate -> recurrenceEndDate
+                                            ?.let { RecurrenceEnd.OnDate(it) }
+                                            ?: RecurrenceEnd.Never
+                                        RecurrenceEndOption.AfterOccurrences -> recurrenceEndOccurrencesText
+                                            .toIntOrNull()
+                                            ?.let { RecurrenceEnd.AfterOccurrences(it) }
+                                            ?: RecurrenceEnd.Never
                                     }
                                     isSaving = true
                                     val onResult: (SaveResult) -> Unit = { result ->
@@ -324,7 +638,7 @@ internal fun NewTaskSheet(
                                         }
                                     }
                                     if (rule != null) {
-                                        onSaveRecurring(selectedDate, draft, rule, onResult)
+                                        onSaveRecurring(selectedDate, draft, rule, recurrenceEnd, onResult)
                                     } else {
                                         onSave(selectedDate, draft, onResult)
                                     }
@@ -351,6 +665,58 @@ internal fun NewTaskSheet(
                                 fontSize = layout.text(18.sp, 16.sp),
                             ),
                         )
+                        if (quickCaptureSuggestion != null) {
+                            GlassSurface(
+                                shape = RoundedCornerShape(layout.size(14.dp, 12.dp)),
+                                tint = GlassTheme.tokens.glassFillStrong,
+                                shadowElevation = 0.dp,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(
+                                            horizontal = layout.width(12.dp, 10.dp),
+                                            vertical = layout.height(8.dp, 6.dp),
+                                        ),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text(
+                                        text = "Detecté: " + describeQuickCaptureSuggestion(quickCaptureSuggestion),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = GlassTheme.tokens.textSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false),
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                            .clickable(
+                                                role = Role.Button,
+                                                onClickLabel = "Aplicar fecha y hora detectadas",
+                                                interactionSource = remember { MutableInteractionSource() },
+                                                indication = null,
+                                                onClick = {
+                                                    title = quickCaptureSuggestion.title
+                                                    quickCaptureSuggestion.date?.let {
+                                                        if (it >= today) selectedDate = it
+                                                    }
+                                                    quickCaptureSuggestion.time?.let { selectedTime = it }
+                                                },
+                                            ),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            text = "Aplicar",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = GlassTheme.tokens.accentOnLight,
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     Column(verticalArrangement = Arrangement.spacedBy(layout.height(6.dp, 5.dp))) {
@@ -436,6 +802,206 @@ internal fun NewTaskSheet(
                                 )
                             }
                         }
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(layout.height(8.dp, 6.dp))) {
+                        Text(
+                            text = "Fecha límite (opcional)",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = layout.text(15.sp, 14.sp),
+                            ),
+                            color = GlassTheme.tokens.textSecondary,
+                        )
+                        GlassSurface(
+                            shape = RoundedCornerShape(layout.size(18.dp, 16.dp)),
+                            tint = GlassTheme.tokens.glassFill,
+                            shadowElevation = 0.dp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(layout.height(56.dp, 50.dp))
+                                .clip(RoundedCornerShape(layout.size(18.dp, 16.dp)))
+                                .clickable(
+                                    role = Role.Button,
+                                    onClickLabel = "Seleccionar fecha límite",
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = { showDeadlinePicker = true },
+                                ),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(
+                                        horizontal = layout.width(14.dp, 12.dp),
+                                        vertical = layout.height(10.dp, 8.dp),
+                                    ),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.CalendarToday,
+                                        contentDescription = "Seleccionar fecha límite",
+                                        tint = GlassTheme.tokens.textPrimary,
+                                        modifier = Modifier.size(layout.size(20.dp, 18.dp)),
+                                    )
+                                    Text(
+                                        text = deadlineDate?.let(::formatShortDateWithYear) ?: "Sin fecha límite",
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontSize = layout.text(15.sp, 14.sp),
+                                        ),
+                                        color = if (deadlineDate == null) {
+                                            GlassTheme.tokens.textSecondary
+                                        } else {
+                                            GlassTheme.tokens.textPrimary
+                                        },
+                                    )
+                                }
+                                Text(
+                                    text = "Cambiar",
+                                    style = MaterialTheme.typography.titleSmall.copy(
+                                        fontSize = layout.text(14.sp, 13.sp),
+                                    ),
+                                    color = GlassTheme.tokens.textSecondary,
+                                )
+                            }
+                        }
+                    }
+
+                    if (reminderReferenceInstant != null) {
+                        Column(verticalArrangement = Arrangement.spacedBy(layout.height(8.dp, 6.dp))) {
+                            Text(
+                                text = "Recordatorios",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontSize = layout.text(15.sp, 14.sp),
+                                ),
+                                color = GlassTheme.tokens.textSecondary,
+                            )
+                            Row(
+                                modifier = Modifier.selectableGroup(),
+                                horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
+                            ) {
+                                reminderOffsetPresets().forEach { (minutes, text) ->
+                                    val selected = selectedReminderOffsetMinutes.contains(minutes)
+                                    RecurrenceOptionChip(
+                                        text = text,
+                                        selected = selected,
+                                        role = Role.Checkbox,
+                                        modifier = Modifier.weight(1f),
+                                        onClick = {
+                                            if (selected) {
+                                                selectedReminderOffsetMinutes.remove(minutes)
+                                            } else {
+                                                selectedReminderOffsetMinutes.add(minutes)
+                                            }
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(layout.height(8.dp, 6.dp))) {
+                        Text(
+                            text = "Subtareas (opcional)",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = layout.text(15.sp, 14.sp),
+                            ),
+                            color = GlassTheme.tokens.textSecondary,
+                        )
+                        subtaskTitles.forEachIndexed { index, subtaskTitle ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
+                            ) {
+                                Text(
+                                    text = subtaskTitle,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = GlassTheme.tokens.textPrimary,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                        .clickable(
+                                            role = Role.Button,
+                                            onClickLabel = "Quitar subtarea",
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null,
+                                            onClick = { subtaskTitles.removeAt(index) },
+                                        ),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = "Quitar",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = GlassTheme.tokens.errorContent,
+                                    )
+                                }
+                            }
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(layout.width(12.dp, 8.dp)),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            GlassTextField(
+                                value = newSubtaskTitle,
+                                onValueChange = { newSubtaskTitle = it },
+                                placeholder = "Nueva subtarea",
+                                label = "Título de la subtarea",
+                                modifier = Modifier.weight(1f),
+                            )
+                            GlassActionButton(
+                                modifier = Modifier
+                                    .width(layout.width(112.dp, 98.dp))
+                                    .height(layout.height(52.dp, 48.dp)),
+                                text = "Añadir",
+                                enabled = newSubtaskTitle.isNotBlank(),
+                                tint = GlassTheme.tokens.glassFillStrong,
+                                textColor = GlassTheme.tokens.textPrimary,
+                                onClick = {
+                                    val trimmed = newSubtaskTitle.trim()
+                                    if (trimmed.isEmpty()) return@GlassActionButton
+                                    subtaskTitles.add(trimmed)
+                                    newSubtaskTitle = ""
+                                },
+                            )
+                        }
+                        GlassActionButton(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(layout.height(46.dp, 44.dp)),
+                            text = if (isSavingTemplate) "Guardando plantilla..." else "Guardar como plantilla",
+                            enabled = title.isNotBlank() && !isSavingTemplate,
+                            tint = GlassTheme.tokens.glassFill,
+                            textColor = GlassTheme.tokens.textSecondary,
+                            onClick = {
+                                val trimmedTitle = title.trim()
+                                if (trimmedTitle.isEmpty()) return@GlassActionButton
+                                isSavingTemplate = true
+                                scope.launch {
+                                    val template = TaskTemplate(
+                                        id = "",
+                                        name = trimmedTitle,
+                                        title = trimmedTitle,
+                                        details = details.trim().ifBlank { null },
+                                        labelIds = labels.filter { selectedLabelIds.contains(it.id) }.map { it.id },
+                                        reminderOffsetMinutes = selectedReminderOffsetMinutes.toList(),
+                                        subtaskTitles = subtaskTitles.toList(),
+                                    )
+                                    val success = onSaveTemplate(template)
+                                    isSavingTemplate = false
+                                    if (!success) errorText = "No se pudo guardar la plantilla"
+                                }
+                            },
+                        )
                     }
 
                     Column(verticalArrangement = Arrangement.spacedBy(layout.height(8.dp, 6.dp))) {
@@ -529,6 +1095,86 @@ internal fun NewTaskSheet(
                                         onClick = { monthDay = day },
                                     )
                                 }
+                            }
+                        }
+
+                        if (selectedRecurrence != RecurrenceOption.None) {
+                            Text(
+                                text = "Termina",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = GlassTheme.tokens.textSecondary,
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .selectableGroup(),
+                                horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
+                            ) {
+                                RecurrenceOptionChip(
+                                    text = "Nunca",
+                                    selected = selectedRecurrenceEndOption == RecurrenceEndOption.Never,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { selectedRecurrenceEndOption = RecurrenceEndOption.Never },
+                                )
+                                RecurrenceOptionChip(
+                                    text = "En fecha",
+                                    selected = selectedRecurrenceEndOption == RecurrenceEndOption.OnDate,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { selectedRecurrenceEndOption = RecurrenceEndOption.OnDate },
+                                )
+                                RecurrenceOptionChip(
+                                    text = "Después de N",
+                                    selected = selectedRecurrenceEndOption == RecurrenceEndOption.AfterOccurrences,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { selectedRecurrenceEndOption = RecurrenceEndOption.AfterOccurrences },
+                                )
+                            }
+                            if (selectedRecurrenceEndOption == RecurrenceEndOption.OnDate) {
+                                GlassSurface(
+                                    shape = RoundedCornerShape(layout.size(16.dp, 14.dp)),
+                                    tint = GlassTheme.tokens.glassFill,
+                                    shadowElevation = 0.dp,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(layout.height(48.dp, 46.dp))
+                                        .clip(RoundedCornerShape(layout.size(16.dp, 14.dp)))
+                                        .clickable(
+                                            role = Role.Button,
+                                            onClickLabel = "Seleccionar fecha de fin de la serie",
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null,
+                                            onClick = { showRecurrenceEndDatePicker = true },
+                                        ),
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = layout.width(14.dp, 12.dp)),
+                                        contentAlignment = Alignment.CenterStart,
+                                    ) {
+                                        Text(
+                                            text = recurrenceEndDate?.let(::formatShortDateWithYear)
+                                                ?: "Elegí la última fecha",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = if (recurrenceEndDate == null) {
+                                                GlassTheme.tokens.textSecondary
+                                            } else {
+                                                GlassTheme.tokens.textPrimary
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                            if (selectedRecurrenceEndOption == RecurrenceEndOption.AfterOccurrences) {
+                                GlassTextField(
+                                    value = recurrenceEndOccurrencesText,
+                                    onValueChange = { input ->
+                                        recurrenceEndOccurrencesText = input.filter { it.isDigit() }.take(4)
+                                    },
+                                    placeholder = "Número de repeticiones",
+                                    label = "Número de repeticiones",
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
                             }
                         }
                     }
@@ -687,6 +1333,30 @@ internal fun NewTaskSheet(
                     onDismiss = { showTimePicker = false },
                 )
             }
+
+            if (showDeadlinePicker) {
+                DatePickerOverlay(
+                    selectedDate = deadlineDate ?: selectedDate,
+                    onSelect = {
+                        deadlineDate = it
+                        showDeadlinePicker = false
+                    },
+                    onClear = { deadlineDate = null },
+                    onDismiss = { showDeadlinePicker = false },
+                )
+            }
+
+            if (showRecurrenceEndDatePicker) {
+                DatePickerOverlay(
+                    selectedDate = recurrenceEndDate ?: selectedDate,
+                    onSelect = {
+                        recurrenceEndDate = it
+                        showRecurrenceEndDatePicker = false
+                    },
+                    onClear = { recurrenceEndDate = null },
+                    onDismiss = { showRecurrenceEndDatePicker = false },
+                )
+            }
         }
     }
 }
@@ -696,6 +1366,8 @@ private fun DatePickerOverlay(
     selectedDate: LocalDate,
     onSelect: (LocalDate) -> Unit,
     onDismiss: () -> Unit,
+    /** When non-null, renders a "Sin fecha" button that calls this instead of [onSelect]. */
+    onClear: (() -> Unit)? = null,
 ) {
     val layout = AppLayout.metrics
     val timeZone = remember { TimeZone.currentSystemDefault() }
@@ -830,6 +1502,17 @@ private fun DatePickerOverlay(
                             onDismiss()
                         },
                     )
+                    if (onClear != null) {
+                        GlassActionButton(
+                            text = "Sin fecha",
+                            tint = GlassTheme.tokens.glassFill,
+                            textColor = GlassTheme.tokens.textPrimary,
+                            onClick = {
+                                onClear()
+                                onDismiss()
+                            },
+                        )
+                    }
                     GlassActionButton(
                         text = "Cerrar",
                         tint = GlassTheme.tokens.glassFillStrong,
@@ -1527,6 +2210,7 @@ internal fun TaskDetailsOverlay(
     onRequestDelete: () -> Unit,
 ) {
     val layout = AppLayout.metrics
+    val timeZone = remember { TimeZone.currentSystemDefault() }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -1600,6 +2284,59 @@ internal fun TaskDetailsOverlay(
                             style = MaterialTheme.typography.bodyMedium,
                             color = GlassTheme.tokens.textSecondary,
                         )
+                    }
+                }
+
+                val taskDeadline = task.deadline
+                if (taskDeadline != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.CalendarToday,
+                            contentDescription = "Fecha límite",
+                            tint = GlassTheme.tokens.error,
+                            modifier = Modifier.size(layout.size(18.dp, 16.dp)),
+                        )
+                        Text(
+                            text = "Límite: " + formatFullDate(taskDeadline.toLocalDateTime(timeZone).date),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = GlassTheme.tokens.errorContent,
+                        )
+                    }
+                }
+
+                if (task.subtasks.isNotEmpty()) {
+                    val doneCount = task.subtasks.count { it.isDone }
+                    Column(verticalArrangement = Arrangement.spacedBy(layout.height(6.dp, 4.dp))) {
+                        Text(
+                            text = "Subtareas ($doneCount/${task.subtasks.size})",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = GlassTheme.tokens.textSecondary,
+                        )
+                        task.subtasks.sortedBy { it.orderIndex }.forEach { subtask ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
+                            ) {
+                                Text(
+                                    text = if (subtask.isDone) "☑" else "☐",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = GlassTheme.tokens.textSecondary,
+                                )
+                                Text(
+                                    text = subtask.title,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (subtask.isDone) {
+                                        GlassTheme.tokens.textSecondary
+                                    } else {
+                                        GlassTheme.tokens.textPrimary
+                                    },
+                                    textDecoration = if (subtask.isDone) TextDecoration.LineThrough else TextDecoration.None,
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -1691,6 +2428,14 @@ private fun formatShortDateWithYear(date: LocalDate): String {
     return "${date.dayOfMonth} ${monthName(date.month, short = true)} ${date.year}"
 }
 
+private fun describeQuickCaptureSuggestion(suggestion: QuickCaptureResult): String {
+    val parts = listOfNotNull(
+        suggestion.date?.let(::formatShortDateWithYear),
+        suggestion.time?.let(::formatTime),
+    )
+    return parts.joinToString(", ")
+}
+
 private fun weekDayLabels(): List<String> {
     return listOf("L", "M", "X", "J", "V", "S", "D")
 }
@@ -1747,5 +2492,19 @@ private fun weekDayOptions(): List<Pair<DayOfWeek, String>> {
         DayOfWeek.FRIDAY to "V",
         DayOfWeek.SATURDAY to "S",
         DayOfWeek.SUNDAY to "D",
+    )
+}
+
+/**
+ * Presets de recordatorio como minutos de antelación sobre la hora planificada o el deadline
+ * (ver [reminderReferenceInstant] en [NewTaskSheet]). No incluye una opción personalizada
+ * todavía - ver docs/agendnote/FASE4_PROPUESTA.md.
+ */
+private fun reminderOffsetPresets(): List<Pair<Long, String>> {
+    return listOf(
+        0L to "En el momento",
+        10L to "10 min antes",
+        60L to "1 hora antes",
+        1440L to "1 día antes",
     )
 }

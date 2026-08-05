@@ -162,4 +162,10 @@ private class FakeSettingsRepository(
         if (failThemeSave) error("theme save failed")
         savedThemes += isDark
     }
+
+    override suspend fun fetchTaskTemplates(): List<com.franciscor.agendnote.core.model.TaskTemplate> = emptyList()
+
+    override suspend fun saveTaskTemplates(
+        templates: List<com.franciscor.agendnote.core.model.TaskTemplate>,
+    ): Boolean = true
 }

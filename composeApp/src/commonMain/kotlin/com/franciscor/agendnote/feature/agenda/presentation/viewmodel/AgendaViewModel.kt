@@ -8,13 +8,14 @@ import com.franciscor.agendnote.core.model.TaskItem
 import com.franciscor.agendnote.core.notifications.NotificationServiceProvider
 import com.franciscor.agendnote.core.platform.currentTimeMillis
 import com.franciscor.agendnote.feature.agenda.domain.AgendaTaskRepository
+import com.franciscor.agendnote.feature.agenda.domain.RecurrenceEnd
 import com.franciscor.agendnote.feature.agenda.domain.RecurrenceRule
 import com.franciscor.agendnote.feature.agenda.domain.SeriesMaterializer
 import com.franciscor.agendnote.feature.agenda.domain.TaskSeriesRepository
 import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaDayUiState
 import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaUiState
+import com.franciscor.agendnote.feature.agenda.presentation.model.PendingUndo
 import com.franciscor.agendnote.feature.agenda.presentation.model.SaveResult
-import io.ktor.client.plugins.ResponseException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -257,7 +258,12 @@ class AgendaViewModel(
             )
     }
 
-    suspend fun saveRecurringTask(date: LocalDate, draft: TaskDraft, rule: RecurrenceRule): SaveResult {
+    suspend fun saveRecurringTask(
+        date: LocalDate,
+        draft: TaskDraft,
+        rule: RecurrenceRule,
+        end: RecurrenceEnd = RecurrenceEnd.Never,
+    ): SaveResult {
         val trimmedTitle = draft.title.trim()
         if (trimmedTitle.isEmpty()) return SaveResult(false, "Título requerido")
         val taskSeriesRepository = taskSeriesRepository ?: run {
@@ -277,12 +283,14 @@ class AgendaViewModel(
                 rule = rule,
                 labels = draft.labels,
                 startDate = date,
+                end = end,
             )
         }
 
         val series = seriesResult.getOrElse { error ->
-            setError(date, resolveServerError(error))
-            return SaveResult(false, resolveServerError(error))
+            val message = resolveServerError(error, fallback = "No se pudo crear la serie recurrente")
+            setError(date, message)
+            return SaveResult(false, message)
         }
 
         val materialized = runCatching { materializer.materializeSeries(series, date) }
@@ -305,11 +313,28 @@ class AgendaViewModel(
             .onSuccess { updated ->
                 replaceTask(date, updated)
                 setError(date, null)
+                // Offer "Deshacer" only for the transition that just completed a task, and only
+                // for that exact task - unmarking (isDone = false), whether via undo or any other
+                // path, always clears it instead of leaving a stale snackbar target.
+                uiState = uiState.copy(
+                    pendingUndo = if (isDone) {
+                        PendingUndo(date, updated)
+                    } else if (uiState.pendingUndo?.task?.id == task.id) {
+                        null
+                    } else {
+                        uiState.pendingUndo
+                    },
+                )
             }
             .onFailure {
                 setError(date, "No se pudo actualizar la tarea")
             }
             .isSuccess
+    }
+
+    /** Dismisses the pending "Deshacer" snackbar without changing any task's done state. */
+    fun dismissPendingUndo() {
+        uiState = uiState.copy(pendingUndo = null)
     }
 
     suspend fun deleteTask(date: LocalDate, task: TaskItem): Boolean {
@@ -384,9 +409,10 @@ class AgendaViewModel(
         date: LocalDate,
         draft: TaskDraft,
         rule: RecurrenceRule,
+        end: RecurrenceEnd = RecurrenceEnd.Never,
         onResult: (SaveResult) -> Unit = {},
     ) {
-        viewModelScope.launch { onResult(saveRecurringTask(date, draft, rule)) }
+        viewModelScope.launch { onResult(saveRecurringTask(date, draft, rule, end)) }
     }
 
     fun toggleTaskDoneAsync(
@@ -413,15 +439,21 @@ class AgendaViewModel(
     }
 
     private suspend fun reconcileDayNotifications(command: NotificationCommand.ReconcileDay) {
+        // A task can now request a native alarm/notification either via an explicit reminder
+        // (task.reminders, see ReminderResolution.earliestReminderInstant) or, for tasks that
+        // predate that model, via a plain planned time (task.time). Either is enough to need
+        // scheduling; neither is enough to cancel.
+        fun hasSchedulableReminder(task: TaskItem) = task.time != null || task.reminders.isNotEmpty()
+
         val currentById = command.currentTasks.associateBy { it.id }
         command.previousTasks.forEach { previous ->
             val current = currentById[previous.id]
-            if (current == null || current.isDone || current.time == null) {
+            if (current == null || current.isDone || !hasSchedulableReminder(current)) {
                 runCatching { notificationService.cancelTaskNotification(previous.id) }
             }
         }
         command.currentTasks
-            .filter { !it.isDone && it.time != null }
+            .filter { !it.isDone && hasSchedulableReminder(it) }
             .forEach { task ->
                 runCatching { notificationService.scheduleTaskNotification(task, command.date) }
             }
@@ -469,11 +501,17 @@ class AgendaViewModel(
     }
 }
 
-private fun resolveServerError(error: Throwable): String {
-    if (error is ResponseException) {
-        error.message?.takeIf { it.isNotBlank() }?.let { return it }
-    }
-    return error.message?.takeIf { it.isNotBlank() } ?: "No se pudo guardar la tarea"
+/**
+ * Always a fixed, human, Spanish message - never [error]'s own text. `ResponseException` and
+ * the Postgres/Edge Function errors it wraps carry raw HTTP body text (constraint names, table
+ * names, English diagnostic strings); surfacing that directly in the UI leaks internal schema
+ * details and reads as a bug even when the underlying failure is mundane (see
+ * docs/agendnote/SECURITY_AUDIT.md). If per-failure detail is ever needed, log [error] to a
+ * developer-only channel instead of returning it to the caller - this project has none today.
+ */
+@Suppress("UNUSED_PARAMETER")
+private fun resolveServerError(error: Throwable, fallback: String = "No se pudo guardar la tarea"): String {
+    return fallback
 }
 
 private fun currentDate(timeZone: TimeZone): LocalDate {

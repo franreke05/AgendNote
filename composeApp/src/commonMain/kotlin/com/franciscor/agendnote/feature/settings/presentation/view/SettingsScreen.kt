@@ -31,6 +31,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -57,6 +59,7 @@ import kotlinx.datetime.isoDayNumber
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     controller: SettingsController,
+    onExportRequested: () -> String = { "" },
     onDeleteAllNotes: suspend () -> Boolean,
     onDeleteAllLabels: suspend () -> Boolean,
     seriesList: List<TaskSeries>,
@@ -68,6 +71,8 @@ fun SettingsScreen(
     val uiState = viewModel.uiState
     val isEditingEnabled = uiState.isRemoteAvailable
     var seriesPendingDelete by remember { mutableStateOf<TaskSeries?>(null) }
+    val clipboardManager = LocalClipboardManager.current
+    var exportCopiedMessage by remember { mutableStateOf<String?>(null) }
 
     LazyColumn(
         modifier = modifier
@@ -257,6 +262,48 @@ fun SettingsScreen(
                             }
                         },
                     )
+                }
+            }
+        }
+
+        item {
+            GlassSurface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
+            ) {
+                Column(
+                    modifier = Modifier.padding(layout.size(16.dp, 14.dp)),
+                    verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
+                ) {
+                    Text(
+                        text = "Datos",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = GlassTheme.tokens.textPrimary,
+                    )
+                    Text(
+                        text = "Copia tus tareas y etiquetas visibles como JSON al portapapeles. " +
+                            "Solo incluye lo que ya está cargado (los días y meses que visitaste), " +
+                            "no exporta la nube entera.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = GlassTheme.tokens.textSecondary,
+                    )
+                    GlassActionButton(
+                        text = "Exportar mis datos",
+                        tint = GlassTheme.tokens.glassFillStrong,
+                        textColor = GlassTheme.tokens.textPrimary,
+                        onClick = {
+                            val json = onExportRequested()
+                            clipboardManager.setText(AnnotatedString(json))
+                            exportCopiedMessage = "Copiado al portapapeles"
+                        },
+                    )
+                    exportCopiedMessage?.let { message ->
+                        Text(
+                            text = message,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = GlassTheme.tokens.textSecondary,
+                        )
+                    }
                 }
             }
         }

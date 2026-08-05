@@ -14,6 +14,18 @@ sealed interface RecurrenceRule {
     data class Monthly(val dayOfMonth: Int) : RecurrenceRule
 }
 
+/** When a recurring series stops generating new occurrences. */
+sealed interface RecurrenceEnd {
+    /** Repeats indefinitely (today's only behavior before Fase 5). */
+    data object Never : RecurrenceEnd
+
+    /** Last possible occurrence is on or before [date] (inclusive). */
+    data class OnDate(val date: LocalDate) : RecurrenceEnd
+
+    /** Stops once [count] occurrences have been materialized in total, across all batches. */
+    data class AfterOccurrences(val count: Int) : RecurrenceEnd
+}
+
 /**
  * Todas las fechas entre [from] y [to] (ambos inclusive) que caen dentro de [rule].
  * Lista vacia si [from] es posterior a [to].
