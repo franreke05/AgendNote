@@ -159,6 +159,16 @@ Verificado: `BUILD SUCCESSFUL`, 101/101 tests.
 7. **Fix — 3 bugs de la revisión adversarial**. Commit `acfd26d`. Verificado por mí releyendo el diff real (no solo el resumen del agente): el flag `remindersTouched` corta exactamente el camino de pérdida de datos (si es `false`, `reminders` viaja como `null`, Ktor lo omite del JSON por `explicitNulls=false`, la Edge Function nunca ve la clave `reminders` y no toca la columna). Templates ahora con el mismo guard `mode is TaskSheetMode.Create` que ya usaban "Repetir"/"Guardar como plantilla". `editingTask` en `AgendaScreen.kt` ahora es `remember(editingTaskId)`, no se recalcula en cada recomposición de `sourceTasks`. Verificado: `BUILD SUCCESSFUL`, incluye 2 tests de regresión nuevos que fuerzan `remindersTouched=false → reminders=null` incluso con un draft no vacío.
 8. **Build final de verificación**: `:androidApp:assembleDebug` → `BUILD SUCCESSFUL`, APK generada con absolutamente todo lo de esta operación integrado (tokens Glass, iOS P0 quick wins, edición de tarea completa + su corrección, aviso de recordatorios).
 
+## COMPLETED (13) — FAB coral translúcido + sistema de botones nombrado
+Commit `e284a8a`. P0 visual explícito del usuario. `FloatingAddButton` (compartido por Agenda y
+Día) deja de ser un círculo blanco plano: tinte coral translúcido (`accent@22%`, `@34%` al
+pulsar), borde `accentOnLight`, press-scale. Nuevo `core/ui/components/GlassButtons.kt`:
+`GlassButton.Primary/Secondary` y `GlassDestructiveButton`, envolviendo (no reemplazando)
+`GlassActionButton` ya existente - decisión explícita de la investigación de tokens para no
+arriesgar los 54 call sites actuales a 4 días del plazo. Verificado: `BUILD SUCCESSFUL`, 101/101.
+Build final consolidado: `androidApp:assembleDebug` → `BUILD SUCCESSFUL`, APK con absolutamente
+todo lo de esta directiva ampliada integrado.
+
 ## Gate B (core usability) — código-completo, revisado, **pendiente de QA en dispositivo**
 No se declara "cerrado" en sentido estricto (regla del propio prompt de operación: no declarar validación sin haberla hecho). Falta el recorrido manual real - ver `docs/agendnote/IOS_VERIFICATION_CHECKLIST.md` para iOS; falta un equivalente Android, pendiente de que el usuario lance un emulador (este entorno no tiene herramientas de interacción con UI de Android/iOS, solo puede compilar y ejecutar tests).
 
