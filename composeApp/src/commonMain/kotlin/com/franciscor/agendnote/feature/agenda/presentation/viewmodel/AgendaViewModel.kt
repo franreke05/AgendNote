@@ -265,7 +265,13 @@ class AgendaViewModel(
      * [moveTask]/[setTasks]/[replaceTask], never a direct `uiState.copy(...)`, so that local
      * notifications stay reconciled with the new state (see [setTasks]'s doc comment).
      */
-    suspend fun updateTask(originalDate: LocalDate, id: String, targetDate: LocalDate, draft: TaskDraft): SaveResult {
+    suspend fun updateTask(
+        originalDate: LocalDate,
+        id: String,
+        targetDate: LocalDate,
+        draft: TaskDraft,
+        remindersTouched: Boolean,
+    ): SaveResult {
         val trimmedTitle = draft.title.trim()
         if (trimmedTitle.isEmpty()) return SaveResult(false, "Título requerido")
         val repository = repository ?: run {
@@ -273,7 +279,9 @@ class AgendaViewModel(
             return SaveResult(false, remoteErrorMessage)
         }
 
-        return runCatching { repository.updateTask(id, targetDate, draft.copy(title = trimmedTitle)) }
+        return runCatching {
+            repository.updateTask(id, targetDate, draft.copy(title = trimmedTitle), remindersTouched)
+        }
             .onSuccess { updated ->
                 moveTask(originalDate, targetDate, updated)
                 setError(originalDate, null)
@@ -439,9 +447,12 @@ class AgendaViewModel(
         id: String,
         targetDate: LocalDate,
         draft: TaskDraft,
+        remindersTouched: Boolean,
         onResult: (SaveResult) -> Unit = {},
     ) {
-        viewModelScope.launch { onResult(updateTask(originalDate, id, targetDate, draft)) }
+        viewModelScope.launch {
+            onResult(updateTask(originalDate, id, targetDate, draft, remindersTouched))
+        }
     }
 
     fun saveRecurringTaskAsync(

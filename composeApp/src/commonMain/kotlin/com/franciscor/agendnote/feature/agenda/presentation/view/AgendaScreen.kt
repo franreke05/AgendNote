@@ -62,7 +62,16 @@ fun AgendaScreen(
         sourceTasks.find { it.id == id }?.let { task -> PendingDelete(selectedDate, task) }
     }
     val showTaskDetails = showTaskDetailsTaskId?.let { id -> sourceTasks.find { it.id == id } }
-    val editingTask = editingTaskId?.let { id -> sourceTasks.find { it.id == id } }
+    // Bug 3 fix: snapshot the task being edited at the moment the sheet opens (keyed only on
+    // editingTaskId, not on sourceTasks) instead of re-resolving it against sourceTasks on every
+    // recomposition. sourceTasks can change while the sheet is open for reasons unrelated to this
+    // task (a background refresh, another device's edit, a toggle-done elsewhere) - re-resolving
+    // on every change meant the task briefly not being in the newly-fetched list (or the day's
+    // cache reloading) closed the sheet out from under the user with no warning and no chance to
+    // keep what they had typed.
+    val editingTask = remember(editingTaskId) {
+        editingTaskId?.let { id -> sourceTasks.find { it.id == id } }
+    }
     val taskSheetMode = when {
         editingTask != null -> TaskSheetMode.Edit(editingTask, selectedDate)
         showTaskSheet -> TaskSheetMode.Create(selectedDate)
@@ -172,9 +181,9 @@ fun AgendaScreen(
                 onSaveRecurring = { targetDate, draft, rule, end, onResult ->
                     controller.saveRecurringTaskAsync(targetDate, draft, rule, end, onResult)
                 },
-                onSaveEdit = { id, targetDate, draft, onResult ->
+                onSaveEdit = { id, targetDate, draft, remindersTouched, onResult ->
                     val originalDate = (mode as? TaskSheetMode.Edit)?.originalDate ?: selectedDate
-                    controller.updateTaskAsync(originalDate, id, targetDate, draft, onResult)
+                    controller.updateTaskAsync(originalDate, id, targetDate, draft, remindersTouched, onResult)
                 },
             )
         }

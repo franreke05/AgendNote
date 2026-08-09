@@ -332,10 +332,11 @@ class AgendaViewModelTest {
         val updated = task("t-1", "Regar plantas del balcon")
         val repository = FakeAgendaTaskRepository(
             fetchTasksHandler = { listOf(original) },
-            updateTaskHandler = { id, date, draft ->
+            updateTaskHandler = { id, date, draft, remindersTouched ->
                 assertEquals("t-1", id)
                 assertEquals(baseDate, date)
                 assertEquals("Regar plantas del balcon", draft.title)
+                assertTrue(remindersTouched)
                 updated
             },
         )
@@ -347,6 +348,7 @@ class AgendaViewModelTest {
             id = "t-1",
             targetDate = baseDate,
             draft = TaskDraft(title = "Regar plantas del balcon", details = null, time = null, labels = emptyList()),
+            remindersTouched = true,
         )
 
         assertTrue(result.success)
@@ -360,7 +362,7 @@ class AgendaViewModelTest {
         val moved = task("t-1", "Reunion", hour = 10)
         val repository = FakeAgendaTaskRepository(
             fetchTasksHandler = { date -> if (date == baseDate) listOf(original) else emptyList() },
-            updateTaskHandler = { _, _, _ -> moved },
+            updateTaskHandler = { _, _, _, _ -> moved },
         )
         val viewModel = AgendaViewModel(repository, timeZone = timeZone, initialDate = baseDate)
         viewModel.loadTasksForDate(baseDate)
@@ -371,6 +373,7 @@ class AgendaViewModelTest {
             id = "t-1",
             targetDate = nextDate,
             draft = TaskDraft(title = "Reunion", details = null, time = LocalTime(10, 0), labels = emptyList()),
+            remindersTouched = false,
         )
 
         assertTrue(result.success)
@@ -385,7 +388,7 @@ class AgendaViewModelTest {
         val moved = task("t-1", "Reunion", hour = 10)
         val repository = FakeAgendaTaskRepository(
             fetchTasksHandler = { listOf(original) },
-            updateTaskHandler = { _, _, _ -> moved },
+            updateTaskHandler = { _, _, _, _ -> moved },
         )
         val viewModel = AgendaViewModel(repository, timeZone = timeZone, initialDate = baseDate)
         viewModel.loadTasksForDate(baseDate)
@@ -395,6 +398,7 @@ class AgendaViewModelTest {
             id = "t-1",
             targetDate = nextDate,
             draft = TaskDraft(title = "Reunion", details = null, time = LocalTime(10, 0), labels = emptyList()),
+            remindersTouched = false,
         )
 
         assertFalse(viewModel.uiState.tasksByDate.containsKey(nextDate))
@@ -405,7 +409,7 @@ class AgendaViewModelTest {
         val original = task("t-1", "Regar plantas")
         val repository = FakeAgendaTaskRepository(
             fetchTasksHandler = { listOf(original) },
-            updateTaskHandler = { _, _, _ -> error("boom") },
+            updateTaskHandler = { _, _, _, _ -> error("boom") },
         )
         val viewModel = AgendaViewModel(repository, timeZone = timeZone, initialDate = baseDate)
         viewModel.loadTasksForDate(baseDate)
@@ -415,6 +419,7 @@ class AgendaViewModelTest {
             id = "t-1",
             targetDate = baseDate,
             draft = TaskDraft(title = "Regar plantas", details = null, time = null, labels = emptyList()),
+            remindersTouched = true,
         )
 
         assertFalse(result.success)
@@ -516,7 +521,7 @@ private class FakeAgendaTaskRepository(
         { _, _ -> emptyMap() },
     private val updateTaskDoneHandler: (suspend (String, Boolean) -> TaskItem)? = null,
     private val createTaskHandler: (suspend (LocalDate, TaskDraft) -> TaskItem)? = null,
-    private val updateTaskHandler: (suspend (String, LocalDate, TaskDraft) -> TaskItem)? = null,
+    private val updateTaskHandler: (suspend (String, LocalDate, TaskDraft, Boolean) -> TaskItem)? = null,
 ) : AgendaTaskRepository {
     override suspend fun fetchTasks(date: LocalDate): List<TaskItem> = fetchTasksHandler(date)
 
@@ -534,8 +539,8 @@ private class FakeAgendaTaskRepository(
         )
     }
 
-    override suspend fun updateTask(id: String, date: LocalDate, draft: TaskDraft): TaskItem {
-        updateTaskHandler?.let { return it(id, date, draft) }
+    override suspend fun updateTask(id: String, date: LocalDate, draft: TaskDraft, remindersTouched: Boolean): TaskItem {
+        updateTaskHandler?.let { return it(id, date, draft, remindersTouched) }
         return TaskItem(
             id = id,
             title = draft.title,

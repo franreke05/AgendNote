@@ -85,7 +85,7 @@ private class FakeAgendaTaskRepositoryForMaterializer : AgendaTaskRepository {
         )
     }
 
-    override suspend fun updateTask(id: String, date: LocalDate, draft: TaskDraft): TaskItem {
+    override suspend fun updateTask(id: String, date: LocalDate, draft: TaskDraft, remindersTouched: Boolean): TaskItem {
         error("not used in this test")
     }
 

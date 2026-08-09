@@ -342,7 +342,7 @@ internal fun NewTaskSheet(
     onDismiss: () -> Unit,
     onSave: (LocalDate, TaskDraft, (SaveResult) -> Unit) -> Unit,
     onSaveRecurring: (LocalDate, TaskDraft, RecurrenceRule, RecurrenceEnd, (SaveResult) -> Unit) -> Unit,
-    onSaveEdit: (String, LocalDate, TaskDraft, (SaveResult) -> Unit) -> Unit = { _, _, _, _ -> },
+    onSaveEdit: (String, LocalDate, TaskDraft, Boolean, (SaveResult) -> Unit) -> Unit = { _, _, _, _, _ -> },
     templates: List<TaskTemplate> = emptyList(),
     onSaveTemplate: suspend (TaskTemplate) -> Boolean = { false },
 ) {
@@ -383,6 +383,15 @@ internal fun NewTaskSheet(
     }
     var showDeadlinePicker by remember { mutableStateOf(false) }
     val selectedReminderOffsetMinutes = remember(mode) { mutableStateListOf<Long>() }
+    // Bug 1 fix: only true once the user actively taps a preset chip in the "Recordatorios"
+    // section below during *this* edit session - never set by the automatic prefill
+    // (LaunchedEffect(mode) further down) or by the create-mode preselect (LaunchedEffect
+    // (selectedTime), which only applies to TaskSheetMode.Create anyway). See onSaveEdit's call
+    // site for why this matters: the prefill heuristic can fail to reconstruct the saved
+    // reminders (timezone changes, reminders that were never one of the 4 presets, etc.), and if
+    // the request always sent `reminders`, saving an edit the user never touched that section on
+    // would silently wipe the task's real reminders on the server.
+    var remindersTouched by remember(mode) { mutableStateOf(false) }
     // Preserves isDone on prefill (see TaskSheetSubtask) - ordered by orderIndex like
     // TaskDetailsOverlay does, since the drafted list order becomes the new orderIndex on save.
     val subtaskItems = remember(mode) {
@@ -609,7 +618,12 @@ internal fun NewTaskSheet(
                             )
                         }
 
-                        if (templates.isNotEmpty()) {
+                        // Bug 2 fix: applying a template overwrites title/notes/labels/reminders/
+                        // subtasks (including already-completed subtasks' isDone) with zero
+                        // confirmation - fine for a blank draft in Create, destructive for a task
+                        // that already exists. Same guard as "Repetir" and "Guardar como
+                        // plantilla" below: templates are simply not offered while editing.
+                        if (mode is TaskSheetMode.Create && templates.isNotEmpty()) {
                             Row(
                                 modifier = Modifier.horizontalScroll(rememberScrollState()),
                                 horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 5.dp)),
@@ -627,6 +641,7 @@ internal fun NewTaskSheet(
                                             )
                                             selectedReminderOffsetMinutes.clear()
                                             selectedReminderOffsetMinutes.addAll(template.reminderOffsetMinutes)
+                                            remindersTouched = true
                                             subtaskItems.clear()
                                             subtaskItems.addAll(template.subtaskTitles.map { TaskSheetSubtask(title = it) })
                                         },
@@ -735,7 +750,13 @@ internal fun NewTaskSheet(
                                         }
                                     }
                                     when (mode) {
-                                        is TaskSheetMode.Edit -> onSaveEdit(mode.task.id, selectedDate, draft, onResult)
+                                        is TaskSheetMode.Edit -> onSaveEdit(
+                                            mode.task.id,
+                                            selectedDate,
+                                            draft,
+                                            remindersTouched,
+                                            onResult,
+                                        )
                                         is TaskSheetMode.Create -> {
                                             if (rule != null) {
                                                 onSaveRecurring(selectedDate, draft, rule, recurrenceEnd, onResult)
@@ -994,6 +1015,7 @@ internal fun NewTaskSheet(
                                         role = Role.Checkbox,
                                         modifier = Modifier.weight(1f),
                                         onClick = {
+                                            remindersTouched = true
                                             if (selected) {
                                                 selectedReminderOffsetMinutes.remove(minutes)
                                             } else {
