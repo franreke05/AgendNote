@@ -58,9 +58,30 @@ archivo.
 - Supabase: MCP conectado en esta sesión apunta a un proyecto ajeno (`oposibots-ui`), no al backend real de AgendNote.
 
 ## ACTIVE_AGENTS
-Ninguno en este momento. Los 3 agentes de investigación de la directiva ampliada (Liquid Glass,
-inventario de popups, mensajes/voz) fallaron por límite de sesión (reseteado por el usuario a
-las 17:40 Madrid); relanzados - ver tabla más abajo tras COMPLETED (9).
+2 de los 3 agentes de investigación relanzados siguen en curso (Liquid Glass/tokens, mensajes/
+voz). El de inventario de popups YA entregó - ver COMPLETED (10).
+
+## COMPLETED (10) — inventario completo de popups + plan de rediseño de Listas Inteligentes
+Investigación pura, sin código todavía. Hallazgos clave:
+- Inventario exhaustivo: cero `AlertDialog`/`ModalBottomSheet` en todo el proyecto - **todo**
+  overlay está construido a mano sobre `Dialog()` + `GlassSurface`. 9 componentes catalogados.
+- `ConfirmDeleteDialog`/`GlassConfirmDialog` (ALERT, 5 call sites) es **el que mejor encaja ya**
+  con su categoría - cambio menor.
+- `TimePickerOverlay` es el más cercano al lenguaje nativo de iPhone hoy (wheel picker +
+  Cancelar/Listo, ya anclado abajo) - cambio menor.
+- `CalendarPopover` (el que integré yo mismo hace un momento): confirmado que hoy es
+  indistinguible de un diálogo a pantalla completa - necesita aligerarse (P1, no P0).
+- `DatePickerOverlay`: hallazgo nuevo real - al vivir anidado dentro del `Dialog` de
+  `NewTaskSheet`, se apilan **dos scrims** (doble oscurecimiento) - defecto visual real, no
+  solo de estilo.
+- **Plan completo de rediseño de `SmartListsOverlay`** (P0 explícito del usuario): sheet de
+  altura parcial anclada abajo, esquinas solo superiores, grabber, dos niveles (resumen de 5
+  filas con icono+conteo → drill-down a la lista de tareas), cierre por swipe/tap-fuera/×
+  discreto (se elimina el botón "Cerrar" de ancho completo actual). Contrato público sin
+  cambios (`tasksByDate`, `today`, `onSelectDate`, `onDismiss` iguales). Usa únicamente tokens
+  ya existentes (`GlassRadius`, `GlassElevation`, `GlassTheme.tokens`) - no bloquea con la
+  investigación de tokens en curso.
+Implementación: empiezo ahora mismo (self-contenida, no depende de los otros 2 agentes).
 
 ## COMPLETED (9) — reestructura de navegación + Día + popover de calendario
 Commit `6198d74`. Hecho directamente (sin subagente, mientras el límite de sesión estaba caído):
