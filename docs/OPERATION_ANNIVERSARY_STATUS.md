@@ -58,8 +58,49 @@ archivo.
 - Supabase: MCP conectado en esta sesión apunta a un proyecto ajeno (`oposibots-ui`), no al backend real de AgendNote.
 
 ## ACTIVE_AGENTS
-2 de los 3 agentes de investigación relanzados siguen en curso (Liquid Glass/tokens, mensajes/
-voz). El de inventario de popups YA entregó - ver COMPLETED (10).
+Ninguno. Los 3 de la ronda relanzada ya entregaron - ver COMPLETED (10), (11), (12).
+
+## COMPLETED (11) — investigación Liquid Glass + contrato de tokens Glass completo
+Hallazgo técnico central, con fuentes verificadas: Liquid Glass real de Apple (WWDC25/iOS 26)
+es **exclusivamente** una API nativa SwiftUI (`.glassEffect()`)/UIKit (`UIGlassEffect`) - cero
+ruta de Kotlin/Native salvo interop manual completo. **Corrección real sobre la investigación
+anterior de esta misma operación**: `UIKitInteropProperties(placedAsOverlay=true)` ya está en
+una release **estable** de Compose Multiplatform (1.10.0, no solo beta) desde enero 2026 - dato
+nuevo que la primera pasada no tenía. Aun así, **no se persigue esta semana**: el proyecto está
+en 1.9.3, nunca ha compilado para iOS, y el propio patrón tiene limitaciones reales documentadas
+(z-order con Dialogs/Snackbars Compose, sin sincronía de scroll) - subir de versión de framework
+sin haber compilado nunca para iOS es un riesgo que no se justifica a 4 días del plazo.
+Contrato de tokens completo especificado (`GlassDepth`, `GlassOpacity`, `GlassBorder`,
+`GlassTint`, `GlassBlurPolicy`, `GlassShadow`, `GlassHighlight`, `GlassSpacing`, `GlassMotion`
+extendido, `GlassButtonStyle` de 4 variantes, `GlassFloatingActionButton`, tab bar con 2
+opciones (A: floating real invirtiendo el layout de `AppNavHost`, mayor riesgo; B: solo visual,
+sin invertir - **recomendada para el 13**)). Decisión de arquitectura explícita del propio
+informe: `GlassButton.Primary/Secondary` deben ser una fachada nueva que **reutiliza** el cuerpo
+de `GlassActionButton` ya existente (54 call sites), no un reemplazo - cero riesgo de romperlos.
+
+## COMPLETED (12) — arquitectura de "Mensajes para ella" + notificaciones con voz
+Especificación completa (SQL, Edge Function, capa Kotlin, integración de notificaciones,
+reproductor Glass), sin implementar. Decisiones clave:
+- Audio **empaquetado en el cliente** (no Supabase Storage) para v1, en ambos modos - es la
+  única opción viable para `notification_clip` de todas formas (restricción real de
+  plataforma, verificada: iOS/Android exigen el sonido de una notificación local en el propio
+  bundle/APK, no se puede streamear). Columna `audio_source` reservada para migrar
+  `voice_message` a Storage en el futuro sin otra migración de esquema.
+- **Confirmado con fuente oficial Android**: el sonido de un canal de notificación se fija en
+  su primera creación y no se puede cambiar - por eso cada clip de audio necesita su propio
+  canal (`channelId` derivado del asset), no se puede reutilizar el canal de recordatorios de
+  tareas ya existente.
+- Convención de nombres de assets ya definida para que sustituir por audio real no toque
+  código: `audio_asset_key` (sin extensión) → Android `res/raw/<key>.wav`, iOS
+  `Sounds/<key>.caf`.
+- Placeholder honesto: cero binarios de audio generados (correcto, no se pidió); toda la
+  demo es ejercitable con `audio_mode = NONE` (cae al sonido por defecto del sistema).
+- Pieza nueva de verdad no anticipada: iOS necesita un `UNUserNotificationCenterDelegate`
+  (no existe hoy en el proyecto) para capturar el toque en modo "Voice Message" y abrir el
+  reproductor - no es una extensión de código existente.
+- Tamaño total: M-L. Recomendación explícita del propio informe: arquitectura + notificación
+  funcional con `audio_mode=NONE` es razonable para el 13; canal-por-asset con audio real y
+  Storage quedan como fase 2, sin presión de fecha.
 
 ## COMPLETED (10) — inventario completo de popups + plan de rediseño de Listas Inteligentes
 Investigación pura, sin código todavía. Hallazgos clave:
