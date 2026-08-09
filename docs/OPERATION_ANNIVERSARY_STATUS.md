@@ -58,12 +58,30 @@ archivo.
 - Supabase: MCP conectado en esta sesión apunta a un proyecto ajeno (`oposibots-ui`), no al backend real de AgendNote.
 
 ## ACTIVE_AGENTS
-| Agente | Rol | Modo | Archivos | Estado |
-|---|---|---|---|---|
-| Software Architect | Implementar edición de tarea, pasos 1-7 (dominio/repo/ViewModel/Controller + tests) | Producer, ejecuta Gradle | `AgendaTaskRepository.kt`, `SupabaseAgendaTaskRepository.kt`, `AgendaViewModel.kt`, `AgendaController.kt` + 3 tests | En curso |
-Ninguno en este momento.
+Ninguno en este momento. Los 3 agentes de investigación de la directiva ampliada (Liquid Glass,
+inventario de popups, mensajes/voz) fallaron por límite de sesión (reseteado por el usuario a
+las 17:40 Madrid); relanzados - ver tabla más abajo tras COMPLETED (9).
 
-## COMPLETED (7-9) — corrección post-revisión y build final
+## COMPLETED (9) — reestructura de navegación + Día + popover de calendario
+Commit `6198d74`. Hecho directamente (sin subagente, mientras el límite de sesión estaba caído):
+- Nav: Agenda / **Día** / Etiquetas / Ajustes (ya no hay pestaña Calendario independiente).
+- `DayScreen.kt` nuevo: timeline por horas, reutilizando `DayHourAgenda` - un composable que
+  llevaba en el repo desde el 25 de julio **sin ningún call site**, confirmado por grep antes de
+  reusarlo. Añadido: línea de hora actual, tap-tarea→detalle, tap-hora-vacía→crear (fecha
+  precargada; hora exacta diferida, ver comentario en el archivo).
+- Calendario mensual: reubicado a un popover (`CalendarPopover` en `AgendaOverlays.kt`) desde un
+  botón nuevo en la cabecera de Agenda - `CalendarMonthView` no se tocó por dentro salvo quitar
+  el tachado de días pasados.
+- **Corregido el hallazgo visual del propio usuario**: tachado de días pasados en el calendario
+  eliminado (se leía como "cancelado"). La atenuación de opacidad + `stateDescription`
+  "Fecha pasada" ya comunican correctamente que es un día pasado.
+- `CalendarScreen.kt` eliminado (superfluo tras el cambio).
+- **Deuda honesta**: la cabecera de Agenda tiene ahora 4 botones de icono (listas inteligentes,
+  calendario, día anterior, día siguiente) - exactamente lo que el usuario pidió evitar. Estado
+  funcional temporal, documentado in-line, pendiente del rediseño visual real (BATCH A/B).
+Verificado: `BUILD SUCCESSFUL`, 101/101 tests.
+
+## COMPLETED (7-8) — corrección post-revisión y build final
 
 7. **Fix — 3 bugs de la revisión adversarial**. Commit `acfd26d`. Verificado por mí releyendo el diff real (no solo el resumen del agente): el flag `remindersTouched` corta exactamente el camino de pérdida de datos (si es `false`, `reminders` viaja como `null`, Ktor lo omite del JSON por `explicitNulls=false`, la Edge Function nunca ve la clave `reminders` y no toca la columna). Templates ahora con el mismo guard `mode is TaskSheetMode.Create` que ya usaban "Repetir"/"Guardar como plantilla". `editingTask` en `AgendaScreen.kt` ahora es `remember(editingTaskId)`, no se recalcula en cada recomposición de `sourceTasks`. Verificado: `BUILD SUCCESSFUL`, incluye 2 tests de regresión nuevos que fuerzan `remindersTouched=false → reminders=null` incluso con un draft no vacío.
 8. **Build final de verificación**: `:androidApp:assembleDebug` → `BUILD SUCCESSFUL`, APK generada con absolutamente todo lo de esta operación integrado (tokens Glass, iOS P0 quick wins, edición de tarea completa + su corrección, aviso de recordatorios).
