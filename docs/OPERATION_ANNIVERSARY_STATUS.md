@@ -39,10 +39,16 @@ Ninguno en este momento (los 3 de investigación del primer batch ya entregaron,
    - P1: sheet como `Dialog` centrado en vez de hoja nativa (mismo hallazgo que el UI Designer); `TaskCard` sin `semantics(mergeDescendants)`.
    - P2 (no tocar ahora): reduce motion/transparency de iOS no reactivo (requiere `NSNotificationCenter`, único punto que sí requeriría tocar `iosMain` sin poder compilar); doble-tap-scroll-arriba del tab bar.
    - Entregó un checklist exacto de comandos `xcodebuild`/`xcrun simctl` para cuando haya Mac.
-4. **Batch de código — Fundamentos de tokens Glass (XS+S)**. Aditivo, sin tocar `AgendaOverlays.kt`/`AgendaDayComponents.kt` (cero conflicto con los batches de arriba). Cambios: `GlassTokens` gana `focusStroke`/`glassFillDisabled`/`textDisabled`; nuevo `GlassRadius`/`GlassElevation` en `core/ui/theme/GlassMetrics.kt`; `GlassTextField` ahora distingue enfocado/deshabilitado (color, sin ancho de borde); `GlassActionButton` gana elevación explícita (bug fix); `GlassConfirmDialog` gana `icon` opcional; radios de `GlassInputs`/`GlassSnackbar`/`GlassConfirmDialog` tokenizados sin cambiar sus valores (`GlassSnackbar` mantiene su elevación `10.dp` sin homogeneizar, por cautela del propio UI Designer). Verificación de compilación/tests en curso.
+4. **Batch de código — Fundamentos de tokens Glass (XS+S)**. Commit `1c679d4`. Aditivo, sin tocar `AgendaOverlays.kt`/`AgendaDayComponents.kt`. Cambios: `GlassTokens` gana `focusStroke`/`glassFillDisabled`/`textDisabled`; nuevo `GlassRadius`/`GlassElevation` en `core/ui/theme/GlassMetrics.kt`; `GlassTextField` distingue enfocado/deshabilitado; `GlassActionButton` gana elevación explícita (bug fix: el CTA primario flotaba a elevación 0); `GlassConfirmDialog` gana `icon` opcional; radios tokenizados sin cambiar valores. Verificado: `BUILD SUCCESSFUL`, 90/90.
+5. **Batch de código — iOS P0 quick wins**. Commit (ver `git log`, mensaje `feat(agenda): edge-guard swipe, haptics, and merged a11y for task cards`). Solo `AgendaDayComponents.kt`. Guarda de borde en swipe (copiado del patrón de `DatePickerOverlay`), haptics vía `LocalHapticFeedback` común (completar/borrar, swipe + botones), `TaskCard` con `semantics(mergeDescendants=true)`. Verificado: `BUILD SUCCESSFUL`, 90/90. **No verificado en dispositivo/simulador real** (revisión estática únicamente - pendiente de Xcode).
 
 ## ACTIVE_TASKS / BLOCKED / FAILED
-Ninguno en este momento.
+Ninguno en este momento. Próximo: implementación del plan de edición de tareas, pasos 1-7 (dominio→repo→tests→ViewModel→tests→Controller), sin tocar `AgendaOverlays.kt`/`AgendaScreen.kt` todavía (ese es el paso 8-10, mayor riesgo, batch propio).
+
+## PENDIENTE PARA CUANDO HAYA XCODE (usuario confirmó acceso antes del 13)
+- Verificar visualmente los 2 batches de código ya commiteados (tokens Glass, iOS P0 quick wins) en simulador/dispositivo real - nada de esto se ha visto en pantalla todavía.
+- Confirmar qué `HapticFeedbackType` están realmente puenteados en la versión de Compose Multiplatform del proyecto (1.9.3) antes de diferenciar intensidad completar vs. borrar.
+- Ejecutar el checklist completo que entregó el agente de revisión iOS (comandos `xcodebuild`/`xcrun simctl`, guardado en el detalle de este documento más abajo si se solicita).
 
 ## P0 / P1 / P2 / P3
 Ver sección E de la respuesta operativa del 9 de agosto en el chat — se traerá aquí en el primer batch de código.
