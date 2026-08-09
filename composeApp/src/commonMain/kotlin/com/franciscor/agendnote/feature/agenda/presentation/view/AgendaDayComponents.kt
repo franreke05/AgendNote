@@ -50,9 +50,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -289,8 +291,13 @@ private fun SwipeableTaskCard(
 ) {
     val layout = AppLayout.metrics
     val density = LocalDensity.current
+    val haptics = LocalHapticFeedback.current
     val maxOffset = with(density) { layout.width(108.dp, 88.dp).toPx() }
     val threshold = with(density) { layout.width(72.dp, 60.dp).toPx() }
+    // Same edge guard already used for the calendar month swipe (DatePickerOverlay) - a drag
+    // starting right at the screen edge (cards sit close to it, see AppNavHost's 4dp content
+    // margin) should not trigger complete/delete unintentionally.
+    val swipeEdgeGuard = layout.width(24.dp, 18.dp)
     var offsetX by remember { mutableStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
     var isPerformingAction by remember { mutableStateOf(false) }
@@ -310,14 +317,19 @@ private fun SwipeableTaskCard(
     val swipeModifier = if (isEditingEnabled) {
         Modifier.pointerInput(task.id, isPerformingAction) {
             if (isPerformingAction) return@pointerInput
+            val edgePx = swipeEdgeGuard.toPx()
+            var allowSwipe = true
             detectHorizontalDragGestures(
+                onDragStart = { offset ->
+                    allowSwipe = offset.x in edgePx..(size.width - edgePx)
+                },
                 onHorizontalDrag = { _, dragAmount ->
-                    if (isPerformingAction) return@detectHorizontalDragGestures
+                    if (isPerformingAction || !allowSwipe) return@detectHorizontalDragGestures
                     isDragging = true
                     offsetX = (offsetX + dragAmount).coerceIn(-maxOffset, maxOffset)
                 },
                 onDragEnd = {
-                    if (isPerformingAction) return@detectHorizontalDragGestures
+                    if (isPerformingAction || !allowSwipe) return@detectHorizontalDragGestures
                     isDragging = false
                     when {
                         offsetX > threshold -> {
@@ -326,6 +338,7 @@ private fun SwipeableTaskCard(
                             } else {
                                 offsetX = maxOffset
                                 isPerformingAction = true
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                 onToggleDone(true)
                                 isPerformingAction = false
                                 offsetX = 0f
@@ -334,6 +347,7 @@ private fun SwipeableTaskCard(
 
                         offsetX < -threshold -> {
                             offsetX = 0f
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             onRequestDelete()
                         }
 
@@ -440,6 +454,16 @@ private fun TaskCard(
 ) {
     val layout = AppLayout.metrics
     val alpha = if (task.isDone) 0.6f else 1f
+    // Merges the card's scattered child nodes (time chip, label chips, title, details) into one
+    // VoiceOver/TalkBack stop with a coherent description, instead of reading each fragment
+    // separately. TaskCardActions' own clickables (complete/delete) surface as accessibility
+    // custom actions on this merged node rather than disappearing - the standard Compose pattern
+    // for a row with a primary tap target plus secondary actions.
+    val accessibilityDescription = buildString {
+        append(task.title)
+        task.time?.let { append(", ${formatTime(it)}") }
+        if (task.isDone) append(", completada")
+    }
 
     GlassSurface(
         modifier = modifier
@@ -450,7 +474,10 @@ private fun TaskCard(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onTaskSelected,
-            ),
+            )
+            .semantics(mergeDescendants = true) {
+                contentDescription = accessibilityDescription
+            },
         shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
     ) {
         Column(
@@ -559,6 +586,7 @@ private fun TaskCardActions(
     onRequestDelete: () -> Unit,
 ) {
     val layout = AppLayout.metrics
+    val haptics = LocalHapticFeedback.current
     // REVIEW: icon controls were below the mobile accessibility minimum; completion and
     // destructive actions now expose a full 48 dp touch target.
     val controlSize = 48.dp
@@ -576,7 +604,15 @@ private fun TaskCardActions(
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = { onToggleDone(!isDone) },
+                    onClick = {
+                        // Only HapticFeedbackType.LongPress is confirmed bridged to iOS's
+                        // UIFeedbackGenerator by Compose Multiplatform as of this project's
+                        // version (see docs/OPERATION_ANNIVERSARY_STATUS.md) - using it uniformly
+                        // for both actions here rather than guessing at differentiated
+                        // intensity types that can't be verified without a device.
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onToggleDone(!isDone)
+                    },
                 ),
             contentAlignment = Alignment.Center,
         ) {
@@ -595,7 +631,10 @@ private fun TaskCardActions(
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = onRequestDelete,
+                    onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onRequestDelete()
+                    },
                 ),
             contentAlignment = Alignment.Center,
         ) {
