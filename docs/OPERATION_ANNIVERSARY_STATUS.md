@@ -83,6 +83,17 @@ Investigación pura, sin código todavía. Hallazgos clave:
   investigación de tokens en curso.
 Implementación: empiezo ahora mismo (self-contenida, no depende de los otros 2 agentes).
 
+## CORRECCIÓN a una investigación previa (verificado por mí, no confiado a ciegas)
+La investigación "Glass design spec" del primer batch de esta operación afirmó que
+`.blur(sheetBlur)` en `NewTaskSheet` "blurrea un scrim de color sólido, sin efecto visible".
+**Falso, verificado con conteo de llaves preciso (no solo lectura visual) antes de actuar**: el
+`Box` que lleva el `.blur()` envuelve TANTO el scrim COMO el `GlassSurface` completo del
+formulario (cierra en la línea ~1670, no justo después del scrim) - el blur sí tiene efecto
+real: difumina todo el sheet de fondo cuando se abre el selector de hora encima. No se ha
+tocado ni se va a tocar este código. Lección aplicada: no ejecutar una "corrección" de un
+hallazgo de subagente sin releer el código real primero, incluso cuando el hallazgo viene con
+mucho detalle - por eso no se llegó a commitear el error.
+
 ## COMPLETED (9) — reestructura de navegación + Día + popover de calendario
 Commit `6198d74`. Hecho directamente (sin subagente, mientras el límite de sesión estaba caído):
 - Nav: Agenda / **Día** / Etiquetas / Ajustes (ya no hay pestaña Calendario independiente).

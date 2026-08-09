@@ -1,9 +1,11 @@
 package com.franciscor.agendnote.feature.agenda.presentation.view
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -23,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.foundation.layout.size
@@ -38,7 +41,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CalendarToday
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.DateRange
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.EventAvailable
+import androidx.compose.material.icons.rounded.HourglassEmpty
+import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -89,6 +98,8 @@ import com.franciscor.agendnote.core.ui.components.colorFromHex
 import com.franciscor.agendnote.core.ui.components.labelColorPalette
 import com.franciscor.agendnote.core.ui.components.labelColorName
 import com.franciscor.agendnote.core.ui.layout.AppLayout
+import com.franciscor.agendnote.core.ui.theme.GlassElevation
+import com.franciscor.agendnote.core.ui.theme.GlassRadius
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
 import com.franciscor.agendnote.feature.agenda.domain.RecurrenceEnd
 import com.franciscor.agendnote.feature.agenda.domain.RecurrenceRule
@@ -147,6 +158,22 @@ private val SMART_LIST_LABELS: List<Pair<SmartList, String>> = listOf(
  * no es una consulta al backend, así que una tarea en un mes nunca visitado no aparece aquí
  * todavía).
  */
+private val SMART_LIST_ICONS: Map<SmartList, androidx.compose.ui.graphics.vector.ImageVector> = mapOf(
+    SmartList.Overdue to Icons.Rounded.ErrorOutline,
+    SmartList.Next7Days to Icons.Rounded.DateRange,
+    SmartList.WithoutTime to Icons.Rounded.HourglassEmpty,
+    SmartList.WithReminder to Icons.Rounded.NotificationsActive,
+    SmartList.Recurring to Icons.Rounded.Repeat,
+)
+
+/**
+ * Rediseño Operación Aniversario (P0 explícito del usuario - "el componente visual más débil de
+ * la app"): pasa de un `Dialog` centrado con un botón "Cerrar" protagonista a una sheet Glass de
+ * altura parcial anclada abajo, con grabber, esquinas solo superiores, y dos niveles - resumen
+ * (5 filas con icono + conteo) y drill-down a la lista de tareas de la categoría elegida.
+ * Contrato público sin cambios: [tasksByDate]/[today]/[onSelectDate]/[onDismiss] son los mismos
+ * de antes, así que el único llamador (`AgendaScreen.kt`) no necesita tocarse.
+ */
 @Composable
 internal fun SmartListsOverlay(
     tasksByDate: Map<LocalDate, List<TaskItem>>,
@@ -155,16 +182,22 @@ internal fun SmartListsOverlay(
     onDismiss: () -> Unit,
 ) {
     val layout = AppLayout.metrics
-    var selectedList by remember { mutableStateOf(SmartList.Overdue) }
-    val results = remember(selectedList, tasksByDate, today) {
-        smartListTasks(selectedList, tasksByDate, today)
+    var drilldownList by remember { mutableStateOf<SmartList?>(null) }
+    val counts = remember(tasksByDate, today) {
+        SmartList.entries.associateWith { smartListTasks(it, tasksByDate, today).size }
     }
+    val results = remember(drilldownList, tasksByDate, today) {
+        drilldownList?.let { smartListTasks(it, tasksByDate, today) }.orEmpty()
+    }
+    var dragOffset by remember { mutableStateOf(0f) }
+    val density = LocalDensity.current
+    val dismissThresholdPx = with(density) { layout.height(90.dp, 72.dp).toPx() }
 
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        Box(modifier = Modifier.fillMaxSize().safeContentPadding()) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize().safeContentPadding()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -178,78 +211,249 @@ internal fun SmartListsOverlay(
 
             GlassSurface(
                 modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(horizontal = layout.width(18.dp, 16.dp))
+                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .heightIn(max = layout.height(560.dp, 520.dp)),
-                shape = RoundedCornerShape(layout.size(28.dp, 24.dp)),
+                    .heightIn(max = maxHeight * 0.82f)
+                    .offset { androidx.compose.ui.unit.IntOffset(0, dragOffset.toInt().coerceAtLeast(0)) }
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures(
+                            onVerticalDrag = { _, dragAmount ->
+                                dragOffset = (dragOffset + dragAmount).coerceAtLeast(0f)
+                            },
+                            onDragEnd = {
+                                if (dragOffset > dismissThresholdPx) {
+                                    onDismiss()
+                                } else {
+                                    dragOffset = 0f
+                                }
+                            },
+                            onDragCancel = { dragOffset = 0f },
+                        )
+                    },
+                shape = RoundedCornerShape(
+                    topStart = GlassRadius.l(),
+                    topEnd = GlassRadius.l(),
+                    bottomStart = 0.dp,
+                    bottomEnd = 0.dp,
+                ),
                 tint = GlassTheme.tokens.modalFill,
+                shadowElevation = GlassElevation.modal,
             ) {
                 Column(
-                    modifier = Modifier
-                        .padding(layout.size(18.dp, 16.dp))
-                        .fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(layout.height(10.dp, 8.dp)),
                 ) {
-                    Text(
-                        text = "Listas inteligentes",
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontSize = layout.text(22.sp, 20.sp),
-                        ),
-                        color = GlassTheme.tokens.textPrimary,
+                    // Grabber - universal "arrastra para cerrar" affordance, matches the same
+                    // gesture the pointerInput above already implements.
+                    Box(
+                        modifier = Modifier
+                            .padding(top = layout.height(10.dp, 8.dp))
+                            .align(Alignment.CenterHorizontally)
+                            .size(width = 36.dp, height = 5.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(GlassTheme.tokens.glassStroke),
                     )
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .selectableGroup()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 5.dp)),
+                            .padding(horizontal = layout.width(18.dp, 16.dp)),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        SMART_LIST_LABELS.forEach { (list, label) ->
-                            RecurrenceOptionChip(
-                                text = label,
-                                selected = selectedList == list,
-                                onClick = { selectedList = list },
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 4.dp)),
+                        ) {
+                            if (drilldownList != null) {
+                                Box(
+                                    modifier = Modifier
+                                        .defaultMinSize(minWidth = 44.dp, minHeight = 44.dp)
+                                        .clip(CircleShape)
+                                        .clickable(
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null,
+                                            onClick = { drilldownList = null },
+                                        ),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.ChevronLeft,
+                                        contentDescription = "Volver a listas inteligentes",
+                                        tint = GlassTheme.tokens.textPrimary,
+                                    )
+                                }
+                            }
+                            Text(
+                                text = drilldownList?.let { SMART_LIST_LABELS.first { (l, _) -> l == it }.second }
+                                    ?: "Listas inteligentes",
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontSize = layout.text(20.sp, 18.sp),
+                                ),
+                                color = GlassTheme.tokens.textPrimary,
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                .clip(CircleShape)
+                                .clickable(
+                                    role = Role.Button,
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = onDismiss,
+                                )
+                                .semantics { contentDescription = "Cerrar listas inteligentes" },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = null,
+                                tint = GlassTheme.tokens.textSecondary,
+                                modifier = Modifier.size(20.dp),
                             )
                         }
                     }
-                    Box(modifier = Modifier.weight(1f)) {
-                        if (results.isEmpty()) {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                GlassEmptyState(
-                                    icon = Icons.Rounded.EventAvailable,
-                                    title = "Nada por aquí",
-                                    subtitle = "No hay tareas en esta vista por ahora.",
-                                )
-                            }
-                        } else {
-                            LazyColumn(
+
+                    Crossfade(targetState = drilldownList, label = "smartListsLevel") { current ->
+                        if (current == null) {
+                            Column(
+                                modifier = Modifier
+                                    .padding(
+                                        horizontal = layout.width(18.dp, 16.dp),
+                                        vertical = layout.height(4.dp, 4.dp),
+                                    )
+                                    .padding(bottom = layout.height(16.dp, 14.dp)),
                                 verticalArrangement = Arrangement.spacedBy(layout.height(8.dp, 6.dp)),
                             ) {
-                                items(results, key = { (date, task) -> "$date:${task.id}" }) { (date, task) ->
-                                    SmartListRow(
-                                        date = date,
-                                        task = task,
-                                        onClick = {
-                                            onSelectDate(date)
-                                            onDismiss()
-                                        },
+                                SMART_LIST_LABELS.forEach { (list, label) ->
+                                    SmartListSummaryRow(
+                                        label = label,
+                                        icon = SMART_LIST_ICONS.getValue(list),
+                                        count = counts[list] ?: 0,
+                                        isUrgent = list == SmartList.Overdue,
+                                        onClick = { drilldownList = list },
                                     )
+                                }
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .padding(horizontal = layout.width(18.dp, 16.dp))
+                                    .padding(bottom = layout.height(16.dp, 14.dp))
+                                    .heightIn(min = layout.height(160.dp, 140.dp)),
+                            ) {
+                                if (results.isEmpty()) {
+                                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                        GlassEmptyState(
+                                            icon = Icons.Rounded.EventAvailable,
+                                            title = "Nada por aquí",
+                                            subtitle = "No hay tareas en esta vista por ahora.",
+                                        )
+                                    }
+                                } else {
+                                    LazyColumn(
+                                        verticalArrangement = Arrangement.spacedBy(layout.height(8.dp, 6.dp)),
+                                    ) {
+                                        items(results, key = { (date, task) -> "$date:${task.id}" }) { (date, task) ->
+                                            SmartListRow(
+                                                date = date,
+                                                task = task,
+                                                onClick = {
+                                                    onSelectDate(date)
+                                                    onDismiss()
+                                                },
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
-                    GlassActionButton(
-                        text = "Cerrar",
-                        tint = GlassTheme.tokens.glassFillStrong,
-                        textColor = GlassTheme.tokens.textPrimary,
-                        modifier = Modifier
-                            .align(Alignment.CenterHorizontally)
-                            .height(layout.height(48.dp, 46.dp)),
-                        onClick = onDismiss,
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SmartListSummaryRow(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    count: Int,
+    isUrgent: Boolean,
+    onClick: () -> Unit,
+) {
+    val layout = AppLayout.metrics
+    val hasItems = count > 0
+    GlassSurface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = layout.height(56.dp, 52.dp))
+            .alpha(if (hasItems) 1f else 0.55f)
+            .clickable(
+                role = Role.Button,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+        shape = RoundedCornerShape(GlassRadius.s()),
+        tint = GlassTheme.tokens.glassFill,
+        shadowElevation = GlassElevation.fused,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = layout.width(14.dp, 12.dp), vertical = layout.height(10.dp, 8.dp)),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(layout.size(32.dp, 28.dp))
+                    .clip(CircleShape)
+                    .background(GlassTheme.tokens.glassFillStrong),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = GlassTheme.tokens.textPrimary,
+                    modifier = Modifier.size(layout.size(16.dp, 14.dp)),
+                )
+            }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = GlassTheme.tokens.textPrimary,
+                modifier = Modifier.weight(1f),
+            )
+            if (hasItems) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(
+                            if (isUrgent) {
+                                GlassTheme.tokens.error.copy(alpha = 0.20f)
+                            } else {
+                                GlassTheme.tokens.glassFillStrong
+                            },
+                        )
+                        .padding(horizontal = layout.width(9.dp, 8.dp), vertical = layout.height(3.dp, 2.dp)),
+                ) {
+                    Text(
+                        text = count.toString(),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (isUrgent) GlassTheme.tokens.errorContent else GlassTheme.tokens.textPrimary,
                     )
                 }
             }
+            Icon(
+                imageVector = Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = GlassTheme.tokens.textSecondary,
+                modifier = Modifier.size(layout.size(18.dp, 16.dp)),
+            )
         }
     }
 }
