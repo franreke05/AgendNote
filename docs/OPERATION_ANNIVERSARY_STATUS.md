@@ -5,7 +5,12 @@ Sustituye a una narrativa dispersa en el chat: esta es la fuente de verdad de es
 copia — `docs/AI_CONTEXT_MAP.md`/`AI_TOKEN_INDEX.md` siguen siendo el mapa de arquitectura.
 
 ## CURRENT_PHASE
-FASE 0 → FASE 1 (baseline confirmado, arrancando lanes de investigación en paralelo).
+Gate B (core usability) código-completo y revisado. APK debug construida con todo lo integrado
+(`androidApp:assembleDebug`, `BUILD SUCCESSFUL`). **Cero verificación en dispositivo/emulador
+real de nada de lo hecho hoy** - ese es el único paso que falta para cerrar Gate B en sentido
+estricto. Siguiente: QA funcional en Android (requiere que el usuario lance el emulador, este
+entorno no tiene herramientas de interacción con UI de Android) y, en paralelo cuando el usuario
+confirme acceso a Mac, Gate A (iOS).
 
 ## BASELINE (2026-08-09, confirmado antes de tocar nada)
 - Branch de trabajo: `agent/operacion-aniversario` (creada desde `main`@`dd1c159`).
@@ -20,9 +25,15 @@ FASE 0 → FASE 1 (baseline confirmado, arrancando lanes de investigación en pa
 | Agente | Rol | Modo | Archivos | Estado |
 |---|---|---|---|---|
 | Software Architect | Implementar edición de tarea, pasos 1-7 (dominio/repo/ViewModel/Controller + tests) | Producer, ejecuta Gradle | `AgendaTaskRepository.kt`, `SupabaseAgendaTaskRepository.kt`, `AgendaViewModel.kt`, `AgendaController.kt` + 3 tests | En curso |
-| Software Architect | Corrección de 3 bugs encontrados por la revisión adversarial (ver COMPLETED) | Producer, ejecuta Gradle | `AgendaOverlays.kt`, `AgendaTaskRepository.kt`, `SupabaseAgendaTaskRepository.kt`, `AgendaViewModel.kt`, `AgendaController.kt`, `AgendaScreen.kt` + tests | En curso |
+Ninguno en este momento.
 
-Regla mientras haya un Producer con Gradle activo: ningún otro proceso ejecuta Gradle en paralelo.
+## COMPLETED (7-9) — corrección post-revisión y build final
+
+7. **Fix — 3 bugs de la revisión adversarial**. Commit `acfd26d`. Verificado por mí releyendo el diff real (no solo el resumen del agente): el flag `remindersTouched` corta exactamente el camino de pérdida de datos (si es `false`, `reminders` viaja como `null`, Ktor lo omite del JSON por `explicitNulls=false`, la Edge Function nunca ve la clave `reminders` y no toca la columna). Templates ahora con el mismo guard `mode is TaskSheetMode.Create` que ya usaban "Repetir"/"Guardar como plantilla". `editingTask` en `AgendaScreen.kt` ahora es `remember(editingTaskId)`, no se recalcula en cada recomposición de `sourceTasks`. Verificado: `BUILD SUCCESSFUL`, incluye 2 tests de regresión nuevos que fuerzan `remindersTouched=false → reminders=null` incluso con un draft no vacío.
+8. **Build final de verificación**: `:androidApp:assembleDebug` → `BUILD SUCCESSFUL`, APK generada con absolutamente todo lo de esta operación integrado (tokens Glass, iOS P0 quick wins, edición de tarea completa + su corrección, aviso de recordatorios).
+
+## Gate B (core usability) — código-completo, revisado, **pendiente de QA en dispositivo**
+No se declara "cerrado" en sentido estricto (regla del propio prompt de operación: no declarar validación sin haberla hecho). Falta el recorrido manual real - ver `docs/agendnote/IOS_VERIFICATION_CHECKLIST.md` para iOS; falta un equivalente Android, pendiente de que el usuario lance un emulador (este entorno no tiene herramientas de interacción con UI de Android/iOS, solo puede compilar y ejecutar tests).
 
 ## REVISIÓN ADVERSARIAL — edición de tareas (commits `3062db9`/`bc2ebd2`)
 
