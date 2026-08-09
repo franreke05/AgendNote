@@ -11,6 +11,8 @@ interface AgendaTaskRepository {
 
     suspend fun createTask(date: LocalDate, draft: TaskDraft): TaskItem
 
+    suspend fun updateTask(id: String, date: LocalDate, draft: TaskDraft): TaskItem
+
     suspend fun updateTaskDone(id: String, isDone: Boolean): TaskItem
 
     suspend fun deleteTask(id: String): Boolean

@@ -52,6 +52,10 @@ class SupabaseAgendaTaskRepository(
         return api.createTask(request).toTaskItem(timeZone)
     }
 
+    override suspend fun updateTask(id: String, date: LocalDate, draft: TaskDraft): TaskItem {
+        return api.updateTask(draft.toUpdateTaskRequest(id, date, timeZone)).toTaskItem(timeZone)
+    }
+
     override suspend fun updateTaskDone(id: String, isDone: Boolean): TaskItem {
         val request = UpdateTaskRequest(
             id = id,
@@ -63,6 +67,31 @@ class SupabaseAgendaTaskRepository(
     override suspend fun deleteTask(id: String): Boolean = api.deleteTask(id)
 
     override suspend fun deleteAllTasks(): Boolean = api.deleteAllTasks()
+}
+
+/**
+ * Internal (not private) so [SupabaseAgendaTaskRepositoryMappingTest] can exercise it directly.
+ *
+ * Optional fields ([body], [due_at], [deadline_at]) are always sent as `""` rather than omitted
+ * when the draft has no value, never as `null`: the Ktor client's `Json` has `explicitNulls =
+ * false`, so a `null` field is dropped from the JSON entirely, and the Edge Function
+ * (`buildUpdatePayload` in supabase/functions/api-tasks/index.ts) only touches a column when its
+ * key is present in the body - an omitted key never clears the column. `""` travels as a present
+ * key and `normalizeOptionalString` on the server turns it back into `null` there.
+ */
+internal fun TaskDraft.toUpdateTaskRequest(id: String, date: LocalDate, timeZone: TimeZone): UpdateTaskRequest {
+    val dueAt = time?.let { LocalDateTime(date, it).toInstant(timeZone).toString() } ?: ""
+    return UpdateTaskRequest(
+        id = id,
+        title = title,
+        body = details ?: "",
+        day = date.toString(),
+        due_at = dueAt,
+        deadline_at = deadline?.toString() ?: "",
+        label_ids = labels.map { it.id },
+        reminders = reminders.map { it.toString() },
+        subtasks = subtasks.mapIndexed { index, subtask -> subtask.toSubtaskDto().copy(order_index = index) },
+    )
 }
 
 /** Internal (not private) so [SupabaseAgendaTaskRepositoryMappingTest] can exercise it directly. */

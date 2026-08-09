@@ -327,6 +327,103 @@ class AgendaViewModelTest {
     }
 
     @Test
+    fun `updateTask on success replaces the task in place when the day did not change`() = runTest {
+        val original = task("t-1", "Regar plantas")
+        val updated = task("t-1", "Regar plantas del balcon")
+        val repository = FakeAgendaTaskRepository(
+            fetchTasksHandler = { listOf(original) },
+            updateTaskHandler = { id, date, draft ->
+                assertEquals("t-1", id)
+                assertEquals(baseDate, date)
+                assertEquals("Regar plantas del balcon", draft.title)
+                updated
+            },
+        )
+        val viewModel = AgendaViewModel(repository, timeZone = timeZone, initialDate = baseDate)
+        viewModel.loadTasksForDate(baseDate)
+
+        val result = viewModel.updateTask(
+            originalDate = baseDate,
+            id = "t-1",
+            targetDate = baseDate,
+            draft = TaskDraft(title = "Regar plantas del balcon", details = null, time = null, labels = emptyList()),
+        )
+
+        assertTrue(result.success)
+        assertEquals(listOf(updated), viewModel.uiState.tasksByDate[baseDate])
+    }
+
+    @Test
+    fun `updateTask on success moves the task from the original day to the new day when cached`() = runTest {
+        val nextDate = LocalDate(2026, 3, 12)
+        val original = task("t-1", "Reunion")
+        val moved = task("t-1", "Reunion", hour = 10)
+        val repository = FakeAgendaTaskRepository(
+            fetchTasksHandler = { date -> if (date == baseDate) listOf(original) else emptyList() },
+            updateTaskHandler = { _, _, _ -> moved },
+        )
+        val viewModel = AgendaViewModel(repository, timeZone = timeZone, initialDate = baseDate)
+        viewModel.loadTasksForDate(baseDate)
+        viewModel.loadTasksForDate(nextDate)
+
+        val result = viewModel.updateTask(
+            originalDate = baseDate,
+            id = "t-1",
+            targetDate = nextDate,
+            draft = TaskDraft(title = "Reunion", details = null, time = LocalTime(10, 0), labels = emptyList()),
+        )
+
+        assertTrue(result.success)
+        assertTrue(viewModel.uiState.tasksByDate[baseDate].orEmpty().none { it.id == "t-1" })
+        assertEquals(listOf(moved), viewModel.uiState.tasksByDate[nextDate])
+    }
+
+    @Test
+    fun `updateTask on success does not seed the new day when it was never cached`() = runTest {
+        val nextDate = LocalDate(2026, 3, 12)
+        val original = task("t-1", "Reunion")
+        val moved = task("t-1", "Reunion", hour = 10)
+        val repository = FakeAgendaTaskRepository(
+            fetchTasksHandler = { listOf(original) },
+            updateTaskHandler = { _, _, _ -> moved },
+        )
+        val viewModel = AgendaViewModel(repository, timeZone = timeZone, initialDate = baseDate)
+        viewModel.loadTasksForDate(baseDate)
+
+        viewModel.updateTask(
+            originalDate = baseDate,
+            id = "t-1",
+            targetDate = nextDate,
+            draft = TaskDraft(title = "Reunion", details = null, time = LocalTime(10, 0), labels = emptyList()),
+        )
+
+        assertFalse(viewModel.uiState.tasksByDate.containsKey(nextDate))
+    }
+
+    @Test
+    fun `updateTask on failure calls setError and does not touch tasksByDate`() = runTest {
+        val original = task("t-1", "Regar plantas")
+        val repository = FakeAgendaTaskRepository(
+            fetchTasksHandler = { listOf(original) },
+            updateTaskHandler = { _, _, _ -> error("boom") },
+        )
+        val viewModel = AgendaViewModel(repository, timeZone = timeZone, initialDate = baseDate)
+        viewModel.loadTasksForDate(baseDate)
+
+        val result = viewModel.updateTask(
+            originalDate = baseDate,
+            id = "t-1",
+            targetDate = baseDate,
+            draft = TaskDraft(title = "Regar plantas", details = null, time = null, labels = emptyList()),
+        )
+
+        assertFalse(result.success)
+        assertEquals("No se pudo guardar la tarea", result.errorMessage)
+        assertEquals("No se pudo guardar la tarea", viewModel.dayUiState(baseDate).errorMessage)
+        assertEquals(listOf(original), viewModel.uiState.tasksByDate[baseDate])
+    }
+
+    @Test
     fun `loadMonth populates tasksByDate for every day in the month`() = runTest {
         val month = LocalDate(2026, 3, 1)
         val taskOnDay5 = task("t-1", "Reunion")
@@ -419,6 +516,7 @@ private class FakeAgendaTaskRepository(
         { _, _ -> emptyMap() },
     private val updateTaskDoneHandler: (suspend (String, Boolean) -> TaskItem)? = null,
     private val createTaskHandler: (suspend (LocalDate, TaskDraft) -> TaskItem)? = null,
+    private val updateTaskHandler: (suspend (String, LocalDate, TaskDraft) -> TaskItem)? = null,
 ) : AgendaTaskRepository {
     override suspend fun fetchTasks(date: LocalDate): List<TaskItem> = fetchTasksHandler(date)
 
@@ -429,6 +527,17 @@ private class FakeAgendaTaskRepository(
         createTaskHandler?.let { return it(date, draft) }
         return TaskItem(
             id = "created-${date.dayOfMonth}",
+            title = draft.title,
+            details = draft.details,
+            time = draft.time,
+            labels = draft.labels,
+        )
+    }
+
+    override suspend fun updateTask(id: String, date: LocalDate, draft: TaskDraft): TaskItem {
+        updateTaskHandler?.let { return it(id, date, draft) }
+        return TaskItem(
+            id = id,
             title = draft.title,
             details = draft.details,
             time = draft.time,
