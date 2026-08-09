@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.franciscor.agendnote.core.ui.layout.AppLayout
+import com.franciscor.agendnote.core.ui.theme.GlassRadius
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
 
 /**
@@ -37,9 +38,12 @@ fun GlassSnackbar(
     val layout = AppLayout.metrics
     GlassSurface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(layout.size(18.dp, 16.dp)),
+        shape = RoundedCornerShape(GlassRadius.s()),
         tint = GlassTheme.tokens.modalFill,
         strokeColor = GlassTheme.tokens.glassStroke,
+        // Kept at its existing value rather than homogenized to GlassElevation.modal: this is
+        // the one spot the Glass design spec flagged as not worth the visual-risk-for-no-reason
+        // of a bigger elevation jump right now (see docs/OPERATION_ANNIVERSARY_STATUS.md).
         shadowElevation = 10.dp,
     ) {
         Row(

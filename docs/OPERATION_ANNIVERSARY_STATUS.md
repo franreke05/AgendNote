@@ -17,14 +17,32 @@ FASE 0 → FASE 1 (baseline confirmado, arrancando lanes de investigación en pa
 - Supabase: MCP conectado en esta sesión apunta a un proyecto ajeno (`oposibots-ui`), no al backend real de AgendNote.
 
 ## ACTIVE_AGENTS
-| Agente | Rol | Modo | Estado |
-|---|---|---|---|
-| Software Architect | Plan de edición completa de tarea (P1) | Investigación, sin escritura | En curso |
-| UI Designer | Especificación formal del sistema Glass | Investigación, sin escritura | En curso |
-| Mobile App Builder | Revisión estática iOS/iPhone UX | Investigación, sin escritura | En curso |
+Ninguno en este momento (los 3 de investigación del primer batch ya entregaron, ver COMPLETED).
 
-## ACTIVE_TASKS / COMPLETED / BLOCKED / FAILED
-Vacío al iniciar. Se rellena por batch.
+## COMPLETED
+1. **Investigación — Plan de edición de tarea** (Software Architect). Hallazgos clave:
+   - **Sentinel `""` para borrar campos opcionales**: con `explicitNulls=false` en el `Json` del Ktor client, un campo Kotlin en `null` se omite del body en vez de viajar como `"campo": null`, y `hasField()` en la Edge Function decide por presencia de clave. Enviar `null` para "borrar hora/deadline/notas" NO los borra en el backend - hay que enviar `""`, que `normalizeOptionalString` ya convierte a `null` server-side. Sin esto, editar para quitar una hora fallaría en silencio.
+   - Reprogramar notificaciones al editar sale gratis SI el nuevo código pasa por `AgendaViewModel.setTasks()`/`replaceTask()` (que ya reconcilia notificaciones) - regla explícita: nunca mutar `uiState` a mano fuera de esas funciones.
+   - `replaceTask()` no soporta mover una tarea de día - hace falta un `moveTask()` nuevo o una tarea editada que cambia de fecha queda duplicada/fantasma.
+   - Plan de 11 pasos, orden dominio→repo→tests→viewmodel→tests→controller→UI (`NewTaskSheet` en modo `Edit`, tamaño L, mayor riesgo)→`TaskDetailsOverlay`→wiring. Recurrencia sigue expresamente fuera de alcance (oculta en modo edición, no bloqueada).
+   - Archivos: `AgendaTaskRepository.kt`, `SupabaseAgendaTaskRepository.kt`, `AgendaViewModel.kt`, `AgendaController.kt`, `AgendaOverlays.kt`, `AgendaScreen.kt` + 3 archivos de test. Cero cambios propuestos en DTOs/ApiClient/Edge Function.
+2. **Investigación — Especificación del sistema Glass** (UI Designer). Hallazgos clave:
+   - Blur de fondo real: en Android requiere API 31+ (proyecto tiene minSdk 24, no-op silencioso por debajo); en iOS/Skia no tiene gate de versión pero solo puede desenfocar lo que Compose ya dibuja, no un backdrop real detrás de un `Dialog` - por eso el `.blur(sheetBlur)` ya existente en `AgendaOverlays.kt` no tiene ningún efecto visible hoy (blurrea un scrim de color sólido).
+   - Blur nativo real (`UIVisualEffectView` vía overlay UIKit) solo disponible desde CMP 1.10.0-beta01; el proyecto está en 1.9.3 - no perseguir esta vía antes del 13.
+   - Gramática Glass formalizada en 4 niveles (L0 fondo, L1 fundido, L2 flotante, L3 modal) con tokens de radio/elevación nombrados, sin cambiar ningún valor de color existente.
+   - Gaps reales: `GlassTextField` no distinguía enfocado/deshabilitado; `GlassActionButton` (CTA primario) flotaba a elevación 0 por defecto (bug de inconsistencia); `GlassConfirmDialog` sin icono para reforzar semántica destructiva.
+   - Propuesta de sheet más nativo: esquinas solo superiores, edge-to-edge, grabber, drag-to-dismiss - `ModalBottomSheet` de Material3 desaconsejado por ahora (issue conocido de animación rota en iOS, no verificable sin Xcode).
+3. **Investigación — Revisión estática iOS** (Mobile App Builder). Hallazgos clave, priorizados P0:
+   - **Haptics ausentes en toda la app** (grep sin resultados) - vía recomendada: `LocalHapticFeedback` común de Compose (puenteado a `UIFeedbackGenerator` desde CMP ~1.7+, cero cinterop manual a iosMain).
+   - **Swipe de tarjeta sin guarda de borde** - inconsistente con `DatePickerOverlay`, que sí la tiene; copiar el mismo patrón (XS, bajo riesgo).
+   - **Sin `imePadding()` en `NewTaskSheet`** - riesgo real de que el teclado tape "Nueva subtarea"/"Crear etiqueta" en el formulario largo.
+   - P1: sheet como `Dialog` centrado en vez de hoja nativa (mismo hallazgo que el UI Designer); `TaskCard` sin `semantics(mergeDescendants)`.
+   - P2 (no tocar ahora): reduce motion/transparency de iOS no reactivo (requiere `NSNotificationCenter`, único punto que sí requeriría tocar `iosMain` sin poder compilar); doble-tap-scroll-arriba del tab bar.
+   - Entregó un checklist exacto de comandos `xcodebuild`/`xcrun simctl` para cuando haya Mac.
+4. **Batch de código — Fundamentos de tokens Glass (XS+S)**. Aditivo, sin tocar `AgendaOverlays.kt`/`AgendaDayComponents.kt` (cero conflicto con los batches de arriba). Cambios: `GlassTokens` gana `focusStroke`/`glassFillDisabled`/`textDisabled`; nuevo `GlassRadius`/`GlassElevation` en `core/ui/theme/GlassMetrics.kt`; `GlassTextField` ahora distingue enfocado/deshabilitado (color, sin ancho de borde); `GlassActionButton` gana elevación explícita (bug fix); `GlassConfirmDialog` gana `icon` opcional; radios de `GlassInputs`/`GlassSnackbar`/`GlassConfirmDialog` tokenizados sin cambiar sus valores (`GlassSnackbar` mantiene su elevación `10.dp` sin homogeneizar, por cautela del propio UI Designer). Verificación de compilación/tests en curso.
+
+## ACTIVE_TASKS / BLOCKED / FAILED
+Ninguno en este momento.
 
 ## P0 / P1 / P2 / P3
 Ver sección E de la respuesta operativa del 9 de agosto en el chat — se traerá aquí en el primer batch de código.

@@ -3,6 +3,7 @@ package com.franciscor.agendnote.core.ui.components
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -21,9 +22,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -34,6 +37,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.franciscor.agendnote.core.ui.layout.AppLayout
+import com.franciscor.agendnote.core.ui.theme.GlassElevation
+import com.franciscor.agendnote.core.ui.theme.GlassRadius
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
 
 @Composable
@@ -43,30 +48,46 @@ fun GlassTextField(
     placeholder: String,
     label: String = placeholder,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     singleLine: Boolean = true,
     maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
     textStyle: TextStyle = MaterialTheme.typography.bodyLarge,
 ) {
     val layout = AppLayout.metrics
     val tokens = GlassTheme.tokens
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+    val containerTint = if (enabled) tokens.glassFill else tokens.glassFillDisabled
+    // Focus is the only state communicated with a color shift here (no border-width change:
+    // GlassSurface doesn't expose stroke width as a parameter, and widening it is a separate,
+    // larger change - see docs/OPERATION_ANNIVERSARY_STATUS.md, Glass design spec).
+    val strokeColor = when {
+        !enabled -> tokens.glassStroke
+        isFocused -> tokens.focusStroke
+        else -> tokens.glassStroke
+    }
     BasicTextField(
         // REVIEW: BasicTextField exposes editing semantics but no stable field name. Supplying
         // one here makes every glass input understandable to screen readers.
-        modifier = modifier.semantics { contentDescription = label },
+        modifier = modifier
+            .semantics { contentDescription = label }
+            .alpha(if (enabled) 1f else 0.6f),
         value = value,
         onValueChange = onValueChange,
+        enabled = enabled,
         singleLine = singleLine,
         maxLines = maxLines,
         textStyle = textStyle.copy(color = tokens.textPrimary),
         cursorBrush = SolidColor(tokens.accent),
+        interactionSource = interactionSource,
         decorationBox = { innerTextField ->
             GlassSurface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .defaultMinSize(minHeight = layout.height(58.dp, 52.dp)),
-                shape = RoundedCornerShape(layout.size(18.dp, 16.dp)),
-                tint = tokens.glassFill,
-                strokeColor = tokens.glassStroke,
+                shape = RoundedCornerShape(GlassRadius.s()),
+                tint = containerTint,
+                strokeColor = strokeColor,
             ) {
                 Box(
                     modifier = Modifier.padding(
@@ -79,7 +100,7 @@ fun GlassTextField(
                         Text(
                             text = placeholder,
                             style = textStyle,
-                            color = tokens.textSecondary,
+                            color = if (enabled) tokens.textSecondary else tokens.textDisabled,
                         )
                     }
                     innerTextField()
@@ -102,7 +123,7 @@ fun GlassActionButton(
     onClick: () -> Unit,
 ) {
     val layout = AppLayout.metrics
-    val radius = layout.size(18.dp, 16.dp)
+    val radius = GlassRadius.s()
     val indication = LocalIndication.current
     GlassSurface(
         modifier = modifier
@@ -120,6 +141,10 @@ fun GlassActionButton(
         shape = RoundedCornerShape(radius),
         tint = tint,
         strokeColor = tint.copy(alpha = 0.5f),
+        // Was missing before (defaulted to 0.dp, GlassSurface's fused/background level) even
+        // though this is the primary CTA - it should float like GlassIconButton/cards, not fuse
+        // with the background like an input field. See Glass design spec, §2.3.
+        shadowElevation = GlassElevation.floating,
     ) {
         Box(
             modifier = Modifier.padding(
@@ -150,7 +175,7 @@ fun GlassSearchBar(
     val tokens = GlassTheme.tokens
     GlassSurface(
         modifier = modifier.defaultMinSize(minHeight = layout.height(56.dp, 50.dp)),
-        shape = RoundedCornerShape(layout.size(18.dp, 16.dp)),
+        shape = RoundedCornerShape(GlassRadius.s()),
         tint = tokens.glassFill,
         strokeColor = tokens.glassStroke,
     ) {

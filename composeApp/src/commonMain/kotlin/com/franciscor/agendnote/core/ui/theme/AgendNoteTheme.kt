@@ -49,6 +49,16 @@ data class GlassTokens(
     val success: Color,
     val onSuccess: Color,
     val scrim: Color,
+    /**
+     * Border color for a focused input on a Glass surface (e.g. [GlassTextField]). Kept as its
+     * own token (rather than reusing [accentOnLight] inline at every call site) so a future pass
+     * can retune focus contrast independently of the accent color used elsewhere.
+     */
+    val focusStroke: Color,
+    /** Container tint for a disabled Glass surface - roughly half the alpha of [glassFill]. */
+    val glassFillDisabled: Color,
+    /** Text color on a disabled Glass surface - [textSecondary] at ~0.45 alpha. */
+    val textDisabled: Color,
 )
 
 private val LightGlassTokens = GlassTokens(
@@ -72,6 +82,9 @@ private val LightGlassTokens = GlassTokens(
     success = Color(0xFF43B87B),
     onSuccess = Color.White,
     scrim = Color(0x59000000),
+    focusStroke = Color(0xFFB34A1E),
+    glassFillDisabled = Color(0x33FFFFFF),
+    textDisabled = Color(0x73516173),
 )
 
 private val DarkGlassTokens = GlassTokens(
@@ -95,6 +108,9 @@ private val DarkGlassTokens = GlassTokens(
     success = Color(0xFF43B87B),
     onSuccess = Color.White,
     scrim = Color(0x660B1117),
+    focusStroke = Color(0xFFB34A1E),
+    glassFillDisabled = Color(0x0DFFFFFF),
+    textDisabled = Color(0x73B6C1CE),
 )
 
 /**
