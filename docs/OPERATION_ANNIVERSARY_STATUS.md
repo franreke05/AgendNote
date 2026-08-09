@@ -20,9 +20,20 @@ FASE 0 → FASE 1 (baseline confirmado, arrancando lanes de investigación en pa
 | Agente | Rol | Modo | Archivos | Estado |
 |---|---|---|---|---|
 | Software Architect | Implementar edición de tarea, pasos 1-7 (dominio/repo/ViewModel/Controller + tests) | Producer, ejecuta Gradle | `AgendaTaskRepository.kt`, `SupabaseAgendaTaskRepository.kt`, `AgendaViewModel.kt`, `AgendaController.kt` + 3 tests | En curso |
-| Software Architect | Edición de tarea — UI (pasos 8-10: `NewTaskSheet` modo Edit, botón Editar en `TaskDetailsOverlay`, wiring en `AgendaScreen`) | Producer, ejecuta Gradle | `AgendaOverlays.kt`, `AgendaScreen.kt` | En curso |
+| Software Architect | Corrección de 3 bugs encontrados por la revisión adversarial (ver COMPLETED) | Producer, ejecuta Gradle | `AgendaOverlays.kt`, `AgendaTaskRepository.kt`, `SupabaseAgendaTaskRepository.kt`, `AgendaViewModel.kt`, `AgendaController.kt`, `AgendaScreen.kt` + tests | En curso |
 
-Regla mientras haya un Producer con Gradle activo: ningún otro proceso ejecuta Gradle en paralelo (riesgo de corrupción de cache/lock). Este es el batch de mayor riesgo hasta ahora (toca el composable más grande y más usado de la app, el flujo de creación de tareas) - tras su commit, antes de darlo por cerrado, corresponde una revisión adversarial independiente (no autoaprobación) antes de considerar cerrado el Gate B (core usability).
+Regla mientras haya un Producer con Gradle activo: ningún otro proceso ejecuta Gradle en paralelo.
+
+## REVISIÓN ADVERSARIAL — edición de tareas (commits `3062db9`/`bc2ebd2`)
+
+**NO aprobado en primera pasada.** Un reviewer independiente (no el mismo agente que implementó) encontró, verificado por mí leyendo el código actual:
+
+- 🔴 **Bug 1 (crítico, pérdida de datos real)**: guardar una edición sin tocar la sección "Recordatorios" puede borrar recordatorios existentes en silencio. `toUpdateTaskRequest` siempre envía `reminders` (nunca omitido); la Edge Function borra-y-reemplaza todos los recordatorios en cuanto esa clave está presente; el prefill de qué presets estaban activos es un heurístico de comparación de milisegundos que puede fallar (cambio de huso horario, datos no originados en estos mismos presets) sin ningún aviso al usuario, y el guardado reporta éxito igualmente.
+- 🟡 **Bug 2 (medio)**: los chips de "aplicar plantilla" no tienen guard de modo (a diferencia de "Repetir"/"Guardar como plantilla", que sí lo tienen) - tocar uno en modo Edit sobrescribe la tarea completa, incluido el estado `isDone` de subtareas ya hechas, sin confirmación.
+- 🟡 **Bug 3 (medio)**: si la tarea desaparece de la lista cacheada mientras se edita, el sheet se cierra solo sin avisar y sin preservar lo tecleado.
+- Verificado como correcto por la revisión (no requieren cambio): sentinel `""`, protección contra desincronizar una serie recurrente, comportamiento de `moveTask` con día no cacheado (solo hueco visual, datos ya guardados bien), protección contra doble-guardado, manejo de error que preserva el formulario, flujo de creación intacto, subtareas ida-y-vuelta correctas.
+
+Batch de corrección en curso (ver ACTIVE_AGENTS). **El Gate B (core usability) no se considera cerrado hasta que este batch de corrección verifique en verde y, si el tiempo lo permite, reciba una segunda pasada de revisión sobre el diff de la corrección.**
 
 ## COMPLETED
 1. **Investigación — Plan de edición de tarea** (Software Architect). Hallazgos clave:
