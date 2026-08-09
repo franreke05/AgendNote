@@ -4,13 +4,49 @@ Documento vivo. Cada agente lo consulta antes de trabajar y lo actualiza al term
 Sustituye a una narrativa dispersa en el chat: esta es la fuente de verdad de estado, no una
 copia — `docs/AI_CONTEXT_MAP.md`/`AI_TOKEN_INDEX.md` siguen siendo el mapa de arquitectura.
 
-## CURRENT_PHASE
-Gate B (core usability) código-completo y revisado. APK debug construida con todo lo integrado
-(`androidApp:assembleDebug`, `BUILD SUCCESSFUL`). **Cero verificación en dispositivo/emulador
-real de nada de lo hecho hoy** - ese es el único paso que falta para cerrar Gate B en sentido
-estricto. Siguiente: QA funcional en Android (requiere que el usuario lance el emulador, este
-entorno no tiene herramientas de interacción con UI de Android) y, en paralelo cuando el usuario
-confirme acceso a Mac, Gate A (iOS).
+## CURRENT_PHASE — pivote 2026-08-09 tarde: directiva visual y de producto definitiva
+El usuario envió capturas reales del emulador (Agenda/Calendario/Etiquetas/Ajustes) y, tras
+mi lectura propia de ellas, una directiva nueva y mucho más amplia que "pulir lo existente":
+
+1. **Rediseño visual completo** hacia cristal iPhone premium (transparencia real como lenguaje
+   principal, no decoración) - la preferencia visual #1 de la usuaria final es "le encanta lo
+   transparente".
+2. **Reestructura de navegación**: Agenda / Día / Etiquetas / Ajustes (se elimina la pestaña
+   Calendario como tal; el calendario mensual pasa a un popover Glass desde Agenda; el slot de
+   la pestaña se reutiliza para una vista "Día" nueva - timeline por horas).
+3. **Rediseño de Listas inteligentes** (hoy el componente visualmente más débil, según el
+   propio usuario - Dialog centrado con scrim casi negro, nada de "glass").
+4. **Simplificación de Etiquetas** (nombre + color en un selector, no 16 swatches permanentes).
+5. **Ajustes**: quitar "Fondo/URL de imagen" de la UI (verificar consumidores backend antes de
+   tocar nada del lado servidor), reestructurar en secciones reales.
+6. **2 features nuevas deliberadamente personales**: "Mensajes para ella" (mensajes
+   programados por fecha) y notificaciones con voz real pregrabada (clip corto como sonido de
+   notificación vía `UNNotificationSound`, mensaje largo reproducible dentro de la app) - solo
+   arquitectura/placeholders, el usuario aportará los audios reales después.
+7. **Sistema de tokens Glass definitivo** (`GlassDepth/Opacity/Border/Tint/BlurPolicy/Radius/
+   Shadow/Highlight/Spacing/Motion/ButtonStyle`) antes de tocar ninguna pantalla.
+8. **Revisión visual obligatoria por pantalla** (ejecutar, capturar, comparar antes/después,
+   Red Team visual) - no declarar una pantalla terminada solo por compilar.
+
+Deadline sin cambios: 13 de agosto de 2026. Prioridades del propio usuario (sección 27 de su
+directiva): P0 = design system Glass, botones transparentes, popups/sheets, Agenda, pantalla
+Día, validación iPhone, estabilidad funcional básica. P1 = Etiquetas, Ajustes, edición de
+tarea (ya hecha), recordatorios (ya resuelto), mensajes personales, base de notificaciones
+con voz. P2 = motion/haptics adicionales. P3 = cualquier cosa no directamente relacionada.
+
+**Restricción técnica real que condiciona todo lo demás, a verificar por el primer batch**:
+el "Liquid Glass" real de Apple (materiales del sistema, blur de verdad) es una API nativa
+UIKit/SwiftUI; Compose Multiplatform no tiene acceso directo a ella salvo interop nativo
+(`UIKitInteropProperties(placedAsOverlay=true)`, disponible desde CMP 1.10.0-beta01 según la
+investigación de la sesión anterior - el proyecto está en 1.9.3). Hasta que el primer agente
+de investigación confirme el estado real, "cristal fuerte" se construye con las técnicas ya
+validadas hoy (transparencia por capas, borde, highlight, blur real acotado a superficies
+estáticas sin scroll) - no asumir que se puede invocar `.ultraThinMaterial` de SwiftUI desde
+Kotlin sin más.
+
+Batches del propio usuario, en orden: A (design system) → B (Agenda) → C (Día) → D (modals) →
+E (Etiquetas+Ajustes) → F (personal/voz) → G (QA/polish). En paralelo cuando no compartan
+archivo.
 
 ## BASELINE (2026-08-09, confirmado antes de tocar nada)
 - Branch de trabajo: `agent/operacion-aniversario` (creada desde `main`@`dd1c159`).
