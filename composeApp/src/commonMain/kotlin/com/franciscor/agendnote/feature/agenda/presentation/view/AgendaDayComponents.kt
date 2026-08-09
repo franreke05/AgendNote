@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -725,27 +727,47 @@ internal fun FloatingAddButton(
     onClick: () -> Unit,
 ) {
     val layout = AppLayout.metrics
-    val tint = if (enabled) GlassTheme.tokens.glassFillStrong else GlassTheme.tokens.glassFill
-    val iconTint = if (enabled) GlassTheme.tokens.textPrimary else GlassTheme.tokens.textSecondary
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    // Operación Aniversario, prioridad P0 visual explícita: el FAB es la acción primaria de
+    // toda la app y hasta ahora era un círculo blanco plano indistinguible de un botón
+    // secundario. Pasa a cristal translúcido con tinte coral (en vez de glassFillStrong neutro)
+    // + borde + un ligero press-scale - ver el contrato de tokens Glass en
+    // docs/OPERATION_ANNIVERSARY_STATUS.md (GlassFloatingActionButton).
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.94f else 1f,
+        animationSpec = tween(durationMillis = 100),
+        label = "fabPressScale",
+    )
+    val tint = when {
+        !enabled -> GlassTheme.tokens.glassFill
+        isPressed -> GlassTheme.tokens.accent.copy(alpha = 0.34f)
+        else -> GlassTheme.tokens.accent.copy(alpha = 0.22f)
+    }
+    val strokeColor = if (enabled) {
+        GlassTheme.tokens.accentOnLight.copy(alpha = 0.45f)
+    } else {
+        GlassTheme.tokens.glassStroke
+    }
+    val iconTint = if (enabled) GlassTheme.tokens.accentOnLight else GlassTheme.tokens.textSecondary
     GlassSurface(
         modifier = modifier
             .size(layout.size(64.dp, 58.dp))
+            .scale(scale)
             .clip(CircleShape)
             .clickable(
                 enabled = enabled,
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick,
             ),
         shape = CircleShape,
         tint = tint,
-        shadowElevation = 12.dp,
+        strokeColor = strokeColor,
+        shadowElevation = 14.dp,
     ) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(CircleShape)
-                .background(tint),
+            modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
