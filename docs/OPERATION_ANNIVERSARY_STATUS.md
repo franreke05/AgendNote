@@ -17,7 +17,12 @@ FASE 0 → FASE 1 (baseline confirmado, arrancando lanes de investigación en pa
 - Supabase: MCP conectado en esta sesión apunta a un proyecto ajeno (`oposibots-ui`), no al backend real de AgendNote.
 
 ## ACTIVE_AGENTS
-Ninguno en este momento (los 3 de investigación del primer batch ya entregaron, ver COMPLETED).
+| Agente | Rol | Modo | Archivos | Estado |
+|---|---|---|---|---|
+| Software Architect | Implementar edición de tarea, pasos 1-7 (dominio/repo/ViewModel/Controller + tests) | Producer, ejecuta Gradle | `AgendaTaskRepository.kt`, `SupabaseAgendaTaskRepository.kt`, `AgendaViewModel.kt`, `AgendaController.kt` + 3 tests | En curso |
+~~| Software Architect | Decisión recordatorios múltiples | Investigación | `core/notifications/**` | En curso |~~ → **COMPLETADA**, ver COMPLETED #6.
+
+Regla mientras haya un Producer con Gradle activo: ningún otro proceso ejecuta Gradle en paralelo (riesgo de corrupción de cache/lock). Los agentes de investigación pura no ejecutan Gradle.
 
 ## COMPLETED
 1. **Investigación — Plan de edición de tarea** (Software Architect). Hallazgos clave:
@@ -41,9 +46,10 @@ Ninguno en este momento (los 3 de investigación del primer batch ya entregaron,
    - Entregó un checklist exacto de comandos `xcodebuild`/`xcrun simctl` para cuando haya Mac.
 4. **Batch de código — Fundamentos de tokens Glass (XS+S)**. Commit `1c679d4`. Aditivo, sin tocar `AgendaOverlays.kt`/`AgendaDayComponents.kt`. Cambios: `GlassTokens` gana `focusStroke`/`glassFillDisabled`/`textDisabled`; nuevo `GlassRadius`/`GlassElevation` en `core/ui/theme/GlassMetrics.kt`; `GlassTextField` distingue enfocado/deshabilitado; `GlassActionButton` gana elevación explícita (bug fix: el CTA primario flotaba a elevación 0); `GlassConfirmDialog` gana `icon` opcional; radios tokenizados sin cambiar valores. Verificado: `BUILD SUCCESSFUL`, 90/90.
 5. **Batch de código — iOS P0 quick wins**. Commit (ver `git log`, mensaje `feat(agenda): edge-guard swipe, haptics, and merged a11y for task cards`). Solo `AgendaDayComponents.kt`. Guarda de borde en swipe (copiado del patrón de `DatePickerOverlay`), haptics vía `LocalHapticFeedback` común (completar/borrar, swipe + botones), `TaskCard` con `semantics(mergeDescendants=true)`. Verificado: `BUILD SUCCESSFUL`, 90/90. **No verificado en dispositivo/simulador real** (revisión estática únicamente - pendiente de Xcode).
+6. **Decisión — Recordatorios múltiples: Opción B** (ajustar la UI a la realidad, no reescribir el scheduler). Evidencia clave: esta misma discrepancia ya fue evaluada y diferida el 2026-08-04 por las mismas restricciones de entorno (sin Gradle/emulador entonces tampoco); `AndroidReminderStore` usa una única clave `taskId` sin noción de índice de recordatorio - extenderlo a N alarmas reales toca el componente de notificaciones ya probado en dispositivo real en julio (mayor riesgo del proyecto) sin forma de re-verificarlo aquí. iOS sería mecánicamente más simple (S) pero cero historial de compilación. **Cambio aplicado** (pendiente de verificar por build, ver ACTIVE_TASKS): aviso de una línea en `NewTaskSheet` (`AgendaOverlays.kt`, sección "Recordatorios") cuando el usuario selecciona 2+ recordatorios, explicando honestamente que solo se dispara el más próximo. Cero cambios en `androidMain`/`iosMain`/backend. Retirar el aviso cuando exista multi-notificación real verificada en dispositivo.
 
 ## ACTIVE_TASKS / BLOCKED / FAILED
-Ninguno en este momento. Próximo: implementación del plan de edición de tareas, pasos 1-7 (dominio→repo→tests→ViewModel→tests→Controller), sin tocar `AgendaOverlays.kt`/`AgendaScreen.kt` todavía (ese es el paso 8-10, mayor riesgo, batch propio).
+- El aviso de recordatorios múltiples (COMPLETED #6) está editado en `AgendaOverlays.kt` pero **sin verificar por build todavía** - deliberadamente diferido porque hay un Producer con Gradle activo (ver ACTIVE_AGENTS) y no se ejecuta Gradle en paralelo. Se verifica y commitea en cuanto ese Producer termine.
 
 ## PENDIENTE PARA CUANDO HAYA XCODE (usuario confirmó acceso antes del 13)
 - Verificar visualmente los 2 batches de código ya commiteados (tokens Glass, iOS P0 quick wins) en simulador/dispositivo real - nada de esto se ha visto en pantalla todavía.

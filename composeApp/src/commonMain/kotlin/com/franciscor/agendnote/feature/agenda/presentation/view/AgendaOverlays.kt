@@ -901,6 +901,22 @@ internal fun NewTaskSheet(
                                     )
                                 }
                             }
+                            // The scheduler only fires the single nearest reminder per task today
+                            // (see core/notifications/ReminderResolution.kt) even though all
+                            // selected offsets are saved - decision documented in
+                            // docs/OPERATION_ANNIVERSARY_STATUS.md (Operación Aniversario,
+                            // reminders lane): tell the user the truth instead of letting the UI
+                            // promise more than the system does. Remove this notice once
+                            // multi-notification scheduling is implemented and device-verified.
+                            if (selectedReminderOffsetMinutes.size > 1) {
+                                Text(
+                                    text = "Por ahora solo se te avisará con el recordatorio " +
+                                        "más próximo; los demás quedan guardados pero no se " +
+                                        "disparan todavía.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = GlassTheme.tokens.textSecondary,
+                                )
+                            }
                         }
                     }
 
