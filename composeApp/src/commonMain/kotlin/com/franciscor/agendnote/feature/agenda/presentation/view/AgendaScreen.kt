@@ -52,10 +52,22 @@ fun AgendaScreen(
     var showSmartLists by rememberSaveable { mutableStateOf(false) }
     var pendingDeleteTaskId by rememberSaveable { mutableStateOf<String?>(null) }
     var showTaskDetailsTaskId by rememberSaveable { mutableStateOf<String?>(null) }
+    // Same "store the id, look it up in sourceTasks" pattern as showTaskDetailsTaskId/
+    // pendingDeleteTaskId above: it stays correct if the task's data changes underneath (e.g. a
+    // toggle-done elsewhere) instead of freezing a stale snapshot. "Editar" is only reachable
+    // from a task already in sourceTasks (the selected day), so its original date is always
+    // selectedDate at lookup time.
+    var editingTaskId by rememberSaveable { mutableStateOf<String?>(null) }
     val pendingDelete = pendingDeleteTaskId?.let { id ->
         sourceTasks.find { it.id == id }?.let { task -> PendingDelete(selectedDate, task) }
     }
     val showTaskDetails = showTaskDetailsTaskId?.let { id -> sourceTasks.find { it.id == id } }
+    val editingTask = editingTaskId?.let { id -> sourceTasks.find { it.id == id } }
+    val taskSheetMode = when {
+        editingTask != null -> TaskSheetMode.Edit(editingTask, selectedDate)
+        showTaskSheet -> TaskSheetMode.Create(selectedDate)
+        else -> null
+    }
     LaunchedEffect(Unit) {
         controller.handleAsync(AgendaAction.RefreshSelectedDate)
     }
@@ -130,7 +142,7 @@ fun AgendaScreen(
             )
         }
 
-        if (!showTaskSheet && showTaskDetails == null) {
+        if (!showTaskSheet && showTaskDetails == null && editingTask == null) {
             FloatingAddButton(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
@@ -143,19 +155,26 @@ fun AgendaScreen(
             )
         }
 
-        if (showTaskSheet) {
+        taskSheetMode?.let { mode ->
             NewTaskSheet(
-                date = selectedDate,
+                mode = mode,
                 labels = labels,
                 onCreateLabel = onCreateLabel,
                 templates = templates,
                 onSaveTemplate = onSaveTemplate,
-                onDismiss = { showTaskSheet = false },
+                onDismiss = {
+                    showTaskSheet = false
+                    editingTaskId = null
+                },
                 onSave = { targetDate, draft, onResult ->
                     controller.saveTaskAsync(targetDate, draft, onResult)
                 },
                 onSaveRecurring = { targetDate, draft, rule, end, onResult ->
                     controller.saveRecurringTaskAsync(targetDate, draft, rule, end, onResult)
+                },
+                onSaveEdit = { id, targetDate, draft, onResult ->
+                    val originalDate = (mode as? TaskSheetMode.Edit)?.originalDate ?: selectedDate
+                    controller.updateTaskAsync(originalDate, id, targetDate, draft, onResult)
                 },
             )
         }
@@ -182,6 +201,10 @@ fun AgendaScreen(
                 onRequestDelete = {
                     showTaskDetailsTaskId = null
                     pendingDeleteTaskId = task.id
+                },
+                onRequestEdit = {
+                    showTaskDetailsTaskId = null
+                    editingTaskId = task.id
                 },
             )
         }

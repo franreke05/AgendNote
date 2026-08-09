@@ -315,20 +315,45 @@ private enum class RecurrenceEndOption {
     Never, OnDate, AfterOccurrences
 }
 
+/**
+ * Distinguishes "creating a brand-new task" from "editing one that already exists" for
+ * [NewTaskSheet]. Every branch below must switch on this sealed type explicitly - never infer
+ * edit-vs-create from whether a [TaskItem] happens to be null, so the creation flow can never be
+ * accidentally affected by edit-only logic.
+ */
+internal sealed interface TaskSheetMode {
+    data class Create(val date: LocalDate) : TaskSheetMode
+    data class Edit(val task: TaskItem, val originalDate: LocalDate) : TaskSheetMode
+}
+
+/**
+ * Local, UI-only mirror of a subtask being edited in the sheet. Unlike the plain
+ * `List<String>` this replaces, it keeps [isDone] so that editing an existing task's subtasks
+ * does not silently reset already-completed ones back to pending on save (see [TaskSheetMode.Edit]
+ * prefill below).
+ */
+private data class TaskSheetSubtask(val title: String, val isDone: Boolean = false)
+
 @Composable
 internal fun NewTaskSheet(
-    date: LocalDate,
+    mode: TaskSheetMode,
     labels: List<LabelTag>,
     onCreateLabel: suspend (String, String) -> LabelTag?,
     onDismiss: () -> Unit,
     onSave: (LocalDate, TaskDraft, (SaveResult) -> Unit) -> Unit,
     onSaveRecurring: (LocalDate, TaskDraft, RecurrenceRule, RecurrenceEnd, (SaveResult) -> Unit) -> Unit,
+    onSaveEdit: (String, LocalDate, TaskDraft, (SaveResult) -> Unit) -> Unit = { _, _, _, _ -> },
     templates: List<TaskTemplate> = emptyList(),
     onSaveTemplate: suspend (TaskTemplate) -> Boolean = { false },
 ) {
     val layout = AppLayout.metrics
     val timeZone = remember { TimeZone.currentSystemDefault() }
     val today = remember { currentDate(timeZone) }
+    val date = when (mode) {
+        is TaskSheetMode.Create -> mode.date
+        is TaskSheetMode.Edit -> mode.originalDate
+    }
+    val editTask = (mode as? TaskSheetMode.Edit)?.task
     val palette = remember { labelColorPalette() }
     val usedColors = labels.map { it.colorHex.lowercase() }.toSet()
     val colorOptions = palette
@@ -336,20 +361,44 @@ internal fun NewTaskSheet(
         .distinct()
         .ifEmpty { palette.distinct() }
 
-    var title by remember { mutableStateOf("") }
-    var details by remember { mutableStateOf("") }
-    var selectedTime by remember { mutableStateOf<LocalTime?>(null) }
+    var title by remember(mode) { mutableStateOf(editTask?.title ?: "") }
+    var details by remember(mode) { mutableStateOf(editTask?.details ?: "") }
+    var selectedTime by remember(mode) { mutableStateOf(editTask?.time) }
     var errorText by remember { mutableStateOf<String?>(null) }
-    var selectedDate by remember(date, today) { mutableStateOf(if (date < today) today else date) }
+    // Editing never clamps to today: an already-overdue task must stay editable on its own date
+    // without the sheet silently moving it forward (see [TaskSheetMode.Edit] and the past-date
+    // validation below, which only blocks *actively* picking a different past date).
+    var selectedDate by remember(mode) {
+        mutableStateOf(
+            when (mode) {
+                is TaskSheetMode.Create -> if (mode.date < today) today else mode.date
+                is TaskSheetMode.Edit -> mode.originalDate
+            },
+        )
+    }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
-    var deadlineDate by remember { mutableStateOf<LocalDate?>(null) }
+    var deadlineDate by remember(mode) {
+        mutableStateOf(editTask?.deadline?.toLocalDateTime(timeZone)?.date)
+    }
     var showDeadlinePicker by remember { mutableStateOf(false) }
-    val selectedReminderOffsetMinutes = remember { mutableStateListOf<Long>() }
-    val subtaskTitles = remember { mutableStateListOf<String>() }
+    val selectedReminderOffsetMinutes = remember(mode) { mutableStateListOf<Long>() }
+    // Preserves isDone on prefill (see TaskSheetSubtask) - ordered by orderIndex like
+    // TaskDetailsOverlay does, since the drafted list order becomes the new orderIndex on save.
+    val subtaskItems = remember(mode) {
+        mutableStateListOf<TaskSheetSubtask>().apply {
+            editTask?.subtasks?.sortedBy { it.orderIndex }?.forEach { subtask ->
+                add(TaskSheetSubtask(title = subtask.title, isDone = subtask.isDone))
+            }
+        }
+    }
     var newSubtaskTitle by remember { mutableStateOf("") }
     var isSavingTemplate by remember { mutableStateOf(false) }
-    val selectedLabelIds = remember { mutableStateListOf<String>() }
+    val selectedLabelIds = remember(mode) {
+        mutableStateListOf<String>().apply {
+            editTask?.labels?.forEach { add(it.id) }
+        }
+    }
     var newLabelName by remember { mutableStateOf("") }
     var isCreatingLabel by remember { mutableStateOf(false) }
     var selectedColor by remember { mutableStateOf(colorOptions.first()) }
@@ -374,8 +423,24 @@ internal fun NewTaskSheet(
         }
     }
 
-    val isPastSelected = selectedDate < today
+    // Creating is blocked on any past date. Editing only blocks *actively moving* the task to a
+    // different past date - a task that was already overdue on [originalDate] must stay
+    // editable without the sheet force-blocking the save just because nothing moved.
+    val isPastSelected = when (mode) {
+        is TaskSheetMode.Create -> selectedDate < today
+        is TaskSheetMode.Edit -> selectedDate < today && selectedDate != mode.originalDate
+    }
     val sheetBlur = if (showTimePicker) layout.size(14.dp, 10.dp) else 0.dp
+    val pastDateBannerText = if (mode is TaskSheetMode.Edit) {
+        "No se pueden mover tareas a fechas pasadas."
+    } else {
+        "No se pueden crear tareas en fechas pasadas."
+    }
+    val pastDateErrorText = if (mode is TaskSheetMode.Edit) {
+        "No se pueden mover tareas a fechas pasadas"
+    } else {
+        "No se pueden crear tareas en fechas pasadas"
+    }
 
     // Sugerencia de captura rapida: se recalcula en cada cambio de titulo, pero nunca aplica
     // nada por si sola - el usuario tiene que tocar "Aplicar" (ver docs/agendnote/
@@ -406,8 +471,27 @@ internal fun NewTaskSheet(
     // aparte. Si hay hora y todavía no se eligió ningún preset, se preselecciona "En el
     // momento" (visible y desmarcable, no un valor oculto que solo aparece al guardar).
     LaunchedEffect(selectedTime) {
-        if (selectedTime != null && selectedReminderOffsetMinutes.isEmpty()) {
+        if (mode is TaskSheetMode.Create && selectedTime != null && selectedReminderOffsetMinutes.isEmpty()) {
             selectedReminderOffsetMinutes.add(0L)
+        }
+    }
+
+    // Edit prefill: reconstruct which presets were chosen by comparing the task's saved
+    // reminder instants against what each preset would produce for the reference computed above
+    // (see reminderReferenceInstant). Runs once per sheet instance (keyed on mode, which does not
+    // change while this sheet stays open) so it never fights with the user unselecting a preset
+    // afterwards.
+    LaunchedEffect(mode) {
+        if (mode is TaskSheetMode.Edit) {
+            val reference = reminderReferenceInstant
+            if (reference != null && selectedReminderOffsetMinutes.isEmpty()) {
+                val matchedPresets = reminderOffsetPresets().mapNotNull { (minutes, _) ->
+                    val expectedMillis = reference.toEpochMilliseconds() - minutes * 60_000L
+                    val matches = mode.task.reminders.any { it.toEpochMilliseconds() == expectedMillis }
+                    minutes.takeIf { matches }
+                }
+                selectedReminderOffsetMinutes.addAll(matchedPresets)
+            }
         }
     }
 
@@ -462,7 +546,7 @@ internal fun NewTaskSheet(
                             verticalArrangement = Arrangement.spacedBy(layout.height(6.dp, 5.dp)),
                         ) {
                             Text(
-                                text = "Nueva tarea",
+                                text = if (mode is TaskSheetMode.Edit) "Editar tarea" else "Nueva tarea",
                                 style = MaterialTheme.typography.displayLarge.copy(
                                     fontSize = layout.text(30.sp, 27.sp),
                                     lineHeight = layout.text(32.sp, 29.sp),
@@ -512,6 +596,19 @@ internal fun NewTaskSheet(
                             }
                         }
 
+                        // Non-blocking notice, same tone as ConfirmDeleteDialog's series warning:
+                        // editing a materialized occurrence never touches the rest of the series
+                        // (recurrence editing itself stays out of scope for this batch - see the
+                        // hidden "Repetir" section below).
+                        if (mode is TaskSheetMode.Edit && mode.task.seriesId != null) {
+                            Text(
+                                text = "Es parte de una tarea recurrente: editar esta aparición " +
+                                    "no afecta a las demás.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = GlassTheme.tokens.textSecondary,
+                            )
+                        }
+
                         if (templates.isNotEmpty()) {
                             Row(
                                 modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -530,8 +627,8 @@ internal fun NewTaskSheet(
                                             )
                                             selectedReminderOffsetMinutes.clear()
                                             selectedReminderOffsetMinutes.addAll(template.reminderOffsetMinutes)
-                                            subtaskTitles.clear()
-                                            subtaskTitles.addAll(template.subtaskTitles)
+                                            subtaskItems.clear()
+                                            subtaskItems.addAll(template.subtaskTitles.map { TaskSheetSubtask(title = it) })
                                         },
                                     )
                                 }
@@ -564,8 +661,8 @@ internal fun NewTaskSheet(
                                         errorText = "Título requerido"
                                         return@GlassActionButton
                                     }
-                                    if (selectedDate < today) {
-                                        errorText = "No se pueden crear tareas en fechas pasadas"
+                                    if (isPastSelected) {
+                                        errorText = pastDateErrorText
                                         return@GlassActionButton
                                     }
                                     if (selectedRecurrence == RecurrenceOption.WeeklyDays && selectedWeekDays.isEmpty()) {
@@ -608,8 +705,8 @@ internal fun NewTaskSheet(
                                         labels = chosenLabels,
                                         deadline = deadlineInstant,
                                         reminders = reminderInstants,
-                                        subtasks = subtaskTitles.mapIndexed { index, subtaskTitle ->
-                                            Subtask(title = subtaskTitle, orderIndex = index)
+                                        subtasks = subtaskItems.mapIndexed { index, item ->
+                                            Subtask(title = item.title, isDone = item.isDone, orderIndex = index)
                                         },
                                     )
                                     val rule = when (selectedRecurrence) {
@@ -637,10 +734,15 @@ internal fun NewTaskSheet(
                                             errorText = result.errorMessage ?: "No se pudo guardar"
                                         }
                                     }
-                                    if (rule != null) {
-                                        onSaveRecurring(selectedDate, draft, rule, recurrenceEnd, onResult)
-                                    } else {
-                                        onSave(selectedDate, draft, onResult)
+                                    when (mode) {
+                                        is TaskSheetMode.Edit -> onSaveEdit(mode.task.id, selectedDate, draft, onResult)
+                                        is TaskSheetMode.Create -> {
+                                            if (rule != null) {
+                                                onSaveRecurring(selectedDate, draft, rule, recurrenceEnd, onResult)
+                                            } else {
+                                                onSave(selectedDate, draft, onResult)
+                                            }
+                                        }
                                     }
                                 },
                             )
@@ -928,16 +1030,21 @@ internal fun NewTaskSheet(
                             ),
                             color = GlassTheme.tokens.textSecondary,
                         )
-                        subtaskTitles.forEachIndexed { index, subtaskTitle ->
+                        subtaskItems.forEachIndexed { index, item ->
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
                             ) {
                                 Text(
-                                    text = subtaskTitle,
+                                    text = item.title,
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = GlassTheme.tokens.textPrimary,
+                                    color = if (item.isDone) {
+                                        GlassTheme.tokens.textSecondary
+                                    } else {
+                                        GlassTheme.tokens.textPrimary
+                                    },
+                                    textDecoration = if (item.isDone) TextDecoration.LineThrough else TextDecoration.None,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f),
@@ -950,7 +1057,7 @@ internal fun NewTaskSheet(
                                             onClickLabel = "Quitar subtarea",
                                             interactionSource = remember { MutableInteractionSource() },
                                             indication = null,
-                                            onClick = { subtaskTitles.removeAt(index) },
+                                            onClick = { subtaskItems.removeAt(index) },
                                         ),
                                     contentAlignment = Alignment.Center,
                                 ) {
@@ -985,41 +1092,50 @@ internal fun NewTaskSheet(
                                 onClick = {
                                     val trimmed = newSubtaskTitle.trim()
                                     if (trimmed.isEmpty()) return@GlassActionButton
-                                    subtaskTitles.add(trimmed)
+                                    subtaskItems.add(TaskSheetSubtask(title = trimmed))
                                     newSubtaskTitle = ""
                                 },
                             )
                         }
-                        GlassActionButton(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(layout.height(46.dp, 44.dp)),
-                            text = if (isSavingTemplate) "Guardando plantilla..." else "Guardar como plantilla",
-                            enabled = title.isNotBlank() && !isSavingTemplate,
-                            tint = GlassTheme.tokens.glassFill,
-                            textColor = GlassTheme.tokens.textSecondary,
-                            onClick = {
-                                val trimmedTitle = title.trim()
-                                if (trimmedTitle.isEmpty()) return@GlassActionButton
-                                isSavingTemplate = true
-                                scope.launch {
-                                    val template = TaskTemplate(
-                                        id = "",
-                                        name = trimmedTitle,
-                                        title = trimmedTitle,
-                                        details = details.trim().ifBlank { null },
-                                        labelIds = labels.filter { selectedLabelIds.contains(it.id) }.map { it.id },
-                                        reminderOffsetMinutes = selectedReminderOffsetMinutes.toList(),
-                                        subtaskTitles = subtaskTitles.toList(),
-                                    )
-                                    val success = onSaveTemplate(template)
-                                    isSavingTemplate = false
-                                    if (!success) errorText = "No se pudo guardar la plantilla"
-                                }
-                            },
-                        )
+                        // Saving as a template applies to freshly-composed drafts, not to a task
+                        // that already exists - out of scope for this batch, same as recurrence.
+                        if (mode is TaskSheetMode.Create) {
+                            GlassActionButton(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(layout.height(46.dp, 44.dp)),
+                                text = if (isSavingTemplate) "Guardando plantilla..." else "Guardar como plantilla",
+                                enabled = title.isNotBlank() && !isSavingTemplate,
+                                tint = GlassTheme.tokens.glassFill,
+                                textColor = GlassTheme.tokens.textSecondary,
+                                onClick = {
+                                    val trimmedTitle = title.trim()
+                                    if (trimmedTitle.isEmpty()) return@GlassActionButton
+                                    isSavingTemplate = true
+                                    scope.launch {
+                                        val template = TaskTemplate(
+                                            id = "",
+                                            name = trimmedTitle,
+                                            title = trimmedTitle,
+                                            details = details.trim().ifBlank { null },
+                                            labelIds = labels.filter { selectedLabelIds.contains(it.id) }.map { it.id },
+                                            reminderOffsetMinutes = selectedReminderOffsetMinutes.toList(),
+                                            subtaskTitles = subtaskItems.map { it.title },
+                                        )
+                                        val success = onSaveTemplate(template)
+                                        isSavingTemplate = false
+                                        if (!success) errorText = "No se pudo guardar la plantilla"
+                                    }
+                                },
+                            )
+                        }
                     }
 
+                    // Changing an already-materialized task's recurrence, or applying it
+                    // retroactively, is out of scope for this batch (see TaskSheetMode doc) -
+                    // hidden rather than adapted so there is no half-working "edit this and the
+                    // following" affordance to trip over.
+                    if (mode is TaskSheetMode.Create) {
                     Column(verticalArrangement = Arrangement.spacedBy(layout.height(8.dp, 6.dp))) {
                         Text(
                             text = "Repetir",
@@ -1194,10 +1310,11 @@ internal fun NewTaskSheet(
                             }
                         }
                     }
+                    }
 
                     if (isPastSelected) {
                         Text(
-                            text = "No se pueden crear tareas en fechas pasadas.",
+                            text = pastDateBannerText,
                             style = MaterialTheme.typography.bodyMedium,
                             color = GlassTheme.tokens.textSecondary,
                         )
@@ -2224,6 +2341,7 @@ internal fun TaskDetailsOverlay(
     onDismiss: () -> Unit,
     onToggleDone: (Boolean) -> Unit,
     onRequestDelete: () -> Unit,
+    onRequestEdit: () -> Unit,
 ) {
     val layout = AppLayout.metrics
     val timeZone = remember { TimeZone.currentSystemDefault() }
@@ -2393,16 +2511,21 @@ internal fun TaskDetailsOverlay(
 
                 Spacer(modifier = Modifier.height(layout.height(12.dp, 10.dp)))
 
+                // REVIEW: "Marcar como pendiente"/"Marcar como hecho" is the longest label in
+                // this overlay - cramming it into a third of the row alongside "Editar"/
+                // "Eliminar" (as a naive 3-way weight(1f) row would) wraps or truncates it on
+                // compact phones (same class of issue as the header split above). Short-label
+                // actions share a row; the long one gets full width on its own.
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp)),
                 ) {
                     GlassActionButton(
-                        text = if (task.isDone) "Marcar como pendiente" else "Marcar como hecho",
+                        text = "Editar",
                         modifier = Modifier.weight(1f),
                         tint = GlassTheme.tokens.glassFill,
                         textColor = GlassTheme.tokens.textPrimary,
-                        onClick = { onToggleDone(!task.isDone) },
+                        onClick = onRequestEdit,
                     )
                     GlassActionButton(
                         text = "Eliminar",
@@ -2412,6 +2535,14 @@ internal fun TaskDetailsOverlay(
                         onClick = onRequestDelete,
                     )
                 }
+
+                    GlassActionButton(
+                        text = if (task.isDone) "Marcar como pendiente" else "Marcar como hecho",
+                        modifier = Modifier.fillMaxWidth(),
+                        tint = GlassTheme.tokens.glassFill,
+                        textColor = GlassTheme.tokens.textPrimary,
+                        onClick = { onToggleDone(!task.isDone) },
+                    )
 
                     GlassActionButton(
                         text = "Cerrar",
