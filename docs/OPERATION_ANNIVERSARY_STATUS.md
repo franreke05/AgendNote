@@ -20,9 +20,9 @@ FASE 0 → FASE 1 (baseline confirmado, arrancando lanes de investigación en pa
 | Agente | Rol | Modo | Archivos | Estado |
 |---|---|---|---|---|
 | Software Architect | Implementar edición de tarea, pasos 1-7 (dominio/repo/ViewModel/Controller + tests) | Producer, ejecuta Gradle | `AgendaTaskRepository.kt`, `SupabaseAgendaTaskRepository.kt`, `AgendaViewModel.kt`, `AgendaController.kt` + 3 tests | En curso |
-~~| Software Architect | Decisión recordatorios múltiples | Investigación | `core/notifications/**` | En curso |~~ → **COMPLETADA**, ver COMPLETED #6.
+| Software Architect | Edición de tarea — UI (pasos 8-10: `NewTaskSheet` modo Edit, botón Editar en `TaskDetailsOverlay`, wiring en `AgendaScreen`) | Producer, ejecuta Gradle | `AgendaOverlays.kt`, `AgendaScreen.kt` | En curso |
 
-Regla mientras haya un Producer con Gradle activo: ningún otro proceso ejecuta Gradle en paralelo (riesgo de corrupción de cache/lock). Los agentes de investigación pura no ejecutan Gradle.
+Regla mientras haya un Producer con Gradle activo: ningún otro proceso ejecuta Gradle en paralelo (riesgo de corrupción de cache/lock). Este es el batch de mayor riesgo hasta ahora (toca el composable más grande y más usado de la app, el flujo de creación de tareas) - tras su commit, antes de darlo por cerrado, corresponde una revisión adversarial independiente (no autoaprobación) antes de considerar cerrado el Gate B (core usability).
 
 ## COMPLETED
 1. **Investigación — Plan de edición de tarea** (Software Architect). Hallazgos clave:
