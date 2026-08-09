@@ -1976,6 +1976,102 @@ private fun DatePickerDayCell(
     }
 }
 
+/**
+ * Popover presentation of [CalendarMonthView], reached from a header button in Agenda (Operación
+ * Aniversario: the month calendar is no longer its own tab - see
+ * docs/OPERATION_ANNIVERSARY_STATUS.md). Selecting a day both updates the selection and closes
+ * the popover in one action, matching what the standalone Calendario tab used to do (select ->
+ * close -> land back on the day view, except now there's no navigation involved, just dismissal).
+ */
+@Composable
+internal fun CalendarPopover(
+    selectedDate: LocalDate,
+    visibleMonth: LocalDate,
+    tasksByDate: Map<LocalDate, List<TaskItem>>,
+    isLoading: Boolean,
+    errorMessage: String?,
+    onSelectDate: (LocalDate) -> Unit,
+    onVisibleMonthChange: (LocalDate) -> Unit,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val layout = AppLayout.metrics
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(modifier = Modifier.fillMaxSize().safeContentPadding()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(GlassTheme.tokens.scrim)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onDismiss,
+                    ),
+            )
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = layout.width(20.dp, 16.dp))
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(layout.height(10.dp, 8.dp)),
+            ) {
+                if (errorMessage != null) {
+                    GlassSurface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(layout.size(20.dp, 18.dp)),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(layout.size(14.dp, 12.dp)),
+                            verticalArrangement = Arrangement.spacedBy(layout.height(10.dp, 8.dp)),
+                        ) {
+                            Text(
+                                text = errorMessage,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = GlassTheme.tokens.errorContent,
+                            )
+                            GlassActionButton(
+                                text = "Reintentar",
+                                onClick = onRetry,
+                                tint = GlassTheme.tokens.glassFillStrong,
+                                textColor = GlassTheme.tokens.textPrimary,
+                            )
+                        }
+                    }
+                } else if (isLoading) {
+                    GlassSurface(
+                        shape = RoundedCornerShape(layout.size(14.dp, 12.dp)),
+                        tint = GlassTheme.tokens.glassFillStrong,
+                    ) {
+                        Text(
+                            text = "Cargando...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = GlassTheme.tokens.textSecondary,
+                            modifier = Modifier.padding(
+                                horizontal = layout.width(14.dp, 12.dp),
+                                vertical = layout.height(8.dp, 7.dp),
+                            ),
+                        )
+                    }
+                }
+                CalendarMonthView(
+                    selectedDate = selectedDate,
+                    visibleMonth = visibleMonth,
+                    tasksByDate = tasksByDate,
+                    onSelectDate = { date ->
+                        onSelectDate(date)
+                        onDismiss()
+                    },
+                    onVisibleMonthChange = onVisibleMonthChange,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+}
+
 @Composable
 internal fun CalendarMonthView(
     selectedDate: LocalDate,
@@ -2292,7 +2388,11 @@ private fun CalendarDayCell(
                     lineHeight = layout.text(18.sp, 16.sp),
                 ),
                 color = dayColor,
-                textDecoration = if (isPast) TextDecoration.LineThrough else TextDecoration.None,
+                // Operación Aniversario: past days used to render with TextDecoration.LineThrough
+                // on top of the existing alpha dimming - it read as "cancelled"/"deleted", not
+                // "in the past" (confirmed against a real screenshot, not just a code-reading
+                // guess). The alpha dim above plus the "Fecha pasada" semantics.stateDescription
+                // already communicate "past" correctly on their own.
             )
             if (noteCount > 0) {
                 Spacer(modifier = Modifier.height(layout.height(2.dp, 2.dp)))

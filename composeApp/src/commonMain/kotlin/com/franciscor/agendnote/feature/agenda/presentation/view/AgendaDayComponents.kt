@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.ChevronLeft
@@ -82,6 +83,13 @@ internal fun AgendaHeader(
     onPreviousDay: () -> Unit,
     onNextDay: () -> Unit,
     onOpenSmartLists: () -> Unit = {},
+    // Operación Aniversario: the month calendar moved out of its own tab into a popover reached
+    // from here (see AgendaScreen's showCalendarPopover) - see docs/OPERATION_ANNIVERSARY_STATUS.md.
+    // TEMPORARY: this makes 4 icon buttons in one row, which the operation's own brief calls out
+    // as exactly what to avoid ("no mantengas tres icon buttons idénticos compitiendo"). Left as
+    // a functional-only placeholder pending the BATCH B visual pass once Glass design tokens land
+    // - documented here so it isn't mistaken for the intended final layout.
+    onOpenCalendar: () -> Unit = {},
 ) {
     val layout = AppLayout.metrics
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -103,6 +111,11 @@ internal fun AgendaHeader(
                     icon = Icons.Rounded.Checklist,
                     contentDescription = "Listas inteligentes",
                     onClick = onOpenSmartLists,
+                )
+                GlassIconButton(
+                    icon = Icons.Rounded.CalendarMonth,
+                    contentDescription = "Ver mes",
+                    onClick = onOpenCalendar,
                 )
                 GlassIconButton(
                     icon = Icons.Rounded.ChevronLeft,

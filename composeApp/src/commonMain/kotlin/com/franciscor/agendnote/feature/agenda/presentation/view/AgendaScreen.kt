@@ -50,6 +50,7 @@ fun AgendaScreen(
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var showTaskSheet by rememberSaveable { mutableStateOf(false) }
     var showSmartLists by rememberSaveable { mutableStateOf(false) }
+    var showCalendarPopover by rememberSaveable { mutableStateOf(false) }
     var pendingDeleteTaskId by rememberSaveable { mutableStateOf<String?>(null) }
     var showTaskDetailsTaskId by rememberSaveable { mutableStateOf<String?>(null) }
     // Same "store the id, look it up in sourceTasks" pattern as showTaskDetailsTaskId/
@@ -112,6 +113,10 @@ fun AgendaScreen(
                     controller.handleAsync(AgendaAction.LoadMonth(currentMonth))
                     controller.handleAsync(AgendaAction.LoadMonth(currentMonth.plus(1, DateTimeUnit.MONTH)))
                     showSmartLists = true
+                },
+                onOpenCalendar = {
+                    controller.handleAsync(AgendaAction.LoadMonth(uiState.visibleMonth))
+                    showCalendarPopover = true
                 },
             )
 
@@ -215,6 +220,20 @@ fun AgendaScreen(
                     showTaskDetailsTaskId = null
                     editingTaskId = task.id
                 },
+            )
+        }
+
+        if (showCalendarPopover) {
+            CalendarPopover(
+                selectedDate = selectedDate,
+                visibleMonth = uiState.visibleMonth,
+                tasksByDate = uiState.tasksByDate,
+                isLoading = uiState.isMonthLoading,
+                errorMessage = uiState.monthErrorMessage,
+                onSelectDate = { date -> controller.handleAsync(AgendaAction.SelectDate(date)) },
+                onVisibleMonthChange = { month -> controller.handleAsync(AgendaAction.LoadMonth(month)) },
+                onRetry = { controller.handleAsync(AgendaAction.LoadMonth(uiState.visibleMonth)) },
+                onDismiss = { showCalendarPopover = false },
             )
         }
 
