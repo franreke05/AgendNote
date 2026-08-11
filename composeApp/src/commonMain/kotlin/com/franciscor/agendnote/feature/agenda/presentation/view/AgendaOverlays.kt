@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -25,9 +24,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -77,8 +75,6 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.franciscor.agendnote.core.model.LabelTag
 import com.franciscor.agendnote.core.model.Subtask
 import com.franciscor.agendnote.core.model.TaskDraft
@@ -92,6 +88,8 @@ import com.franciscor.agendnote.core.ui.components.GlassActionButton
 import com.franciscor.agendnote.core.ui.components.GlassConfirmDialog
 import com.franciscor.agendnote.core.ui.components.GlassEmptyState
 import com.franciscor.agendnote.core.ui.components.GlassIconButton
+import com.franciscor.agendnote.core.ui.components.GlassPopover
+import com.franciscor.agendnote.core.ui.components.GlassSheetScaffold
 import com.franciscor.agendnote.core.ui.components.GlassSurface
 import com.franciscor.agendnote.core.ui.components.GlassTextField
 import com.franciscor.agendnote.core.ui.components.colorFromHex
@@ -189,183 +187,128 @@ internal fun SmartListsOverlay(
     val results = remember(drilldownList, tasksByDate, today) {
         drilldownList?.let { smartListTasks(it, tasksByDate, today) }.orEmpty()
     }
-    var dragOffset by remember { mutableStateOf(0f) }
-    val density = LocalDensity.current
-    val dismissThresholdPx = with(density) { layout.height(90.dp, 72.dp).toPx() }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+    // Design System Freeze V1: chrome (Dialog/scrim/shape/grabber/drag-to-dismiss) now comes from
+    // the shared GlassSheetScaffold instead of a hand-rolled Dialog+scrim+GlassSurface - only the
+    // two-level content (summary <-> drill-down) below is specific to this overlay.
+    GlassSheetScaffold(
+        onDismiss = onDismiss,
+        maxHeightFraction = 0.82f,
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize().safeContentPadding()) {
-            Box(
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(layout.height(10.dp, 8.dp)),
+        ) {
+            Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(GlassTheme.tokens.scrim)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onDismiss,
-                    ),
-            )
-
-            GlassSurface(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .heightIn(max = maxHeight * 0.82f)
-                    .offset { androidx.compose.ui.unit.IntOffset(0, dragOffset.toInt().coerceAtLeast(0)) }
-                    .pointerInput(Unit) {
-                        detectVerticalDragGestures(
-                            onVerticalDrag = { _, dragAmount ->
-                                dragOffset = (dragOffset + dragAmount).coerceAtLeast(0f)
-                            },
-                            onDragEnd = {
-                                if (dragOffset > dismissThresholdPx) {
-                                    onDismiss()
-                                } else {
-                                    dragOffset = 0f
-                                }
-                            },
-                            onDragCancel = { dragOffset = 0f },
-                        )
-                    },
-                shape = RoundedCornerShape(
-                    topStart = GlassRadius.l(),
-                    topEnd = GlassRadius.l(),
-                    bottomStart = 0.dp,
-                    bottomEnd = 0.dp,
-                ),
-                tint = GlassTheme.tokens.modalFill,
-                shadowElevation = GlassElevation.modal,
+                    .padding(horizontal = layout.width(18.dp, 16.dp)),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(layout.height(10.dp, 8.dp)),
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 4.dp)),
                 ) {
-                    // Grabber - universal "arrastra para cerrar" affordance, matches the same
-                    // gesture the pointerInput above already implements.
-                    Box(
-                        modifier = Modifier
-                            .padding(top = layout.height(10.dp, 8.dp))
-                            .align(Alignment.CenterHorizontally)
-                            .size(width = 36.dp, height = 5.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(GlassTheme.tokens.glassStroke),
-                    )
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = layout.width(18.dp, 16.dp)),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 4.dp)),
-                        ) {
-                            if (drilldownList != null) {
-                                Box(
-                                    modifier = Modifier
-                                        .defaultMinSize(minWidth = 44.dp, minHeight = 44.dp)
-                                        .clip(CircleShape)
-                                        .clickable(
-                                            interactionSource = remember { MutableInteractionSource() },
-                                            indication = null,
-                                            onClick = { drilldownList = null },
-                                        ),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.ChevronLeft,
-                                        contentDescription = "Volver a listas inteligentes",
-                                        tint = GlassTheme.tokens.textPrimary,
-                                    )
-                                }
-                            }
-                            Text(
-                                text = drilldownList?.let { SMART_LIST_LABELS.first { (l, _) -> l == it }.second }
-                                    ?: "Listas inteligentes",
-                                style = MaterialTheme.typography.titleLarge.copy(
-                                    fontSize = layout.text(20.sp, 18.sp),
-                                ),
-                                color = GlassTheme.tokens.textPrimary,
-                            )
-                        }
+                    if (drilldownList != null) {
                         Box(
                             modifier = Modifier
-                                .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                .defaultMinSize(minWidth = 44.dp, minHeight = 44.dp)
                                 .clip(CircleShape)
                                 .clickable(
-                                    role = Role.Button,
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null,
-                                    onClick = onDismiss,
-                                )
-                                .semantics { contentDescription = "Cerrar listas inteligentes" },
+                                    onClick = { drilldownList = null },
+                                ),
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(
-                                imageVector = Icons.Rounded.Close,
-                                contentDescription = null,
-                                tint = GlassTheme.tokens.textSecondary,
-                                modifier = Modifier.size(20.dp),
+                                imageVector = Icons.Rounded.ChevronLeft,
+                                contentDescription = "Volver a listas inteligentes",
+                                tint = GlassTheme.tokens.textPrimary,
                             )
                         }
                     }
+                    Text(
+                        text = drilldownList?.let { SMART_LIST_LABELS.first { (l, _) -> l == it }.second }
+                            ?: "Listas inteligentes",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontSize = layout.text(20.sp, 18.sp),
+                        ),
+                        color = GlassTheme.tokens.textPrimary,
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                        .clip(CircleShape)
+                        .clickable(
+                            role = Role.Button,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onDismiss,
+                        )
+                        .semantics { contentDescription = "Cerrar listas inteligentes" },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = null,
+                        tint = GlassTheme.tokens.textSecondary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
 
-                    Crossfade(targetState = drilldownList, label = "smartListsLevel") { current ->
-                        if (current == null) {
-                            Column(
-                                modifier = Modifier
-                                    .padding(
-                                        horizontal = layout.width(18.dp, 16.dp),
-                                        vertical = layout.height(4.dp, 4.dp),
-                                    )
-                                    .padding(bottom = layout.height(16.dp, 14.dp)),
-                                verticalArrangement = Arrangement.spacedBy(layout.height(8.dp, 6.dp)),
-                            ) {
-                                SMART_LIST_LABELS.forEach { (list, label) ->
-                                    SmartListSummaryRow(
-                                        label = label,
-                                        icon = SMART_LIST_ICONS.getValue(list),
-                                        count = counts[list] ?: 0,
-                                        isUrgent = list == SmartList.Overdue,
-                                        onClick = { drilldownList = list },
-                                    )
-                                }
+            Crossfade(targetState = drilldownList, label = "smartListsLevel") { current ->
+                if (current == null) {
+                    Column(
+                        modifier = Modifier
+                            .padding(
+                                horizontal = layout.width(18.dp, 16.dp),
+                                vertical = layout.height(4.dp, 4.dp),
+                            )
+                            .padding(bottom = layout.height(16.dp, 14.dp)),
+                        verticalArrangement = Arrangement.spacedBy(layout.height(8.dp, 6.dp)),
+                    ) {
+                        SMART_LIST_LABELS.forEach { (list, label) ->
+                            SmartListSummaryRow(
+                                label = label,
+                                icon = SMART_LIST_ICONS.getValue(list),
+                                count = counts[list] ?: 0,
+                                isUrgent = list == SmartList.Overdue,
+                                onClick = { drilldownList = list },
+                            )
+                        }
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = layout.width(18.dp, 16.dp))
+                            .padding(bottom = layout.height(16.dp, 14.dp))
+                            .heightIn(min = layout.height(160.dp, 140.dp)),
+                    ) {
+                        if (results.isEmpty()) {
+                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                GlassEmptyState(
+                                    icon = Icons.Rounded.EventAvailable,
+                                    title = "Nada por aquí",
+                                    subtitle = "No hay tareas en esta vista por ahora.",
+                                )
                             }
                         } else {
-                            Box(
-                                modifier = Modifier
-                                    .padding(horizontal = layout.width(18.dp, 16.dp))
-                                    .padding(bottom = layout.height(16.dp, 14.dp))
-                                    .heightIn(min = layout.height(160.dp, 140.dp)),
+                            LazyColumn(
+                                verticalArrangement = Arrangement.spacedBy(layout.height(8.dp, 6.dp)),
                             ) {
-                                if (results.isEmpty()) {
-                                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                        GlassEmptyState(
-                                            icon = Icons.Rounded.EventAvailable,
-                                            title = "Nada por aquí",
-                                            subtitle = "No hay tareas en esta vista por ahora.",
-                                        )
-                                    }
-                                } else {
-                                    LazyColumn(
-                                        verticalArrangement = Arrangement.spacedBy(layout.height(8.dp, 6.dp)),
-                                    ) {
-                                        items(results, key = { (date, task) -> "$date:${task.id}" }) { (date, task) ->
-                                            SmartListRow(
-                                                date = date,
-                                                task = task,
-                                                onClick = {
-                                                    onSelectDate(date)
-                                                    onDismiss()
-                                                },
-                                            )
-                                        }
-                                    }
+                                items(results, key = { (date, task) -> "$date:${task.id}" }) { (date, task) ->
+                                    SmartListRow(
+                                        date = date,
+                                        task = task,
+                                        onClick = {
+                                            onSelectDate(date)
+                                            onDismiss()
+                                        },
+                                    )
                                 }
                             }
                         }
@@ -708,48 +651,24 @@ internal fun NewTaskSheet(
         }
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        Box(modifier = Modifier.fillMaxSize().safeContentPadding()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .blur(sheetBlur),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(GlassTheme.tokens.scrim)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onDismiss,
-                        ),
-                )
-
-                GlassSurface(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(
-                            start = layout.width(18.dp, 16.dp),
-                            end = layout.width(18.dp, 16.dp),
-                            top = layout.height(16.dp, 14.dp),
-                            bottom = layout.height(16.dp, 14.dp),
-                        )
-                        .fillMaxWidth(),
-                    shape = RoundedCornerShape(layout.size(32.dp, 28.dp)),
-                    // REVIEW: regular glass is intentionally translucent, but a long form needs
-                    // an almost-opaque modal material so underlying task copy stays unreadable.
-                    tint = GlassTheme.tokens.modalFill,
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .padding(layout.size(16.dp, 14.dp))
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
-                    ) {
+    // Design System Freeze V1: the Dialog+scrim+GlassSurface chrome now comes from the shared
+    // GlassSheetScaffold. The form's own blur-when-time-picker-is-open effect (sheetBlur, defined
+    // above) moves from wrapping scrim+surface to wrapping just this scrollable content Column -
+    // GlassSheetScaffold doesn't expose a blur hook, and blurring a flat scrim color was never
+    // visible anyway (no spatial detail for a Gaussian blur to act on), so this preserves the same
+    // observable behavior: the form's text/fields blur while showTimePicker is true, nothing else
+    // changes. DatePickerOverlay/TimePickerOverlay are no longer nested inside this Dialog's tree
+    // (see the bottom of this function) - each now opens its own independent GlassPopover Dialog,
+    // which removes the previous double-scrim (this sheet's scrim stacked under the picker's own).
+    GlassSheetScaffold(onDismiss = onDismiss) {
+        Column(
+            modifier = Modifier
+                .padding(layout.size(16.dp, 14.dp))
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .blur(sheetBlur),
+            verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
+        ) {
                         // REVIEW: the previous single horizontal header gave the title less than
                         // 90 dp after reserving two fixed-width buttons, so it wrapped one letter
                         // per line. Stacking the identity/date above a full-width action row is
@@ -1668,55 +1587,57 @@ internal fun NewTaskSheet(
                     }
                     }
                 }
-            }
 
-            if (showDatePicker) {
-                DatePickerOverlay(
-                    selectedDate = selectedDate,
-                    onSelect = {
-                        selectedDate = it
-                        monthDay = it.dayOfMonth
-                        showDatePicker = false
-                    },
-                    onDismiss = { showDatePicker = false },
-                )
-            }
+    // DatePickerOverlay/TimePickerOverlay each open their own GlassPopover Dialog now (see their
+    // definitions below) instead of being nested, Dialog-less, inside this sheet's own Dialog -
+    // that nesting used to stack this sheet's scrim underneath the picker's scrim (visible double
+    // darkening). As independent Dialogs they layer as separate windows instead, so the sheet
+    // behind stays exactly as visible/coherent as it was before either picker opened.
+    if (showDatePicker) {
+        DatePickerOverlay(
+            selectedDate = selectedDate,
+            onSelect = {
+                selectedDate = it
+                monthDay = it.dayOfMonth
+                showDatePicker = false
+            },
+            onDismiss = { showDatePicker = false },
+        )
+    }
 
-            if (showTimePicker) {
-                TimePickerOverlay(
-                    initialTime = selectedTime,
-                    onConfirm = {
-                        selectedTime = it
-                        showTimePicker = false
-                    },
-                    onDismiss = { showTimePicker = false },
-                )
-            }
+    if (showTimePicker) {
+        TimePickerOverlay(
+            initialTime = selectedTime,
+            onConfirm = {
+                selectedTime = it
+                showTimePicker = false
+            },
+            onDismiss = { showTimePicker = false },
+        )
+    }
 
-            if (showDeadlinePicker) {
-                DatePickerOverlay(
-                    selectedDate = deadlineDate ?: selectedDate,
-                    onSelect = {
-                        deadlineDate = it
-                        showDeadlinePicker = false
-                    },
-                    onClear = { deadlineDate = null },
-                    onDismiss = { showDeadlinePicker = false },
-                )
-            }
+    if (showDeadlinePicker) {
+        DatePickerOverlay(
+            selectedDate = deadlineDate ?: selectedDate,
+            onSelect = {
+                deadlineDate = it
+                showDeadlinePicker = false
+            },
+            onClear = { deadlineDate = null },
+            onDismiss = { showDeadlinePicker = false },
+        )
+    }
 
-            if (showRecurrenceEndDatePicker) {
-                DatePickerOverlay(
-                    selectedDate = recurrenceEndDate ?: selectedDate,
-                    onSelect = {
-                        recurrenceEndDate = it
-                        showRecurrenceEndDatePicker = false
-                    },
-                    onClear = { recurrenceEndDate = null },
-                    onDismiss = { showRecurrenceEndDatePicker = false },
-                )
-            }
-        }
+    if (showRecurrenceEndDatePicker) {
+        DatePickerOverlay(
+            selectedDate = recurrenceEndDate ?: selectedDate,
+            onSelect = {
+                recurrenceEndDate = it
+                showRecurrenceEndDatePicker = false
+            },
+            onClear = { recurrenceEndDate = null },
+            onDismiss = { showRecurrenceEndDatePicker = false },
+        )
     }
 }
 
@@ -1748,137 +1669,121 @@ private fun DatePickerOverlay(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(GlassTheme.tokens.scrim)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismiss,
-                ),
-        )
-
-        GlassSurface(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .padding(horizontal = layout.width(22.dp, 18.dp))
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(layout.size(28.dp, 24.dp)),
-            tint = GlassTheme.tokens.modalFill,
-        ) {
-            Column(
-                modifier = Modifier.padding(layout.size(18.dp, 16.dp)),
-                verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
+    // Design System Freeze V1: this used to render with no Dialog of its own, nested directly
+    // inside NewTaskSheet's Dialog tree - meaning its manual scrim stacked on top of NewTaskSheet's
+    // own scrim (visible double darkening). GlassPopover opens its own independent Dialog, so this
+    // is now a self-contained presentation regardless of caller.
+    GlassPopover(
+        onDismiss = onDismiss,
+        alignment = Alignment.Center,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp))) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    GlassIconButton(
-                        icon = Icons.Rounded.ChevronLeft,
-                        contentDescription = "Mes anterior",
-                        onClick = { visibleMonth = visibleMonth.plus(-1, DateTimeUnit.MONTH) },
-                    )
-                    Text(
-                        text = "${monthName(visibleMonth.month)} ${visibleMonth.year}",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = GlassTheme.tokens.textPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    GlassIconButton(
-                        icon = Icons.Rounded.ChevronRight,
-                        contentDescription = "Mes siguiente",
-                        onClick = { visibleMonth = visibleMonth.plus(1, DateTimeUnit.MONTH) },
-                    )
-                }
+                GlassIconButton(
+                    icon = Icons.Rounded.ChevronLeft,
+                    contentDescription = "Mes anterior",
+                    onClick = { visibleMonth = visibleMonth.plus(-1, DateTimeUnit.MONTH) },
+                )
+                Text(
+                    text = "${monthName(visibleMonth.month)} ${visibleMonth.year}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = GlassTheme.tokens.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                GlassIconButton(
+                    icon = Icons.Rounded.ChevronRight,
+                    contentDescription = "Mes siguiente",
+                    onClick = { visibleMonth = visibleMonth.plus(1, DateTimeUnit.MONTH) },
+                )
+            }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 4.dp)),
-                ) {
-                    weekDayLabels().forEach { label ->
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(vertical = layout.height(2.dp, 2.dp)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = label,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = GlassTheme.tokens.textSecondary,
-                            )
-                        }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 4.dp)),
+            ) {
+                weekDayLabels().forEach { label ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(vertical = layout.height(2.dp, 2.dp)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = GlassTheme.tokens.textSecondary,
+                        )
                     }
                 }
+            }
 
-                Column(verticalArrangement = Arrangement.spacedBy(layout.height(6.dp, 4.dp))) {
-                    dayCells.chunked(7).forEach { week ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 4.dp)),
-                        ) {
-                            week.forEach { day ->
-                                if (day == null) {
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .aspectRatio(1f),
-                                    )
-                                } else {
-                                    DatePickerDayCell(
-                                        date = day,
-                                        selectedDate = selectedDate,
-                                        today = today,
-                                        enabled = day >= today,
-                                        onSelect = onSelect,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .aspectRatio(1f),
-                                    )
-                                }
+            Column(verticalArrangement = Arrangement.spacedBy(layout.height(6.dp, 4.dp))) {
+                dayCells.chunked(7).forEach { week ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 4.dp)),
+                    ) {
+                        week.forEach { day ->
+                            if (day == null) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .aspectRatio(1f),
+                                )
+                            } else {
+                                DatePickerDayCell(
+                                    date = day,
+                                    selectedDate = selectedDate,
+                                    today = today,
+                                    enabled = day >= today,
+                                    onSelect = onSelect,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .aspectRatio(1f),
+                                )
                             }
                         }
                     }
                 }
+            }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                GlassActionButton(
+                    text = "Hoy",
+                    tint = GlassTheme.tokens.glassFill,
+                    textColor = GlassTheme.tokens.textPrimary,
+                    onClick = {
+                        onSelect(today)
+                        onDismiss()
+                    },
+                )
+                if (onClear != null) {
                     GlassActionButton(
-                        text = "Hoy",
+                        text = "Sin fecha",
                         tint = GlassTheme.tokens.glassFill,
                         textColor = GlassTheme.tokens.textPrimary,
                         onClick = {
-                            onSelect(today)
+                            onClear()
                             onDismiss()
                         },
                     )
-                    if (onClear != null) {
-                        GlassActionButton(
-                            text = "Sin fecha",
-                            tint = GlassTheme.tokens.glassFill,
-                            textColor = GlassTheme.tokens.textPrimary,
-                            onClick = {
-                                onClear()
-                                onDismiss()
-                            },
-                        )
-                    }
-                    GlassActionButton(
-                        text = "Cerrar",
-                        tint = GlassTheme.tokens.glassFillStrong,
-                        textColor = GlassTheme.tokens.textPrimary,
-                        onClick = onDismiss,
-                    )
                 }
+                GlassActionButton(
+                    text = "Cerrar",
+                    tint = GlassTheme.tokens.glassFillStrong,
+                    textColor = GlassTheme.tokens.textPrimary,
+                    onClick = onDismiss,
+                )
             }
         }
     }
@@ -1903,122 +1808,99 @@ private fun TimePickerOverlay(
         minuteIndex = base.minute
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(GlassTheme.tokens.scrim)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismiss,
-                ),
-        )
-
-        GlassSurface(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(
-                    start = layout.width(18.dp, 16.dp),
-                    end = layout.width(18.dp, 16.dp),
-                    top = layout.height(16.dp, 14.dp),
-                    bottom = layout.height(16.dp, 14.dp),
-                )
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(layout.size(28.dp, 24.dp)),
-            tint = GlassTheme.tokens.modalFill,
-            shadowElevation = 0.dp,
-        ) {
-            Column(
-                modifier = Modifier.padding(layout.size(18.dp, 16.dp)),
-                verticalArrangement = Arrangement.spacedBy(layout.height(16.dp, 14.dp)),
+    // Design System Freeze V1: same fix as DatePickerOverlay above - GlassPopover's own
+    // independent Dialog replaces the Dialog-less nesting that used to double the scrim under
+    // NewTaskSheet's.
+    GlassPopover(
+        onDismiss = onDismiss,
+        alignment = Alignment.BottomCenter,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(layout.height(16.dp, 14.dp))) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-                            .clickable(
-                                role = Role.Button,
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = onDismiss,
-                            ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "Cancelar",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = GlassTheme.tokens.textSecondary,
-                        )
-                    }
-                    Box(
-                        modifier = Modifier.weight(1f),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "Hora",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = GlassTheme.tokens.textPrimary,
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-                            .clickable(
-                                role = Role.Button,
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = { onConfirm(LocalTime(hourIndex, minuteIndex)) },
-                            ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "Listo",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = GlassTheme.tokens.textPrimary,
-                        )
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    WheelPicker(
-                        entries = hours,
-                        selectedIndex = hourIndex,
-                        label = "Hora",
-                        onIndexSelected = { hourIndex = it },
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        text = ":",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = GlassTheme.tokens.textSecondary,
-                        modifier = Modifier.padding(horizontal = layout.width(6.dp, 4.dp)),
-                    )
-                    WheelPicker(
-                        entries = minutes,
-                        selectedIndex = minuteIndex,
-                        label = "Minutos",
-                        onIndexSelected = { minuteIndex = it },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-
-                GlassActionButton(
-                    text = "Sin hora",
-                    tint = GlassTheme.tokens.glassFillStrong,
-                    textColor = GlassTheme.tokens.textPrimary,
+                Box(
                     modifier = Modifier
-                        .align(Alignment.CenterHorizontally),
-                    onClick = { onConfirm(null) },
+                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                        .clickable(
+                            role = Role.Button,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onDismiss,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "Cancelar",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = GlassTheme.tokens.textSecondary,
+                    )
+                }
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "Hora",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = GlassTheme.tokens.textPrimary,
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                        .clickable(
+                            role = Role.Button,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { onConfirm(LocalTime(hourIndex, minuteIndex)) },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "Listo",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = GlassTheme.tokens.textPrimary,
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                WheelPicker(
+                    entries = hours,
+                    selectedIndex = hourIndex,
+                    label = "Hora",
+                    onIndexSelected = { hourIndex = it },
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = ":",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = GlassTheme.tokens.textSecondary,
+                    modifier = Modifier.padding(horizontal = layout.width(6.dp, 4.dp)),
+                )
+                WheelPicker(
+                    entries = minutes,
+                    selectedIndex = minuteIndex,
+                    label = "Minutos",
+                    onIndexSelected = { minuteIndex = it },
+                    modifier = Modifier.weight(1f),
                 )
             }
+
+            GlassActionButton(
+                text = "Sin hora",
+                tint = GlassTheme.tokens.glassFillStrong,
+                textColor = GlassTheme.tokens.textPrimary,
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally),
+                onClick = { onConfirm(null) },
+            )
         }
     }
 }
@@ -2200,78 +2082,64 @@ internal fun CalendarPopover(
     onDismiss: () -> Unit,
 ) {
     val layout = AppLayout.metrics
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+    // Design System Freeze V1: was a full-screen Dialog ("indistinguishable from a full-screen
+    // dialog" per the Operación Aniversario audit) with a hand-rolled scrim - now the shared
+    // GlassPopover, centered, matching the product brief's POPOVER category for a brief
+    // contextual choice launched from the "Ver mes" header button in Agenda.
+    GlassPopover(
+        onDismiss = onDismiss,
+        alignment = Alignment.Center,
     ) {
-        Box(modifier = Modifier.fillMaxSize().safeContentPadding()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(GlassTheme.tokens.scrim)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onDismiss,
-                    ),
-            )
-            Column(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(horizontal = layout.width(20.dp, 16.dp))
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(layout.height(10.dp, 8.dp)),
-            ) {
-                if (errorMessage != null) {
-                    GlassSurface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(layout.size(20.dp, 18.dp)),
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(layout.size(14.dp, 12.dp)),
-                            verticalArrangement = Arrangement.spacedBy(layout.height(10.dp, 8.dp)),
-                        ) {
-                            Text(
-                                text = errorMessage,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = GlassTheme.tokens.errorContent,
-                            )
-                            GlassActionButton(
-                                text = "Reintentar",
-                                onClick = onRetry,
-                                tint = GlassTheme.tokens.glassFillStrong,
-                                textColor = GlassTheme.tokens.textPrimary,
-                            )
-                        }
-                    }
-                } else if (isLoading) {
-                    GlassSurface(
-                        shape = RoundedCornerShape(layout.size(14.dp, 12.dp)),
-                        tint = GlassTheme.tokens.glassFillStrong,
+        Column(verticalArrangement = Arrangement.spacedBy(layout.height(10.dp, 8.dp))) {
+            if (errorMessage != null) {
+                GlassSurface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(layout.size(20.dp, 18.dp)),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(layout.size(14.dp, 12.dp)),
+                        verticalArrangement = Arrangement.spacedBy(layout.height(10.dp, 8.dp)),
                     ) {
                         Text(
-                            text = "Cargando...",
+                            text = errorMessage,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = GlassTheme.tokens.textSecondary,
-                            modifier = Modifier.padding(
-                                horizontal = layout.width(14.dp, 12.dp),
-                                vertical = layout.height(8.dp, 7.dp),
-                            ),
+                            color = GlassTheme.tokens.errorContent,
+                        )
+                        GlassActionButton(
+                            text = "Reintentar",
+                            onClick = onRetry,
+                            tint = GlassTheme.tokens.glassFillStrong,
+                            textColor = GlassTheme.tokens.textPrimary,
                         )
                     }
                 }
-                CalendarMonthView(
-                    selectedDate = selectedDate,
-                    visibleMonth = visibleMonth,
-                    tasksByDate = tasksByDate,
-                    onSelectDate = { date ->
-                        onSelectDate(date)
-                        onDismiss()
-                    },
-                    onVisibleMonthChange = onVisibleMonthChange,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+            } else if (isLoading) {
+                GlassSurface(
+                    shape = RoundedCornerShape(layout.size(14.dp, 12.dp)),
+                    tint = GlassTheme.tokens.glassFillStrong,
+                ) {
+                    Text(
+                        text = "Cargando...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = GlassTheme.tokens.textSecondary,
+                        modifier = Modifier.padding(
+                            horizontal = layout.width(14.dp, 12.dp),
+                            vertical = layout.height(8.dp, 7.dp),
+                        ),
+                    )
+                }
             }
+            CalendarMonthView(
+                selectedDate = selectedDate,
+                visibleMonth = visibleMonth,
+                tasksByDate = tasksByDate,
+                onSelectDate = { date ->
+                    onSelectDate(date)
+                    onDismiss()
+                },
+                onVisibleMonthChange = onVisibleMonthChange,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
@@ -2672,42 +2540,17 @@ internal fun TaskDetailsOverlay(
     val layout = AppLayout.metrics
     val timeZone = remember { TimeZone.currentSystemDefault() }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        Box(
+    // Design System Freeze V1: Dialog+scrim+GlassSurface chrome now comes from the shared
+    // GlassSheetScaffold - the hardcoded shadowElevation = 12.dp is gone since the scaffold
+    // already applies GlassElevation.modal, the same token every other SHEET presentation uses.
+    GlassSheetScaffold(onDismiss = onDismiss) {
+        Column(
             modifier = Modifier
-                .fillMaxSize()
-                .safeContentPadding()
-                .background(GlassTheme.tokens.scrim)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismiss,
-                ),
+                .padding(layout.size(18.dp, 16.dp))
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
         ) {
-            GlassSurface(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(
-                        start = layout.width(18.dp, 16.dp),
-                        end = layout.width(18.dp, 16.dp),
-                        top = layout.height(16.dp, 14.dp),
-                        bottom = layout.height(16.dp, 14.dp),
-                    )
-                    .fillMaxWidth(),
-                shape = RoundedCornerShape(layout.size(28.dp, 24.dp)),
-                tint = GlassTheme.tokens.modalFill,
-                shadowElevation = 12.dp,
-            ) {
-                Column(
-                    modifier = Modifier
-                        .padding(layout.size(18.dp, 16.dp))
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
-                ) {
                     Text(
                     text = task.title,
                     style = MaterialTheme.typography.titleLarge.copy(
@@ -2879,8 +2722,6 @@ internal fun TaskDetailsOverlay(
                     )
                 }
             }
-        }
-    }
 }
 
 private fun currentDate(timeZone: TimeZone): LocalDate {
