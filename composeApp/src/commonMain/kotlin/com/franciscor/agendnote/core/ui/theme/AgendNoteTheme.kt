@@ -86,7 +86,12 @@ private val LightGlassTokens = GlassTokens(
     backgroundBottom = Color(0xFFD6E4F2),
     glassFill = Color(0x5CF6FAFE),
     glassFillStrong = Color(0x91F6FAFE),
-    modalFill = Color(0xD9F6FAFE),
+    // 2026-08-11 (P0 VISUAL, second pass): the first fix (0xFF -> 0xD9) still read as too
+    // white/flat against real screenshots. The dominant bug there was actually GlassDialogHost's
+    // double scrim (see GlassPresentation.kt) masking whatever translucency this had - now that
+    // that's fixed, nudged further to 0xCC (~80%) for a clearer "glass" read while text contrast
+    // stays comfortable (dark navy textPrimary on a light cool-tinted fill, regardless of alpha).
+    modalFill = Color(0xCCF6FAFE),
     glassStroke = Color(0x99FFFFFF),
     glassHighlight = Color(0xCCFFFFFF),
     accent = Color(0xFFFF8A5B),

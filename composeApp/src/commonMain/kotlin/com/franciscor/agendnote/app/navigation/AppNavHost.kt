@@ -41,6 +41,7 @@ import com.franciscor.agendnote.core.model.TaskSeries
 import com.franciscor.agendnote.core.model.TaskTemplate
 import com.franciscor.agendnote.core.network.RemoteConfigStatus
 import com.franciscor.agendnote.core.ui.components.GlassBackground
+import com.franciscor.agendnote.core.ui.components.GlassModalState
 import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.feature.agenda.domain.SeriesMaterializer
 import com.franciscor.agendnote.feature.agenda.domain.buildTaskExportJson
@@ -291,12 +292,21 @@ fun AppNavHost(
                     val edgeSwipeThresholdPx = with(LocalDensity.current) {
                         layout.width(64.dp, 56.dp).toPx()
                     }
+                    // P0 VISUAL fix (2026-08-11), item 17: a Sheet/Popover/Alert must capture
+                    // horizontal drag while it's open - swiping "behind" Nueva tarea should not
+                    // silently change tabs underneath it. GlassModalState is a live Compose read
+                    // (recomposes this lambda's captured value whenever any GlassDialogHost
+                    // mounts/unmounts anywhere in the app), so this re-enables itself the instant
+                    // the last open modal closes, no per-screen plumbing required.
+                    val anyModalOpen = GlassModalState.isAnyModalOpen
                     val onEdgeSwipe: (SwipeDirection) -> Unit = { direction ->
-                        val target = when (direction) {
-                            SwipeDirection.NEXT -> selectedTab.next()
-                            SwipeDirection.PREVIOUS -> selectedTab.previous()
+                        if (!anyModalOpen) {
+                            val target = when (direction) {
+                                SwipeDirection.NEXT -> selectedTab.next()
+                                SwipeDirection.PREVIOUS -> selectedTab.previous()
+                            }
+                            target?.let { navigateToMainTab(it) }
                         }
-                        target?.let { navigateToMainTab(it) }
                     }
                     EdgeSwipeZone(
                         onSwipe = onEdgeSwipe,

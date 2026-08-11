@@ -89,6 +89,7 @@ import com.franciscor.agendnote.core.ui.components.GlassConfirmDialog
 import com.franciscor.agendnote.core.ui.components.GlassEmptyState
 import com.franciscor.agendnote.core.ui.components.GlassIconButton
 import com.franciscor.agendnote.core.ui.components.GlassPopover
+import com.franciscor.agendnote.core.ui.components.GlassSelectableChip
 import com.franciscor.agendnote.core.ui.components.GlassSheetScaffold
 import com.franciscor.agendnote.core.ui.components.GlassSurface
 import com.franciscor.agendnote.core.ui.components.GlassTextField
@@ -758,7 +759,7 @@ internal fun NewTaskSheet(
                                 horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 5.dp)),
                             ) {
                                 templates.forEach { template ->
-                                    RecurrenceOptionChip(
+                                    GlassSelectableChip(
                                         text = template.name,
                                         selected = false,
                                         onClick = {
@@ -1138,7 +1139,7 @@ internal fun NewTaskSheet(
                             ) {
                                 reminderOffsetPresets().forEach { (minutes, text) ->
                                     val selected = selectedReminderOffsetMinutes.contains(minutes)
-                                    RecurrenceOptionChip(
+                                    GlassSelectableChip(
                                         text = text,
                                         selected = selected,
                                         role = Role.Checkbox,
@@ -1305,13 +1306,13 @@ internal fun NewTaskSheet(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
                             ) {
-                                RecurrenceOptionChip(
+                                GlassSelectableChip(
                                     text = "Ninguna",
                                     selected = selectedRecurrence == RecurrenceOption.None,
                                     modifier = Modifier.weight(1f),
                                     onClick = { selectedRecurrence = RecurrenceOption.None },
                                 )
-                                RecurrenceOptionChip(
+                                GlassSelectableChip(
                                     text = "Diaria",
                                     selected = selectedRecurrence == RecurrenceOption.Daily,
                                     modifier = Modifier.weight(1f),
@@ -1322,13 +1323,13 @@ internal fun NewTaskSheet(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
                             ) {
-                                RecurrenceOptionChip(
+                                GlassSelectableChip(
                                     text = "Días de la semana",
                                     selected = selectedRecurrence == RecurrenceOption.WeeklyDays,
                                     modifier = Modifier.weight(1f),
                                     onClick = { selectedRecurrence = RecurrenceOption.WeeklyDays },
                                 )
-                                RecurrenceOptionChip(
+                                GlassSelectableChip(
                                     text = "Mensual",
                                     selected = selectedRecurrence == RecurrenceOption.Monthly,
                                     modifier = Modifier.weight(1f),
@@ -1344,7 +1345,7 @@ internal fun NewTaskSheet(
                             ) {
                                 weekDayOptions().forEach { (day, label) ->
                                     val selected = selectedWeekDays.contains(day)
-                                    RecurrenceOptionChip(
+                                    GlassSelectableChip(
                                         text = label,
                                         selected = selected,
                                         role = Role.Checkbox,
@@ -1372,7 +1373,7 @@ internal fun NewTaskSheet(
                                 horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 5.dp)),
                             ) {
                                 (1..31).forEach { day ->
-                                    RecurrenceOptionChip(
+                                    GlassSelectableChip(
                                         text = day.toString(),
                                         selected = monthDay == day,
                                         onClick = { monthDay = day },
@@ -1393,19 +1394,19 @@ internal fun NewTaskSheet(
                                     .selectableGroup(),
                                 horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
                             ) {
-                                RecurrenceOptionChip(
+                                GlassSelectableChip(
                                     text = "Nunca",
                                     selected = selectedRecurrenceEndOption == RecurrenceEndOption.Never,
                                     modifier = Modifier.weight(1f),
                                     onClick = { selectedRecurrenceEndOption = RecurrenceEndOption.Never },
                                 )
-                                RecurrenceOptionChip(
+                                GlassSelectableChip(
                                     text = "En fecha",
                                     selected = selectedRecurrenceEndOption == RecurrenceEndOption.OnDate,
                                     modifier = Modifier.weight(1f),
                                     onClick = { selectedRecurrenceEndOption = RecurrenceEndOption.OnDate },
                                 )
-                                RecurrenceOptionChip(
+                                GlassSelectableChip(
                                     text = "Después de N",
                                     selected = selectedRecurrenceEndOption == RecurrenceEndOption.AfterOccurrences,
                                     modifier = Modifier.weight(1f),
@@ -2765,48 +2766,10 @@ private fun weekDayLabels(): List<String> {
     return listOf("L", "M", "X", "J", "V", "S", "D")
 }
 
-@Composable
-private fun RecurrenceOptionChip(
-    text: String,
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-    role: Role = Role.RadioButton,
-    onClick: () -> Unit,
-) {
-    val layout = AppLayout.metrics
-    GlassSurface(
-        shape = RoundedCornerShape(layout.size(14.dp, 12.dp)),
-        tint = if (selected) GlassTheme.tokens.accentOnLight else GlassTheme.tokens.glassFill,
-        modifier = modifier
-            .defaultMinSize(minHeight = 48.dp)
-            .clip(RoundedCornerShape(layout.size(14.dp, 12.dp)))
-            .selectable(
-                selected = selected,
-                role = role,
-                interactionSource = remember { MutableInteractionSource() },
-                indication = LocalIndication.current,
-                onClick = onClick,
-            ),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    horizontal = layout.width(12.dp, 10.dp),
-                    vertical = layout.height(8.dp, 7.dp),
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelMedium,
-                color = if (selected) GlassTheme.tokens.onError else GlassTheme.tokens.textPrimary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
+// Was a local RecurrenceOptionChip here, near-duplicating SettingsScreen.kt's ModeToggleButton
+// (different radius, a hardcoded non-scaling minHeight, and GlassTokens.onError misused as a
+// "selected" text color) - both replaced by the shared GlassSelectableChip
+// (core/ui/components/GlassButtons.kt). Operación Aniversario, "P0 VISUAL" fix, 2026-08-11.
 
 private fun weekDayOptions(): List<Pair<DayOfWeek, String>> {
     return listOf(

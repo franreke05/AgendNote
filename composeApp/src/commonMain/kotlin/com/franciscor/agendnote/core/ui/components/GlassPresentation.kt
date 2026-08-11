@@ -6,6 +6,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.BoxWithConstraintsScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,7 +19,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -83,6 +86,68 @@ fun GlassScrimLayer(
     )
 }
 
+/**
+ * Whether any Glass sheet/popover/alert is currently on screen - tracked centrally by
+ * [GlassDialogHost] so callers elsewhere in the app (chiefly `AppNavHost`'s tab-swipe gesture,
+ * see item 17 of the "P0 VISUAL" fix, 2026-08-11: "mientras un Sheet/Popover/Alert esté abierto,
+ * DISABLE MAIN SCREEN HORIZONTAL SWIPE") don't need every individual screen to separately report
+ * its own overlay-visible booleans upward. Cheap to add correctly today specifically because
+ * every presentation already funnels through one host after this same fix's consolidation - a
+ * screen with its own hand-rolled `Dialog` would not be tracked here.
+ */
+object GlassModalState {
+    private val openCount = mutableIntStateOf(0)
+    val isAnyModalOpen: Boolean
+        @Composable get() = openCount.intValue > 0
+    internal fun increment() {
+        openCount.intValue += 1
+    }
+    internal fun decrement() {
+        openCount.intValue = (openCount.intValue - 1).coerceAtLeast(0)
+    }
+}
+
+/**
+ * Single mount point for every Glass presentation's `Dialog` + scrim, replacing what used to be
+ * three near-duplicate copies ([GlassSheetScaffold], [GlassPopover], and - before this fix -
+ * [GlassConfirmDialog], which had no scrim of its own at all and relied entirely on whatever the
+ * platform's default `Dialog` dim happened to look like). Fixes two root causes found by
+ * inspecting real screenshots (Operación Aniversario, "P0 VISUAL", 2026-08-11), not just the
+ * symptom on one screen:
+ *
+ * 1. **Double scrim**: a platform `Dialog` window dims its own background by default, on top of
+ *    whichever [GlassScrimLayer] a presentation drew inside it - two stacked dark layers with
+ *    different colors/alphas read as a harsh, mismatched "rectangle" instead of one deliberate
+ *    dim. [DisableDialogPlatformDim] cancels the platform layer so [GlassScrim] is the only one.
+ * 2. **Scrim not covering the real window**: [GlassScrimLayer] used to live inside the same
+ *    `Modifier.fillMaxSize().safeContentPadding()` container as the modal surface itself, so the
+ *    scrim was *also* inset by safe-area padding - on a device with system bars/notch, that left
+ *    a visible unscrimmed strip and a "rectangle edge" exactly where the padding stopped. The
+ *    scrim here fills the **unpadded** window; only the surface content callers place inside
+ *    [content] should opt into safe-area padding for its own positioning.
+ */
+@Composable
+internal fun GlassDialogHost(
+    onDismiss: () -> Unit,
+    scrimColor: Color,
+    content: @Composable BoxWithConstraintsScope.() -> Unit,
+) {
+    DisposableEffect(Unit) {
+        GlassModalState.increment()
+        onDispose { GlassModalState.decrement() }
+    }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        DisableDialogPlatformDim()
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            GlassScrimLayer(color = scrimColor, onDismiss = onDismiss)
+            content()
+        }
+    }
+}
+
 /** The small drag handle at the top of a bottom sheet - the universal "this can be swiped away"
  * affordance. Was duplicated inline in SmartListsOverlay before this file existed. */
 @Composable
@@ -116,58 +181,57 @@ fun GlassSheetScaffold(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val layout = AppLayout.metrics
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize().safeContentPadding()) {
-            GlassScrimLayer(color = GlassScrim.sheet, onDismiss = onDismiss)
+    GlassDialogHost(onDismiss = onDismiss, scrimColor = GlassScrim.sheet) {
+        // Safe-area padding lives here, on the sheet's own positioning - NOT on the scrim drawn
+        // by GlassDialogHost above, which must stay unpadded to cover the real window edge to
+        // edge. maxHeight below still comes from the unpadded BoxWithConstraints (a few dp taller
+        // than the safe area on a device with a home indicator/gesture bar) - heightIn(max=...)
+        // only caps height, so this offset from the true safe space is harmless in practice.
+        var dragOffset by remember { mutableStateOf(0f) }
+        val density = LocalDensity.current
+        val dismissThresholdPx = with(density) { layout.height(90.dp, 72.dp).toPx() }
+        val dragModifier = if (dragToDismissEnabled) {
+            Modifier.pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onVerticalDrag = { _, dragAmount ->
+                        dragOffset = (dragOffset + dragAmount).coerceAtLeast(0f)
+                    },
+                    onDragEnd = {
+                        if (dragOffset > dismissThresholdPx) onDismiss() else dragOffset = 0f
+                    },
+                    onDragCancel = { dragOffset = 0f },
+                )
+            }
+        } else {
+            Modifier
+        }
 
-            var dragOffset by remember { mutableStateOf(0f) }
-            val density = LocalDensity.current
-            val dismissThresholdPx = with(density) { layout.height(90.dp, 72.dp).toPx() }
-            val dragModifier = if (dragToDismissEnabled) {
-                Modifier.pointerInput(Unit) {
-                    detectVerticalDragGestures(
-                        onVerticalDrag = { _, dragAmount ->
-                            dragOffset = (dragOffset + dragAmount).coerceAtLeast(0f)
-                        },
-                        onDragEnd = {
-                            if (dragOffset > dismissThresholdPx) onDismiss() else dragOffset = 0f
-                        },
-                        onDragCancel = { dragOffset = 0f },
+        GlassSurface(
+            modifier = modifier
+                .align(Alignment.BottomCenter)
+                .safeContentPadding()
+                .fillMaxWidth()
+                .heightIn(max = maxHeight * maxHeightFraction)
+                .offset { IntOffset(0, dragOffset.toInt().coerceAtLeast(0)) }
+                .then(dragModifier),
+            shape = RoundedCornerShape(
+                topStart = GlassRadius.l(),
+                topEnd = GlassRadius.l(),
+                bottomStart = 0.dp,
+                bottomEnd = 0.dp,
+            ),
+            tint = GlassTheme.tokens.modalFill,
+            shadowElevation = GlassElevation.modal,
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                if (showGrabber) {
+                    GlassGrabber(
+                        modifier = Modifier
+                            .padding(top = layout.height(10.dp, 8.dp))
+                            .align(Alignment.CenterHorizontally),
                     )
                 }
-            } else {
-                Modifier
-            }
-
-            GlassSurface(
-                modifier = modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .heightIn(max = maxHeight * maxHeightFraction)
-                    .offset { IntOffset(0, dragOffset.toInt().coerceAtLeast(0)) }
-                    .then(dragModifier),
-                shape = RoundedCornerShape(
-                    topStart = GlassRadius.l(),
-                    topEnd = GlassRadius.l(),
-                    bottomStart = 0.dp,
-                    bottomEnd = 0.dp,
-                ),
-                tint = GlassTheme.tokens.modalFill,
-                shadowElevation = GlassElevation.modal,
-            ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    if (showGrabber) {
-                        GlassGrabber(
-                            modifier = Modifier
-                                .padding(top = layout.height(10.dp, 8.dp))
-                                .align(Alignment.CenterHorizontally),
-                        )
-                    }
-                    content()
-                }
+                content()
             }
         }
     }
@@ -196,27 +260,21 @@ fun GlassPopover(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val layout = AppLayout.metrics
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize().safeContentPadding()) {
-            GlassScrimLayer(color = GlassScrim.popover, onDismiss = onDismiss)
-
-            GlassSurface(
-                modifier = modifier
-                    .align(alignment)
-                    .padding(layout.width(20.dp, 16.dp))
-                    .widthIn(max = maxWidth * maxWidthFraction),
-                shape = RoundedCornerShape(GlassRadius.l()),
-                tint = GlassTheme.tokens.modalFill,
-                shadowElevation = GlassElevation.modal,
-            ) {
-                Column(
-                    modifier = Modifier.padding(layout.size(16.dp, 14.dp)),
-                    content = content,
-                )
-            }
+    GlassDialogHost(onDismiss = onDismiss, scrimColor = GlassScrim.popover) {
+        GlassSurface(
+            modifier = modifier
+                .align(alignment)
+                .safeContentPadding()
+                .padding(layout.width(20.dp, 16.dp))
+                .widthIn(max = maxWidth * maxWidthFraction),
+            shape = RoundedCornerShape(GlassRadius.l()),
+            tint = GlassTheme.tokens.modalFill,
+            shadowElevation = GlassElevation.modal,
+        ) {
+            Column(
+                modifier = Modifier.padding(layout.size(16.dp, 14.dp)),
+                content = content,
+            )
         }
     }
 }

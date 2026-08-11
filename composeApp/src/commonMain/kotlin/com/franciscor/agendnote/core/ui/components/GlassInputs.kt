@@ -37,6 +37,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.franciscor.agendnote.core.ui.layout.AppLayout
+import com.franciscor.agendnote.core.ui.theme.ControlHeight
 import com.franciscor.agendnote.core.ui.theme.GlassElevation
 import com.franciscor.agendnote.core.ui.theme.GlassRadius
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
@@ -84,7 +85,7 @@ fun GlassTextField(
             GlassSurface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .defaultMinSize(minHeight = layout.height(58.dp, 52.dp)),
+                    .defaultMinSize(minHeight = ControlHeight.large()),
                 shape = RoundedCornerShape(GlassRadius.s()),
                 tint = containerTint,
                 strokeColor = strokeColor,
@@ -129,7 +130,7 @@ fun GlassActionButton(
         modifier = modifier
             .defaultMinSize(
                 minWidth = layout.width(84.dp, 76.dp),
-                minHeight = layout.height(52.dp, 48.dp),
+                minHeight = ControlHeight.standard(),
             )
             .clip(RoundedCornerShape(radius))
             .clickable(
@@ -174,7 +175,7 @@ fun GlassSearchBar(
     val layout = AppLayout.metrics
     val tokens = GlassTheme.tokens
     GlassSurface(
-        modifier = modifier.defaultMinSize(minHeight = layout.height(56.dp, 50.dp)),
+        modifier = modifier.defaultMinSize(minHeight = ControlHeight.large()),
         shape = RoundedCornerShape(GlassRadius.s()),
         tint = tokens.glassFill,
         strokeColor = tokens.glassStroke,

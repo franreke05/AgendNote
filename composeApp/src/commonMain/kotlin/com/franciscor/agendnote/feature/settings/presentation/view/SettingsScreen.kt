@@ -42,6 +42,7 @@ import com.franciscor.agendnote.core.network.AppConfig
 import com.franciscor.agendnote.core.notifications.NotificationServiceProvider
 import com.franciscor.agendnote.core.ui.components.GlassActionButton
 import com.franciscor.agendnote.core.ui.components.GlassConfirmDialog
+import com.franciscor.agendnote.core.ui.components.GlassSelectableChip
 import com.franciscor.agendnote.core.ui.components.GlassSurface
 import com.franciscor.agendnote.core.ui.components.GlassTextField
 import com.franciscor.agendnote.core.ui.layout.AppLayout
@@ -116,14 +117,14 @@ fun SettingsScreen(
                         modifier = Modifier.selectableGroup(),
                         horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp)),
                     ) {
-                        ModeToggleButton(
+                        GlassSelectableChip(
                             text = "Claro",
                             selected = !uiState.isDarkMode,
                             enabled = isEditingEnabled,
                             onClick = { controller.handle(SettingsAction.SetTheme(false)) },
                             modifier = Modifier.weight(1f),
                         )
-                        ModeToggleButton(
+                        GlassSelectableChip(
                             text = "Oscuro",
                             selected = uiState.isDarkMode,
                             enabled = isEditingEnabled,
@@ -487,57 +488,9 @@ fun SettingsScreen(
     }
 }
 
-@Composable
-private fun ModeToggleButton(
-    text: String,
-    selected: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val layout = AppLayout.metrics
-    val tint = when {
-        !enabled -> GlassTheme.tokens.glassFill
-        // REVIEW: white text on the raw coral accent misses AA contrast. The semantic
-        // accentOnLight token preserves the brand hue with a readable filled state.
-        selected -> GlassTheme.tokens.accentOnLight
-        else -> GlassTheme.tokens.glassFillStrong
-    }
-    val textColor = when {
-        !enabled -> GlassTheme.tokens.textSecondary
-        selected -> Color.White
-        else -> GlassTheme.tokens.textPrimary
-    }
-    GlassSurface(
-        modifier = modifier
-            .defaultMinSize(minHeight = 48.dp)
-            .clip(RoundedCornerShape(layout.size(16.dp, 16.dp)))
-            .selectable(
-                selected = selected,
-                enabled = enabled,
-                role = Role.RadioButton,
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-            ),
-        shape = RoundedCornerShape(layout.size(16.dp, 16.dp)),
-        tint = tint,
-        strokeColor = if (selected) tint.copy(alpha = 0.6f) else GlassTheme.tokens.glassStroke,
-    ) {
-        Box(
-            modifier = Modifier.padding(vertical = layout.height(10.dp, 10.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelMedium,
-                color = textColor,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-    }
-}
+// Claro/Oscuro used to be a local ModeToggleButton here, near-duplicating
+// AgendaOverlays.kt's RecurrenceOptionChip - both replaced by the shared
+// GlassSelectableChip (core/ui/components/GlassButtons.kt).
 
 private fun describeRecurrence(rule: RecurrenceRule): String {
     return when (rule) {

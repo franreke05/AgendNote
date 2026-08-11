@@ -35,3 +35,33 @@ object GlassElevation {
     val floating: Dp = 8.dp
     val modal: Dp = 18.dp
 }
+
+/**
+ * Named spacing scale (Operación Aniversario, "P0 VISUAL" fix, 2026-08-09/11). Before this,
+ * padding/gap values across the app were ad-hoc dp literals chosen per call site (13.dp, 17.dp,
+ * 21.dp, 9.dp with no relationship to each other) - this names the handful of gaps that already
+ * recur constantly so new code picks a level instead of inventing another one-off number. Not a
+ * retroactive migration of every existing literal (a large, unverifiable-without-screenshots
+ * change on its own) - new/touched components should prefer these; existing call sites migrate
+ * opportunistically when actually touched for another reason.
+ */
+object Spacing {
+    @Composable fun xs(): Dp = AppLayout.metrics.size(6.dp, 5.dp)
+    @Composable fun s(): Dp = AppLayout.metrics.size(10.dp, 8.dp)
+    @Composable fun m(): Dp = AppLayout.metrics.size(16.dp, 14.dp)
+    @Composable fun l(): Dp = AppLayout.metrics.size(20.dp, 16.dp)
+    @Composable fun xl(): Dp = AppLayout.metrics.size(28.dp, 24.dp)
+}
+
+/**
+ * Named minimum touch-target heights (Operación Aniversario, "P0 VISUAL" fix, 2026-08-11) -
+ * fixes real drift found across button call sites (Añadir 52dp, Cancelar 43dp, Cambiar 38dp,
+ * Guardar 47dp, no shared reason for any of those specific numbers). [standard] is the default
+ * for anything a thumb taps - never go below it without a specific reason (e.g. a dense inline
+ * chip where the whole row, not each chip, is the practical touch target).
+ */
+object ControlHeight {
+    @Composable fun small(): Dp = AppLayout.metrics.size(40.dp, 36.dp)
+    @Composable fun standard(): Dp = AppLayout.metrics.size(48.dp, 44.dp)
+    @Composable fun large(): Dp = AppLayout.metrics.size(56.dp, 52.dp)
+}

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,8 +25,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import com.franciscor.agendnote.core.ui.layout.AppLayout
+import com.franciscor.agendnote.core.ui.theme.ControlHeight
 import com.franciscor.agendnote.core.ui.theme.GlassElevation
 import com.franciscor.agendnote.core.ui.theme.GlassRadius
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
@@ -63,9 +64,17 @@ fun GlassConfirmDialog(
     if (!visible) return
 
     val layout = AppLayout.metrics
-    Dialog(onDismissRequest = onDismiss) {
+    // Was a bare `Dialog(onDismissRequest = onDismiss) { GlassSurface(...) }` with no scrim of
+    // its own at all - unlike GlassSheetScaffold/GlassPopover, this relied entirely on whatever
+    // the platform's own default Dialog dim happened to look like (a different color/alpha than
+    // GlassScrim, and on Android, applied via the window theme rather than drawn by us). Routed
+    // through the same GlassDialogHost every other Glass presentation uses so all three share one
+    // scrim system (Operación Aniversario, "P0 VISUAL" fix, 2026-08-11).
+    GlassDialogHost(onDismiss = onDismiss, scrimColor = GlassScrim.alert) {
         GlassSurface(
             modifier = Modifier
+                .align(Alignment.Center)
+                .safeContentPadding()
                 .padding(horizontal = layout.width(24.dp, 20.dp))
                 .fillMaxWidth()
                 // Operación Aniversario (Popup Inventory): an ALERT should read as a compact,
@@ -181,7 +190,7 @@ private fun GlassConfirmDialogButton(
     val indication = LocalIndication.current
     GlassSurface(
         modifier = modifier
-            .defaultMinSize(minHeight = layout.height(48.dp, 48.dp))
+            .defaultMinSize(minHeight = ControlHeight.standard())
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = indication,
