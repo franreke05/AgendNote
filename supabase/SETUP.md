@@ -8,11 +8,21 @@
 1. Supabase Dashboard -> SQL Editor -> New query.
 2. Pega y ejecuta `supabase/schema.sql`.
 3. Pega y ejecuta `supabase/policies.sql`.
-4. Si tu base de datos todavia tiene las tablas/columnas del antiguo sistema de reservas
-   (`appointments`, `portfolio_labels`, o las columnas `booking_status`/`appointment_id`/
-   `client_name`/`client_email`/`client_phone`/`source` en `tasks`), ejecuta tambien
-   `supabase/migrations/20260811_remove_booking_portfolio_system.sql` - lee las notas de ese
-   archivo antes de correrlo, es destructivo.
+4. Ejecuta las migraciones de `supabase/migrations/` **en este orden exacto** (todas son
+   aditivas e idempotentes salvo la ultima):
+   1. `20260724_task_series.sql` (tareas recurrentes)
+   2. `20260804_task_deadline_reminders_subtasks.sql` (deadline, recordatorios, subtareas)
+   3. `20260804_task_series_end_condition.sql` (fin de serie por fecha/numero de ocurrencias)
+   4. Si tu base de datos todavia tiene las tablas/columnas del antiguo sistema de reservas
+      (`appointments`, `portfolio_labels`, o las columnas `booking_status`/`appointment_id`/
+      `client_name`/`client_email`/`client_phone`/`source` en `tasks`):
+      `20260811_remove_booking_portfolio_system.sql` - **destructiva**, lee sus notas antes de
+      correrla, y haz backup primero.
+5. Si no sabes con certeza que migraciones ya corrieron contra tu base de datos, consulta
+   `supabase/RECONCILIATION_2026-08-11.md` primero - documenta un caso real encontrado el
+   2026-08-11 donde 3 migraciones llevaban semanas escritas sin haberse aplicado nunca, dejando
+   funcionalidad ya implementada en el cliente (deadline, recordatorios, subtareas, series
+   recurrentes) fallando en silencio contra la base de datos real.
 
 ## 2) Storage para fondos
 1. Dashboard -> Storage -> Create bucket -> `backgrounds`.

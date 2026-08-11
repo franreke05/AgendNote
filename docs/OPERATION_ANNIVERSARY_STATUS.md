@@ -284,10 +284,22 @@ Ver sección E de la respuesta operativa del 9 de agosto en el chat — se traer
 Ninguno todavía — los agentes de este primer batch son de investigación (solo lectura), sin escritura de código.
 
 ## KNOWN_RISKS
+0. **[CRÍTICO, 2026-08-11] La BD real de producción nunca recibió 3 migraciones ya escritas
+   desde julio/agosto**: `task_series`, `task_reminders`, `task_subtasks` no existen como
+   tablas; `tasks.deadline_at`/`slot_end_at`/`series_id` no existen como columnas. El usuario
+   pegó dos veces la fotografía real de la BD, confirmándolo. Consecuencia: deadline,
+   recordatorios múltiples, subtareas y series recurrentes — funcionalidad ya implementada y
+   testeada a nivel de Kotlin/Edge Function desde hace días — probablemente ha estado fallando
+   en silencio contra la base de datos real todo este tiempo. Ver
+   `supabase/RECONCILIATION_2026-08-11.md` para el análisis completo y el procedimiento exacto
+   de despliegue. **Nada de esto se ha aplicado** — sin acceso a Supabase real desde este
+   entorno.
 1. iOS nunca compilado — mayor riesgo del proyecto.
 2. Cero QA visual desde el 27 de julio sobre la mayoría de la superficie de producto actual.
-3. Recordatorios múltiples: UI promete N, sistema dispara 1.
-4. Estado real del portfolio externo no confirmado.
+3. Recordatorios múltiples: UI promete N, sistema dispara 1 (y hasta que `task_reminders`
+   exista de verdad en producción, N tampoco llega a guardarse — ver riesgo 0).
+4. Sistema de booking/portfolio: **resuelto** el 2026-08-11, commit `bf15e89` — eliminado del
+   schema, Edge Function y documentación; migración de borrado escrita pero no aplicada.
 
 ## LAST_TEST_RESULT
 90/90 verdes, `:composeApp:testDebugUnitTest`/`testReleaseUnitTest`, `BUILD SUCCESSFUL` (cacheado, 2026-08-09).
