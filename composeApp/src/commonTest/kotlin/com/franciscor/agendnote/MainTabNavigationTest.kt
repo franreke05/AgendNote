@@ -12,8 +12,8 @@ import kotlin.test.assertNull
 class MainTabNavigationTest {
     @Test
     fun `next steps through the bottom bar order`() {
-        assertEquals(MainTab.CALENDAR, MainTab.AGENDA.next())
-        assertEquals(MainTab.LABELS, MainTab.CALENDAR.next())
+        assertEquals(MainTab.DAY, MainTab.AGENDA.next())
+        assertEquals(MainTab.LABELS, MainTab.DAY.next())
         assertEquals(MainTab.SETTINGS, MainTab.LABELS.next())
     }
 
@@ -25,8 +25,8 @@ class MainTabNavigationTest {
     @Test
     fun `previous steps backwards through the bottom bar order`() {
         assertEquals(MainTab.LABELS, MainTab.SETTINGS.previous())
-        assertEquals(MainTab.CALENDAR, MainTab.LABELS.previous())
-        assertEquals(MainTab.AGENDA, MainTab.CALENDAR.previous())
+        assertEquals(MainTab.DAY, MainTab.LABELS.previous())
+        assertEquals(MainTab.AGENDA, MainTab.DAY.previous())
     }
 
     @Test
@@ -46,7 +46,7 @@ class MainTabNavigationTest {
     fun `tabSlideDirection is PREVIOUS when moving to an earlier tab`() {
         assertEquals(
             SwipeDirection.PREVIOUS,
-            tabSlideDirection(fromRoute = "settings", toRoute = "calendar"),
+            tabSlideDirection(fromRoute = "settings", toRoute = "day"),
         )
     }
 

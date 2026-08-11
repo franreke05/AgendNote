@@ -61,13 +61,33 @@ data class GlassTokens(
     val textDisabled: Color,
 )
 
+/**
+ * Light mode hierarchy (Operación Aniversario, fix 2026-08-11 - "eliminar superficies blancas
+ * opacas"). Before this pass, [modalFill] was fully opaque (`0xFFF4F8FC`) - every sheet/popover
+ * rendered as a flat white card with zero relationship to what's behind it, regardless of how
+ * translucent [glassFill]/[glassFillStrong] were. Compose can't blur what's behind a [Dialog]
+ * window on every target the same way, so "glass" here means a deliberate 4-level opacity ladder
+ * over a shared cool-white tint (`#F6FAFE`, not pure `#FFFFFF` - keeps every level in the same
+ * color family as [backgroundTop]/[backgroundBottom] instead of reading as generic Material
+ * white), not a single alpha applied everywhere:
+ *   1. BACKGROUND - [backgroundTop]/[backgroundBottom], opaque, the "room" everything else sits in.
+ *   2. CONTENT GLASS ([glassFill], ~36%) - list rows, search bar, basic inputs; reads as an echo
+ *      of the background, not an object.
+ *   3. FLOATING CONTROLS ([glassFillStrong], ~57%) - icon buttons, primary CTAs, selected chips;
+ *      distinct objects that float above content, so more opaque than it.
+ *   4. MODAL/SHEET GLASS ([modalFill], ~85%) - sheets/popovers/alerts, the topmost layer. Opaque
+ *      enough to keep dense forms legible without a real blur, translucent enough that the scrim-
+ *      dimmed screen behind it is still visibly there - never 100%.
+ * [glassStroke] was bumped (50% -> 60%) alongside this: once fills stop being near-opaque, the
+ * border does more of the work of reading each surface's edge against a now-visible background.
+ */
 private val LightGlassTokens = GlassTokens(
     backgroundTop = Color(0xFFEAF1F8),
     backgroundBottom = Color(0xFFD6E4F2),
-    glassFill = Color(0x66FFFFFF),
-    glassFillStrong = Color(0x88FFFFFF),
-    modalFill = Color(0xFFF4F8FC),
-    glassStroke = Color(0x80FFFFFF),
+    glassFill = Color(0x5CF6FAFE),
+    glassFillStrong = Color(0x91F6FAFE),
+    modalFill = Color(0xD9F6FAFE),
+    glassStroke = Color(0x99FFFFFF),
     glassHighlight = Color(0xCCFFFFFF),
     accent = Color(0xFFFF8A5B),
     accentOnLight = Color(0xFFB34A1E),
@@ -83,7 +103,7 @@ private val LightGlassTokens = GlassTokens(
     onSuccess = Color.White,
     scrim = Color(0x59000000),
     focusStroke = Color(0xFFB34A1E),
-    glassFillDisabled = Color(0x33FFFFFF),
+    glassFillDisabled = Color(0x2EF6FAFE),
     textDisabled = Color(0x73516173),
 )
 
