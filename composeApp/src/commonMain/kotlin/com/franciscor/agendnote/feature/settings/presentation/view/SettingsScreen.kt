@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,8 +39,12 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.franciscor.agendnote.app.navigation.SectionHeader
 import com.franciscor.agendnote.core.model.TaskSeries
+import com.franciscor.agendnote.core.model.PersonalMessage
 import com.franciscor.agendnote.core.network.AppConfig
+import com.franciscor.agendnote.core.notifications.NotificationPermissionStatus
 import com.franciscor.agendnote.core.notifications.NotificationServiceProvider
+import com.franciscor.agendnote.core.notifications.NotificationSoundId
+import com.franciscor.agendnote.core.platform.isDebugBuild
 import com.franciscor.agendnote.core.ui.components.GlassActionButton
 import com.franciscor.agendnote.core.ui.components.GlassConfirmDialog
 import com.franciscor.agendnote.core.ui.components.GlassSelectableChip
@@ -55,7 +60,11 @@ import com.franciscor.agendnote.feature.settings.presentation.viewmodel.Settings
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.isoDayNumber
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.ExperimentalTime
 
+@OptIn(ExperimentalTime::class)
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
@@ -252,6 +261,31 @@ fun SettingsScreen(
                         color = GlassTheme.tokens.textSecondary,
                     )
                     val notificationScope = rememberCoroutineScope()
+                    // "no inventes falsas opciones si iOS controla la autorización": this reads
+                    // the real OS-level state, never assumes anything from a locally-cached flag.
+                    var permissionStatus by remember { mutableStateOf<NotificationPermissionStatus?>(null) }
+                    LaunchedEffect(Unit) {
+                        permissionStatus = runCatching {
+                            NotificationServiceProvider.getNotificationService().checkPermissionStatus()
+                        }.getOrNull()
+                    }
+                    permissionStatus?.let { status ->
+                        Text(
+                            text = "Estado actual: " + when (status) {
+                                NotificationPermissionStatus.AUTHORIZED -> "autorizadas"
+                                NotificationPermissionStatus.DENIED ->
+                                    "denegadas - actívalas desde los Ajustes del sistema"
+                                NotificationPermissionStatus.PROVISIONAL -> "silenciosas (provisional)"
+                                NotificationPermissionStatus.NOT_DETERMINED -> "todavía no solicitadas"
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (status == NotificationPermissionStatus.DENIED) {
+                                GlassTheme.tokens.errorContent
+                            } else {
+                                GlassTheme.tokens.textSecondary
+                            },
+                        )
+                    }
                     GlassActionButton(
                         text = "Configurar recordatorios",
                         tint = GlassTheme.tokens.glassFillStrong,
@@ -260,9 +294,37 @@ fun SettingsScreen(
                         onClick = {
                             notificationScope.launch {
                                 NotificationServiceProvider.getNotificationService().requestPermissions()
+                                permissionStatus = NotificationServiceProvider.getNotificationService()
+                                    .checkPermissionStatus()
                             }
                         },
                     )
+                    // Development-only QA affordance (directive item 13) - never shown in a
+                    // release build (isDebugBuild is a compile-time constant per platform, so
+                    // this branch doesn't even exist in a release binary, not just hidden by a
+                    // runtime check).
+                    if (isDebugBuild) {
+                        GlassActionButton(
+                            text = "Probar notificación (+10s)",
+                            tint = GlassTheme.tokens.glassFill,
+                            textColor = GlassTheme.tokens.textPrimary,
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                notificationScope.launch {
+                                    NotificationServiceProvider.getNotificationService()
+                                        .schedulePersonalMessageNotification(
+                                            PersonalMessage(
+                                                id = "debug_test_${Clock.System.now().toEpochMilliseconds()}",
+                                                title = "Prueba de notificación",
+                                                body = "Si ves esto, las notificaciones funcionan.",
+                                                scheduledAt = Clock.System.now() + 10.seconds,
+                                                notificationSoundId = NotificationSoundId.REMINDER_GENERAL,
+                                            ),
+                                        )
+                                }
+                            },
+                        )
+                    }
                 }
             }
         }

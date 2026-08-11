@@ -36,13 +36,19 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.NavBackStackEntry
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import com.franciscor.agendnote.app.di.AppServices
+import com.franciscor.agendnote.core.model.PersonalMessage
 import com.franciscor.agendnote.core.model.TaskSeries
 import com.franciscor.agendnote.core.model.TaskTemplate
 import com.franciscor.agendnote.core.network.RemoteConfigStatus
+import com.franciscor.agendnote.core.notifications.NotificationRoute
+import com.franciscor.agendnote.core.notifications.NotificationRouter
 import com.franciscor.agendnote.core.ui.components.GlassBackground
 import com.franciscor.agendnote.core.ui.components.GlassModalState
 import com.franciscor.agendnote.core.ui.layout.AppLayout
+import com.franciscor.agendnote.feature.personal.presentation.view.PersonalMessageDetailOverlay
 import com.franciscor.agendnote.feature.agenda.domain.SeriesMaterializer
 import com.franciscor.agendnote.feature.agenda.domain.buildTaskExportJson
 import com.franciscor.agendnote.feature.agenda.presentation.controller.AgendaController
@@ -173,6 +179,44 @@ fun AppNavHost(
         }
     }
 
+    // Notification routing (Operación Aniversario, "Sprint Final" directive, item 9): a single
+    // place that turns a tapped notification (foreground/background/cold-start, see
+    // NotificationRouter's doc comment) into real navigation, regardless of which tab happened to
+    // be active. A Task route also switches to the Agenda tab - AgendaScreen (via
+    // pendingTaskRoute below) does the rest (select the right day, open that task's detail).
+    var pendingTaskRoute by remember { mutableStateOf<NotificationRoute.Task?>(null) }
+    var openPersonalMessageId by remember { mutableStateOf<String?>(null) }
+    val notificationRoute by NotificationRouter.pendingRoute.collectAsState()
+    LaunchedEffect(notificationRoute) {
+        when (val route = notificationRoute) {
+            is NotificationRoute.Task -> {
+                pendingTaskRoute = route
+                navigateToMainTab(MainTab.AGENDA)
+                // NotificationRouter.consume() happens once AgendaScreen actually opens the task
+                // (onPendingTaskRouteConsumed below) - clearing it here instead would let a
+                // recomposition before AgendaScreen mounts silently drop the route.
+            }
+            is NotificationRoute.PersonalMessage -> {
+                openPersonalMessageId = route.messageId
+                NotificationRouter.consume()
+            }
+            null -> Unit
+        }
+    }
+
+    var openPersonalMessage by remember { mutableStateOf<PersonalMessage?>(null) }
+    LaunchedEffect(openPersonalMessageId) {
+        val id = openPersonalMessageId ?: return@LaunchedEffect
+        val message = runCatching { AppServices.settingsRepository?.fetchPersonalMessages() }
+            .getOrNull()
+            ?.find { it.id == id }
+        openPersonalMessage = message
+        // Not found (deleted, or the id in an old delivered notification no longer exists) is not
+        // an error state worth its own dialog - there is simply nothing to show, so this quietly
+        // resets rather than opening an empty/broken sheet.
+        if (message == null) openPersonalMessageId = null
+    }
+
     // Small, scale-aware outer margin — just enough to keep rounded card corners off the screen
     // edge. Kept deliberately thin: the real horizontal rhythm comes from each screen's own
     // contentInset (see AgendaScreen/CalendarScreen/LabelsScreen/SettingsScreen), so content uses
@@ -228,6 +272,11 @@ fun AppNavHost(
                                 labelsController = labelsController,
                                 templates = taskTemplates,
                                 onSaveTemplate = { template -> saveTaskTemplate(template) },
+                                pendingTaskRoute = pendingTaskRoute,
+                                onPendingTaskRouteConsumed = {
+                                    pendingTaskRoute = null
+                                    NotificationRouter.consume()
+                                },
                             )
                         }
                         composable(AppRoute.Day.route) {
@@ -346,6 +395,18 @@ fun AppNavHost(
                 )
             }
         }
+
+        // Mounted at the root, not inside any one tab's route content, so a personal-message
+        // notification opens this regardless of which tab was on screen (directive item 8).
+        openPersonalMessage?.let { message ->
+            PersonalMessageDetailOverlay(
+                message = message,
+                onDismiss = {
+                    openPersonalMessage = null
+                    openPersonalMessageId = null
+                },
+            )
+        }
     }
 }
 
@@ -392,6 +453,8 @@ private fun AgendaRoute(
     labelsController: LabelsController,
     templates: List<TaskTemplate>,
     onSaveTemplate: suspend (TaskTemplate) -> Boolean,
+    pendingTaskRoute: NotificationRoute.Task?,
+    onPendingTaskRouteConsumed: () -> Unit,
 ) {
     AgendaScreen(
         viewModel = agendaViewModel,
@@ -402,6 +465,8 @@ private fun AgendaRoute(
         },
         templates = templates,
         onSaveTemplate = onSaveTemplate,
+        pendingTaskRoute = pendingTaskRoute,
+        onPendingTaskRouteConsumed = onPendingTaskRouteConsumed,
         modifier = Modifier.fillMaxSize(),
     )
 }

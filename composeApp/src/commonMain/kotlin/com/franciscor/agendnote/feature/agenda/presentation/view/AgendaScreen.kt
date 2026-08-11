@@ -38,6 +38,13 @@ fun AgendaScreen(
     onCreateLabel: suspend (String, String) -> LabelTag?,
     templates: List<TaskTemplate> = emptyList(),
     onSaveTemplate: suspend (TaskTemplate) -> Boolean = { false },
+    // Set by AppNavHost when the user tapped a task-reminder notification (see
+    // NotificationRouter/NotificationRoute.Task) - null the rest of the time. Consumed by the
+    // LaunchedEffect below (selects that day, then opens the task's detail overlay once it's
+    // loaded) and immediately reported back via onPendingTaskRouteConsumed so AppNavHost clears
+    // NotificationRouter and this doesn't re-fire on the next recomposition/tab switch.
+    pendingTaskRoute: com.franciscor.agendnote.core.notifications.NotificationRoute.Task? = null,
+    onPendingTaskRouteConsumed: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
@@ -80,6 +87,16 @@ fun AgendaScreen(
     }
     LaunchedEffect(Unit) {
         controller.handleAsync(AgendaAction.RefreshSelectedDate)
+    }
+
+    LaunchedEffect(pendingTaskRoute) {
+        val route = pendingTaskRoute ?: return@LaunchedEffect
+        // showTaskDetailsTaskId resolves against sourceTasks reactively (same pattern
+        // pendingDeleteTaskId/editingTaskId already use) - it's fine to set it before this day's
+        // tasks finish loading, TaskDetailsOverlay just won't show until sourceTasks catches up.
+        controller.handleAsync(AgendaAction.SelectDate(route.day))
+        showTaskDetailsTaskId = route.taskId
+        onPendingTaskRouteConsumed()
     }
 
     val filteredTasks = remember(sourceTasks, searchQuery) {

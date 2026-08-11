@@ -283,6 +283,52 @@ Ver sección E de la respuesta operativa del 9 de agosto en el chat — se traer
 ## FILES_LOCKED
 Ninguno todavía — los agentes de este primer batch son de investigación (solo lectura), sin escritura de código.
 
+## COMPLETED (16) — Sprint Final: notificaciones iOS + audio + Button QA (2026-08-11)
+
+**iOS notificaciones**: `NotificationSoundId`/`VoiceMessageId` (enums tipados, commonMain),
+`IosSoundAssets` (ID → filename, verifica `NSBundle.pathForResource` antes de usar, fallback a
+`.defaultSound()` sin crash), sonido custom real vía `UNNotificationSound.soundNamed`, payload
+`userInfo` (`type`/`task_id`/`task_day` o `type`/`message_id`) para routing, identifiers
+deterministas ya existían (`task_${id}`) - confirmado que el ciclo create/update/delete/complete
+ya reconciliaba correctamente vía `AgendaViewModel.reconcileDayNotifications` (no hacía falta
+reescribirlo). `resolveTaskReminderSoundId` infiere DEADLINE/REMINDER_NOW/REMINDER_GENERAL por
+tarea (decisión de diseño documentada, no una regla explícita del usuario - revisar si no encaja).
+Multi-reminder: preservado el límite documentado (1 notificación/tarea), sin reescritura de riesgo.
+`IosNotificationDelegate` (foreground + tap routing, los 3 estados) + `NotificationRouter`
+(`StateFlow` compartido) + wiring en `AppNavHost`/`AgendaScreen` (abre el día correcto y el
+detalle de la tarea). Permisos: estado real mostrado en Ajustes (`checkPermissionStatus`), sin
+re-spam (ya lo garantiza iOS). Botón de prueba +10s solo en debug (`isDebugBuild`, gated en
+compilación, no en runtime).
+
+**Mensajes personales**: `PersonalMessage` (dominio) + persistencia JSON en `api-settings`
+(mismo patrón que `TaskTemplate`, sin migración nueva) + notificación con `PERSONAL_MESSAGE` +
+routing a `PersonalMessageDetailOverlay` (nunca abre solo Agenda) + reproductor de audio largo
+(`AudioPlayer` expect/actual, `AVAudioPlayer` en iOS, estados IDLE/LOADING/PLAYING/PAUSED/
+MISSING/ERROR - MISSING oculta el reproductor sin romper el texto, nunca crash).
+
+**Verificación real, no asumida**: `./gradlew :composeApp:compileKotlinIosSimulatorArm64`
+**compila de verdad** en este entorno Windows (hallazgo inesperado - JetBrains distribuye los
+klibs de Apple con el toolchain de Kotlin/Native para compilación cruzada) - confirma que todo el
+código iOS nuevo es sintácticamente correcto contra las APIs reales de UserNotifications/
+AVFoundation/Foundation. `linkDebugFrameworkIosSimulatorArm64` se salta (SKIPPED) - el linkado
+final sigue exigiendo macOS. Es decir: **compilación verificada, ejecución NO verificada**
+(IOS_RUNTIME = NOT_VERIFIED sigue aplicando para comportamiento real).
+
+**Audio**: los 8 `.wav` de la directiva **no están en la raíz del repo** todavía pese a que el
+usuario dijo que los colocaría - la integración a Xcode (`Copy Bundle Resources`) está bloqueada
+hasta que existan. Instrucciones manuales exactas en
+`docs/agendnote/IOS_AUDIO_ASSETS_SETUP.md` (no se editó `project.pbxproj` a ciegas).
+
+**Button QA**: auditoría de "pill buttons" (radius ≈ height/2, CircleShape en botones de texto) -
+**cero violaciones encontradas**. Ya estaba resuelto por el trabajo de la sesión anterior
+(`GlassRadius.s()` en `ControlHeight.standard()` da ~37% de la altura, no 50%). Todos los usos de
+`CircleShape` verificados uno por uno: FAB, icon buttons, grabber, dots de color/etiqueta - todos
+dentro de las excepciones explícitas de la directiva. No se necesitó ningún cambio de código.
+BUTTON_QA_LOOP (screenshots + Visual Reviewer iterativo) **no ejecutado** - sin emulador/
+dispositivo en este entorno, no hay capturas reales que mirar.
+
+Tests: `BUILD SUCCESSFUL` (Android + unit tests). Commit: ver git log.
+
 ## KNOWN_RISKS
 0. **[RESUELTO 2026-08-11] La BD real de producción nunca recibió
    3 migraciones ya escritas desde julio/agosto**: `task_series`, `task_reminders`,

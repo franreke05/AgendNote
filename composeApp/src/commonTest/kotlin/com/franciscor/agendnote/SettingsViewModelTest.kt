@@ -168,4 +168,11 @@ private class FakeSettingsRepository(
     override suspend fun saveTaskTemplates(
         templates: List<com.franciscor.agendnote.core.model.TaskTemplate>,
     ): Boolean = true
+
+    override suspend fun fetchPersonalMessages(): List<com.franciscor.agendnote.core.model.PersonalMessage> =
+        emptyList()
+
+    override suspend fun savePersonalMessages(
+        messages: List<com.franciscor.agendnote.core.model.PersonalMessage>,
+    ): Boolean = true
 }

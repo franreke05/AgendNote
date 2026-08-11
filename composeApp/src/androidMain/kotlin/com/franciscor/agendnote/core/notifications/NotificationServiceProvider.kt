@@ -7,10 +7,16 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.franciscor.agendnote.core.model.PersonalMessage
 import com.franciscor.agendnote.core.model.TaskItem
 import kotlinx.datetime.LocalDate
 import java.util.Calendar
+
+/** Namespaced apart from real task ids so a personal message and a task can never collide on the
+ * same AlarmManager/notification id (both ultimately key off this string's hashCode). */
+private fun personalMessageReminderId(messageId: String) = "personal_message_$messageId"
 
 actual object NotificationServiceProvider {
     actual fun getNotificationService(): NotificationService = AndroidNotificationService
@@ -121,5 +127,38 @@ object AndroidNotificationService : NotificationService {
         if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) return true
         return context.getSystemService(android.app.AlarmManager::class.java)
             .canScheduleExactAlarms()
+    }
+
+    override suspend fun checkPermissionStatus(): NotificationPermissionStatus {
+        val context = applicationContext ?: return NotificationPermissionStatus.NOT_DETERMINED
+        return if (NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+            NotificationPermissionStatus.AUTHORIZED
+        } else {
+            NotificationPermissionStatus.DENIED
+        }
+    }
+
+    // Minimal on purpose (Operación Aniversario, "Sprint Final" directive item 0: Android is not
+    // this sprint's priority). Reuses the existing task-reminder AlarmManager pipeline with a
+    // namespaced id so it can't collide with a real task - custom sound and tap-routing to
+    // PersonalMessageDetail are iOS-only this pass; tapping this notification on Android opens
+    // the app to its default screen, same as any other generic AndroidNotificationReceiver alarm
+    // predating this feature.
+    override suspend fun schedulePersonalMessageNotification(message: PersonalMessage) {
+        val context = applicationContext ?: return
+        AndroidReminderScheduler.schedule(
+            context = context,
+            reminder = StoredReminder(
+                taskId = personalMessageReminderId(message.id),
+                title = message.title ?: "Mensaje",
+                details = message.body,
+                triggerAtMillis = message.scheduledAt.toEpochMilliseconds(),
+            ),
+        )
+    }
+
+    override suspend fun cancelPersonalMessageNotification(messageId: String) {
+        val context = applicationContext ?: return
+        AndroidReminderScheduler.cancel(context, personalMessageReminderId(messageId))
     }
 }
