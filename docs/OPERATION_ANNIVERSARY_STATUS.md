@@ -188,7 +188,13 @@ solo compila y pasa tests - no hay herramienta de captura de pantalla en este en
 ## ACTIVE_AGENTS
 | Agente | Rol | Modo | Archivos | Estado |
 |---|---|---|---|---|
-| Software Architect | Migrar NewTaskSheet/TaskDetailsOverlay/SmartListsOverlay/CalendarPopover/DatePickerOverlay/TimePickerOverlay a `GlassSheetScaffold`/`GlassPopover` | Producer, ejecuta Gradle | `AgendaOverlays.kt` (único, para respetar "un archivo → un writer") | En curso |
+| Code Reviewer | Revisión adversarial del commit `f411398` (migración de 6 presentaciones a la base Glass) | Solo lectura | `AgendaOverlays.kt` | En curso |
+
+Commit `f411398` (971 líneas, 1 archivo) entregado y **NO aceptado todavía**: el propio autor
+reportó dos intentos fallidos de llaves antes de dar con la estructura correcta en `NewTaskSheet`
+- compila, pero "compila" no es "semánticamente correcto" (ya nos pasó una vez hoy con un bug de
+pérdida de datos en este mismo archivo). Revisión adversarial en curso antes de dar el batch por
+cerrado.
 
 Pendiente para después (mismo `AgendaOverlays.kt`, no en paralelo): nada más - es el único
 archivo grande que quedaba. Pendiente en OTROS archivos, para una ronda posterior: selector de
