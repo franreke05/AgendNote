@@ -660,7 +660,13 @@ internal fun NewTaskSheet(
     // changes. DatePickerOverlay/TimePickerOverlay are no longer nested inside this Dialog's tree
     // (see the bottom of this function) - each now opens its own independent GlassPopover Dialog,
     // which removes the previous double-scrim (this sheet's scrim stacked under the picker's own).
-    GlassSheetScaffold(onDismiss = onDismiss) {
+    // dragToDismissEnabled = false: found by adversarial review of the GlassSheetScaffold
+    // migration (docs/OPERATION_ANNIVERSARY_STATUS.md) - the scaffold defaults to swipe-to-
+    // dismiss, which for a long create/edit form is a new, undocumented way to discard
+    // everything the user typed with an accidental downward drag and zero confirmation. Tap-
+    // outside-scrim dismiss (pre-existing, unchanged) stays available; only the drag gesture is
+    // disabled here. TaskDetailsOverlay (read-only) keeps drag-to-dismiss - no data-loss risk.
+    GlassSheetScaffold(onDismiss = onDismiss, dragToDismissEnabled = false) {
         Column(
             modifier = Modifier
                 .padding(layout.size(16.dp, 14.dp))
@@ -2089,6 +2095,11 @@ internal fun CalendarPopover(
     GlassPopover(
         onDismiss = onDismiss,
         alignment = Alignment.Center,
+        // Found by adversarial review: GlassPopover's own padding stacks with CalendarMonthView's
+        // internal padding, leaving the 7-column day grid noticeably narrower than before this
+        // migration - widened from the 0.9f default to compensate, not verified visually (no
+        // device in this environment), worth a look on a compact phone before trusting it.
+        maxWidthFraction = 0.96f,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(layout.height(10.dp, 8.dp))) {
             if (errorMessage != null) {
