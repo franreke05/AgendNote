@@ -1,11 +1,9 @@
 package com.franciscor.agendnote.feature.agenda.presentation.view
 
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -19,7 +17,6 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -54,14 +51,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.franciscor.agendnote.core.model.TaskItem
@@ -75,8 +68,6 @@ import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
-import kotlin.math.abs
-import kotlin.math.roundToInt
 
 @Composable
 internal fun AgendaHeader(
@@ -184,7 +175,6 @@ internal fun DayAgenda(
     isLoading: Boolean,
     errorMessage: String?,
     searchQuery: String,
-    isEditingEnabled: Boolean,
     onRetry: () -> Unit,
     onToggleDone: (TaskItem, Boolean) -> Unit,
     onRequestDelete: (TaskItem) -> Unit,
@@ -283,181 +273,25 @@ internal fun DayAgenda(
             }
         } else {
             items(tasks, key = { it.id }) { task ->
-                SwipeableTaskCard(
+                TaskCard(
                     task = task,
-                    isEditingEnabled = isEditingEnabled,
                     onRequestDelete = { onRequestDelete(task) },
                     onToggleDone = { done -> onToggleDone(task, done) },
                     onTaskSelected = { onTaskSelected(task) },
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
     }
 }
 
-@Composable
-private fun SwipeableTaskCard(
-    task: TaskItem,
-    isEditingEnabled: Boolean,
-    onRequestDelete: () -> Unit,
-    onToggleDone: (Boolean) -> Unit,
-    onTaskSelected: () -> Unit = {},
-    modifier: Modifier = Modifier,
-) {
-    val layout = AppLayout.metrics
-    val density = LocalDensity.current
-    val haptics = LocalHapticFeedback.current
-    val maxOffset = with(density) { layout.width(108.dp, 88.dp).toPx() }
-    val threshold = with(density) { layout.width(72.dp, 60.dp).toPx() }
-    // Same edge guard already used for the calendar month swipe (DatePickerOverlay) - a drag
-    // starting right at the screen edge (cards sit close to it, see AppNavHost's 4dp content
-    // margin) should not trigger complete/delete unintentionally.
-    val swipeEdgeGuard = layout.width(24.dp, 18.dp)
-    var offsetX by remember { mutableStateOf(0f) }
-    var isDragging by remember { mutableStateOf(false) }
-    var isPerformingAction by remember { mutableStateOf(false) }
-
-    val animatedOffset by animateFloatAsState(
-        targetValue = offsetX,
-        animationSpec = if (isDragging) {
-            tween(durationMillis = 0)
-        } else {
-            tween(durationMillis = 180, easing = FastOutSlowInEasing)
-        },
-        label = "taskSwipeOffset",
-    )
-    val isSwipeRight = animatedOffset >= 0f
-    val progress = (abs(animatedOffset) / maxOffset).coerceIn(0f, 1f)
-
-    val swipeModifier = if (isEditingEnabled) {
-        Modifier.pointerInput(task.id, isPerformingAction) {
-            if (isPerformingAction) return@pointerInput
-            val edgePx = swipeEdgeGuard.toPx()
-            var allowSwipe = true
-            detectHorizontalDragGestures(
-                onDragStart = { offset ->
-                    allowSwipe = offset.x in edgePx..(size.width - edgePx)
-                },
-                onHorizontalDrag = { _, dragAmount ->
-                    if (isPerformingAction || !allowSwipe) return@detectHorizontalDragGestures
-                    isDragging = true
-                    offsetX = (offsetX + dragAmount).coerceIn(-maxOffset, maxOffset)
-                },
-                onDragEnd = {
-                    if (isPerformingAction || !allowSwipe) return@detectHorizontalDragGestures
-                    isDragging = false
-                    when {
-                        offsetX > threshold -> {
-                            if (task.isDone) {
-                                offsetX = 0f
-                            } else {
-                                offsetX = maxOffset
-                                isPerformingAction = true
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onToggleDone(true)
-                                isPerformingAction = false
-                                offsetX = 0f
-                            }
-                        }
-
-                        offsetX < -threshold -> {
-                            offsetX = 0f
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onRequestDelete()
-                        }
-
-                        else -> offsetX = 0f
-                    }
-                },
-                onDragCancel = {
-                    if (isPerformingAction) return@detectHorizontalDragGestures
-                    isDragging = false
-                    offsetX = 0f
-                },
-            )
-        }
-    } else {
-        Modifier
-    }
-
-    Box(modifier = modifier.fillMaxWidth()) {
-        SwipeActionBackground(
-            isSwipeRight = isSwipeRight,
-            progress = progress,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        TaskCard(
-            task = task,
-            onToggleDone = onToggleDone,
-            onRequestDelete = onRequestDelete,
-            onTaskSelected = onTaskSelected,
-            modifier = Modifier
-                .offset { IntOffset(animatedOffset.roundToInt(), 0) }
-                .then(swipeModifier),
-        )
-    }
-}
-
-@Composable
-private fun SwipeActionBackground(
-    isSwipeRight: Boolean,
-    progress: Float,
-    modifier: Modifier = Modifier,
-) {
-    if (progress <= 0.01f) return
-    val layout = AppLayout.metrics
-    val actionColor = if (isSwipeRight) GlassTheme.tokens.success else GlassTheme.tokens.error
-    val label = if (isSwipeRight) "Hecha" else "Eliminar"
-    val icon = if (isSwipeRight) Icons.Rounded.Check else Icons.Rounded.Delete
-    val eased = progress.coerceIn(0f, 1f)
-    val fillAlpha = 0.65f * eased
-    val strokeAlpha = 0.85f * eased
-    val contentAlpha = 0.2f + (0.8f * eased)
-
-    GlassSurface(
-        modifier = modifier,
-        shape = RoundedCornerShape(layout.size(30.dp, 24.dp)),
-        tint = actionColor.copy(alpha = fillAlpha),
-        strokeColor = actionColor.copy(alpha = strokeAlpha),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    horizontal = layout.width(18.dp, 14.dp),
-                    vertical = layout.height(14.dp, 12.dp),
-                ),
-            horizontalArrangement = if (isSwipeRight) Arrangement.Start else Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (isSwipeRight) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = label,
-                    tint = Color.White.copy(alpha = contentAlpha),
-                )
-                Spacer(modifier = Modifier.width(layout.width(8.dp, 6.dp)))
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = contentAlpha),
-                )
-            } else {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = contentAlpha),
-                )
-                Spacer(modifier = Modifier.width(layout.width(8.dp, 6.dp)))
-                Icon(
-                    imageVector = icon,
-                    contentDescription = label,
-                    tint = Color.White.copy(alpha = contentAlpha),
-                )
-            }
-        }
-    }
-}
+// P0 UX fix (Operación Aniversario, 2026-08-11): horizontal swipe on a task row (complete right,
+// delete left, via SwipeableTaskCard + SwipeActionBackground) is gone. Product decision: ALL
+// horizontal drag in AgendNote is reserved for tab navigation (Agenda <-> Día <-> Etiquetas <->
+// Ajustes) - a task row must never compete for that gesture. Completing/deleting a task now only
+// happens through the explicit, always-visible check/delete controls in TaskCardActions below
+// (unchanged by this fix - it already existed alongside the swipe gesture, not introduced by
+// this fix), or from TaskDetailsOverlay. See docs/OPERATION_ANNIVERSARY_STATUS.md.
 
 @Composable
 private fun TaskCard(

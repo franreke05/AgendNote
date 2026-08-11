@@ -285,10 +285,20 @@ fun AppNavHost(
                         }
                     }
 
-                    // REVIEW: franjas de solo-borde, no un gesto de pantalla completa — ver el
-                    // comentario en EdgeSwipeZone y AgendaScreen.kt:126-128 sobre por que un
-                    // swipe libre choca con el swipe de las tarjetas de tarea en Agenda.
-                    val edgeSwipeWidth = layout.width(12.dp, 10.dp)
+                    // P0 UX fix (2026-08-11): task rows no longer have their own horizontal drag
+                    // gesture at all (see AgendaDayComponents.kt), so the old reason these zones
+                    // were kept to a bare 12dp/10dp sliver - avoiding a collision with per-card
+                    // swipe-to-complete/delete - no longer applies. Widened significantly so a
+                    // drag starting near either edge (not just literally on it) reaches this zone.
+                    // Still edge-anchored, not full-screen: making a drag that starts in the
+                    // middle of a task card (over its text, not just near an edge) navigate too
+                    // needs either a Compose HorizontalPager (built-in, tested coexistence with a
+                    // vertical LazyColumn per page) or careful manual touch-slop arbitration
+                    // between this and each screen's LazyColumn scroll - both real device-tested
+                    // gesture-priority work this environment cannot verify (no emulator/device
+                    // access here). Left as a known gap rather than guessed at blind - see
+                    // docs/OPERATION_ANNIVERSARY_STATUS.md.
+                    val edgeSwipeWidth = layout.width(64.dp, 56.dp)
                     val edgeSwipeThresholdPx = with(LocalDensity.current) {
                         layout.width(64.dp, 56.dp).toPx()
                     }

@@ -136,7 +136,6 @@ fun AgendaScreen(
                 // in that case also lets the (nicer) empty state render instead of a red card.
                 errorMessage = dayUiState.errorMessage.takeIf { isEditingEnabled },
                 searchQuery = searchQuery,
-                isEditingEnabled = isEditingEnabled,
                 onRetry = {
                     controller.handleAsync(AgendaAction.RefreshSelectedDate)
                 },
@@ -149,9 +148,6 @@ fun AgendaScreen(
                 onTaskSelected = { task ->
                     showTaskDetailsTaskId = task.id
                 },
-                // REVIEW: day navigation stays on the explicit header controls. A parent-level
-                // horizontal drag competed with each task card's swipe actions and made both
-                // gestures unreliable, especially for TalkBack and compact screens.
                 modifier = Modifier.weight(1f),
             )
         }
