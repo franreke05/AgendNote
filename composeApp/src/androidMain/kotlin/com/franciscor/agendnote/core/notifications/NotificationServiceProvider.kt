@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat
 import com.franciscor.agendnote.core.model.PersonalMessage
 import com.franciscor.agendnote.core.model.TaskItem
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
 import java.util.Calendar
 
 /** Namespaced apart from real task ids so a personal message and a task can never collide on the
@@ -25,7 +26,11 @@ actual object NotificationServiceProvider {
 /** Android notification scheduling backed by AlarmManager so it survives app process death. */
 object AndroidNotificationService : NotificationService {
     private var activity: Activity? = null
-    private var applicationContext: Context? = null
+
+    // internal, not private: AudioPlayer.android.kt (core/audio, a different package) reuses this
+    // already-captured application Context for MediaPlayer instead of adding a second context
+    // holder object just for that - see its doc comment.
+    internal var applicationContext: Context? = null
     private var requestNotificationPermission: (() -> Unit)? = null
     private var hadExactAlarmAccess: Boolean? = null
 
@@ -37,7 +42,7 @@ object AndroidNotificationService : NotificationService {
         applicationContext = activity.applicationContext
         this.requestNotificationPermission = requestNotificationPermission
         hadExactAlarmAccess = canScheduleExactAlarms(activity.applicationContext)
-        AndroidNotificationReceiver.createChannel(activity.applicationContext)
+        AndroidNotificationReceiver.createChannels(activity.applicationContext)
     }
 
     fun onHostResumed(activity: Activity) {
@@ -58,7 +63,13 @@ object AndroidNotificationService : NotificationService {
 
     override suspend fun scheduleTaskNotification(task: TaskItem, taskDate: LocalDate) {
         val context = applicationContext ?: return
-        val triggerAt = triggerAtMillis(task, taskDate) ?: return
+        val reminderInstant = earliestReminderInstant(task)
+        val triggerAt = triggerAtMillis(task, taskDate, reminderInstant) ?: return
+        val soundId = if (reminderInstant != null) {
+            resolveTaskReminderSoundId(task, taskDate, reminderInstant, TimeZone.currentSystemDefault())
+        } else {
+            NotificationSoundId.REMINDER_GENERAL
+        }
         AndroidReminderScheduler.schedule(
             context = context,
             reminder = StoredReminder(
@@ -66,6 +77,7 @@ object AndroidNotificationService : NotificationService {
                 title = task.title,
                 details = task.details,
                 triggerAtMillis = triggerAt,
+                soundId = soundId,
             ),
         )
     }
@@ -77,8 +89,12 @@ object AndroidNotificationService : NotificationService {
      * [com.franciscor.agendnote.core.notifications.earliestReminderInstant]'s doc comment for
      * why, and docs/agendnote/FASE4_PROPUESTA.md for the follow-up.
      */
-    private fun triggerAtMillis(task: TaskItem, taskDate: LocalDate): Long? {
-        earliestReminderInstant(task)?.let { return it.toEpochMilliseconds() }
+    private fun triggerAtMillis(
+        task: TaskItem,
+        taskDate: LocalDate,
+        reminderInstant: kotlinx.datetime.Instant?,
+    ): Long? {
+        reminderInstant?.let { return it.toEpochMilliseconds() }
         val time = task.time ?: return null
         return Calendar.getInstance().apply {
             clear()
@@ -138,12 +154,11 @@ object AndroidNotificationService : NotificationService {
         }
     }
 
-    // Minimal on purpose (Operación Aniversario, "Sprint Final" directive item 0: Android is not
-    // this sprint's priority). Reuses the existing task-reminder AlarmManager pipeline with a
-    // namespaced id so it can't collide with a real task - custom sound and tap-routing to
-    // PersonalMessageDetail are iOS-only this pass; tapping this notification on Android opens
-    // the app to its default screen, same as any other generic AndroidNotificationReceiver alarm
-    // predating this feature.
+    // "para pruebas implementalo tambien en android" (2026-08-11): now shares the exact same
+    // per-sound-channel pipeline as a task reminder (see AndroidNotificationReceiver) - tapping
+    // still opens the app to its default screen (no PersonalMessageDetail routing on Android,
+    // unlike iOS's NotificationRouter) since that would need its own intent-extras contract this
+    // pass didn't add; the point of this batch was making sound/audio testable, not full parity.
     override suspend fun schedulePersonalMessageNotification(message: PersonalMessage) {
         val context = applicationContext ?: return
         AndroidReminderScheduler.schedule(
@@ -153,6 +168,7 @@ object AndroidNotificationService : NotificationService {
                 title = message.title ?: "Mensaje",
                 details = message.body,
                 triggerAtMillis = message.scheduledAt.toEpochMilliseconds(),
+                soundId = message.notificationSoundId ?: NotificationSoundId.PERSONAL_MESSAGE,
             ),
         )
     }

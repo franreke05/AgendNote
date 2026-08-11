@@ -11,7 +11,7 @@ class AndroidReminderRestoreReceiver : BroadcastReceiver() {
         ) {
             return
         }
-        AndroidNotificationReceiver.createChannel(context)
+        AndroidNotificationReceiver.createChannels(context)
         AndroidReminderScheduler.restoreAll(context)
     }
 }
