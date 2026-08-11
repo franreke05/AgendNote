@@ -44,6 +44,7 @@ import com.franciscor.agendnote.core.network.AppConfig
 import com.franciscor.agendnote.core.notifications.NotificationPermissionStatus
 import com.franciscor.agendnote.core.notifications.NotificationServiceProvider
 import com.franciscor.agendnote.core.notifications.NotificationSoundId
+import com.franciscor.agendnote.core.notifications.VoiceMessageId
 import com.franciscor.agendnote.core.platform.isDebugBuild
 import com.franciscor.agendnote.core.ui.components.GlassActionButton
 import com.franciscor.agendnote.core.ui.components.GlassConfirmDialog
@@ -53,6 +54,7 @@ import com.franciscor.agendnote.core.ui.components.GlassTextField
 import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
 import com.franciscor.agendnote.feature.agenda.domain.RecurrenceRule
+import com.franciscor.agendnote.feature.personal.presentation.view.PersonalMessageDetailOverlay
 import com.franciscor.agendnote.feature.settings.presentation.controller.SettingsController
 import com.franciscor.agendnote.feature.settings.presentation.model.SettingsAction
 import com.franciscor.agendnote.feature.settings.presentation.model.SettingsBulkAction
@@ -83,6 +85,10 @@ fun SettingsScreen(
     var seriesPendingDelete by remember { mutableStateOf<TaskSeries?>(null) }
     val clipboardManager = LocalClipboardManager.current
     var exportCopiedMessage by remember { mutableStateOf<String?>(null) }
+    // Debug-only (directive: "para pruebas implementalo tambien en android") - opens
+    // PersonalMessageDetailOverlay directly with a synthetic message, since there is no
+    // real "create personal message" screen yet to reach it through.
+    var debugAudioPreview by remember { mutableStateOf<PersonalMessage?>(null) }
 
     LazyColumn(
         modifier = modifier
@@ -324,6 +330,22 @@ fun SettingsScreen(
                                 }
                             },
                         )
+                        GlassActionButton(
+                            text = "Probar audio largo",
+                            tint = GlassTheme.tokens.glassFill,
+                            textColor = GlassTheme.tokens.textPrimary,
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                debugAudioPreview = PersonalMessage(
+                                    id = "debug_audio_preview",
+                                    title = "Mensaje de prueba",
+                                    body = "Esto es un mensaje de prueba para escuchar el reproductor " +
+                                        "de audio largo.",
+                                    scheduledAt = Clock.System.now(),
+                                    voiceMessageId = VoiceMessageId.ENCOURAGEMENT,
+                                )
+                            },
+                        )
                     }
                 }
             }
@@ -546,6 +568,13 @@ fun SettingsScreen(
                 onDeleteSeries(series)
             },
             onDismiss = { seriesPendingDelete = null },
+        )
+    }
+
+    debugAudioPreview?.let { message ->
+        PersonalMessageDetailOverlay(
+            message = message,
+            onDismiss = { debugAudioPreview = null },
         )
     }
 }
