@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -66,7 +67,12 @@ fun GlassConfirmDialog(
         GlassSurface(
             modifier = Modifier
                 .padding(horizontal = layout.width(24.dp, 20.dp))
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                // Operación Aniversario (Popup Inventory): an ALERT should read as a compact,
+                // deliberate card, not a form that happens to be short - fillMaxWidth() alone
+                // stretched edge-to-edge on wider viewports. Capped, not fixed, so it still
+                // shrinks on the narrowest phones instead of overflowing.
+                .widthIn(max = 340.dp),
             shape = RoundedCornerShape(GlassRadius.l()),
             // REVIEW: modal copy must not compete with text from the screen behind it.
             tint = GlassTheme.tokens.modalFill,
@@ -127,6 +133,40 @@ fun GlassConfirmDialog(
             }
         }
     }
+}
+
+/**
+ * Named alias for [GlassConfirmDialog], matching the ALERT category name used across Operación
+ * Aniversario's popup taxonomy (ALERT/SHEET/POPOVER - see docs/OPERATION_ANNIVERSARY_STATUS.md).
+ * [GlassConfirmDialog] already was the ALERT implementation (confirmed by the popup inventory as
+ * "the one component that already best fits its category" before this alias existed) - this adds
+ * the expected name without a second implementation to keep in sync.
+ */
+@Composable
+fun GlassAlert(
+    visible: Boolean,
+    title: String,
+    message: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    confirmText: String = "Confirmar",
+    cancelText: String = "Cancelar",
+    confirmTint: Color = GlassTheme.tokens.error,
+    confirmTextColor: Color = GlassTheme.tokens.onError,
+    icon: ImageVector? = null,
+) {
+    GlassConfirmDialog(
+        visible = visible,
+        title = title,
+        message = message,
+        onConfirm = onConfirm,
+        onDismiss = onDismiss,
+        confirmText = confirmText,
+        cancelText = cancelText,
+        confirmTint = confirmTint,
+        confirmTextColor = confirmTextColor,
+        icon = icon,
+    )
 }
 
 @Composable
