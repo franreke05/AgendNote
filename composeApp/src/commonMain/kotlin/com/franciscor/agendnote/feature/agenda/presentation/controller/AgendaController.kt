@@ -38,6 +38,16 @@ class AgendaController(
         return viewModel.saveTask(date, draft)
     }
 
+    suspend fun updateTask(
+        originalDate: LocalDate,
+        id: String,
+        targetDate: LocalDate,
+        draft: TaskDraft,
+        remindersTouched: Boolean,
+    ): SaveResult {
+        return viewModel.updateTask(originalDate, id, targetDate, draft, remindersTouched)
+    }
+
     suspend fun saveRecurringTask(
         date: LocalDate,
         draft: TaskDraft,
@@ -76,6 +86,17 @@ class AgendaController(
 
     fun saveTaskAsync(date: LocalDate, draft: TaskDraft, onResult: (SaveResult) -> Unit = {}) {
         viewModel.saveTaskAsync(date, draft, onResult)
+    }
+
+    fun updateTaskAsync(
+        originalDate: LocalDate,
+        id: String,
+        targetDate: LocalDate,
+        draft: TaskDraft,
+        remindersTouched: Boolean,
+        onResult: (SaveResult) -> Unit = {},
+    ) {
+        viewModel.updateTaskAsync(originalDate, id, targetDate, draft, remindersTouched, onResult)
     }
 
     fun saveRecurringTaskAsync(

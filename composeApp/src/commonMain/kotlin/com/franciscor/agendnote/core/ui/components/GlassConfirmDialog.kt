@@ -10,7 +10,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -18,10 +21,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.franciscor.agendnote.core.ui.layout.AppLayout
+import com.franciscor.agendnote.core.ui.theme.GlassElevation
+import com.franciscor.agendnote.core.ui.theme.GlassRadius
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
 
 /**
@@ -37,6 +43,9 @@ import com.franciscor.agendnote.core.ui.theme.GlassTheme
  * appropriate for destructive actions (delete/bulk-delete); pass a different tint for
  * non-destructive confirmations.
  * @param confirmTextColor text color for the confirm button. Defaults to [GlassTokens.onError].
+ * @param icon optional icon shown next to [title] - an extra non-color signal (beyond
+ * [confirmTint]) that an action is destructive/irreversible. Null (default) preserves the exact
+ * prior layout for every existing caller.
  */
 @Composable
 fun GlassConfirmDialog(
@@ -49,6 +58,7 @@ fun GlassConfirmDialog(
     cancelText: String = "Cancelar",
     confirmTint: Color = GlassTheme.tokens.error,
     confirmTextColor: Color = GlassTheme.tokens.onError,
+    icon: ImageVector? = null,
 ) {
     if (!visible) return
 
@@ -57,21 +67,45 @@ fun GlassConfirmDialog(
         GlassSurface(
             modifier = Modifier
                 .padding(horizontal = layout.width(24.dp, 20.dp))
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(layout.size(28.dp, 24.dp)),
+                .fillMaxWidth()
+                // Operación Aniversario (Popup Inventory): an ALERT should read as a compact,
+                // deliberate card, not a form that happens to be short - fillMaxWidth() alone
+                // stretched edge-to-edge on wider viewports. Capped, not fixed, so it still
+                // shrinks on the narrowest phones instead of overflowing.
+                .widthIn(max = 340.dp),
+            shape = RoundedCornerShape(GlassRadius.l()),
             // REVIEW: modal copy must not compete with text from the screen behind it.
             tint = GlassTheme.tokens.modalFill,
-            shadowElevation = 16.dp,
+            shadowElevation = GlassElevation.modal,
         ) {
             Column(
                 modifier = Modifier.padding(layout.size(20.dp, 16.dp)),
                 verticalArrangement = Arrangement.spacedBy(layout.height(14.dp, 12.dp)),
             ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = GlassTheme.tokens.textPrimary,
-                )
+                if (icon != null) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = confirmTint,
+                            modifier = Modifier.size(layout.size(22.dp, 20.dp)),
+                        )
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = GlassTheme.tokens.textPrimary,
+                        )
+                    }
+                } else {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = GlassTheme.tokens.textPrimary,
+                    )
+                }
                 Text(
                     text = message,
                     style = MaterialTheme.typography.bodyMedium,
@@ -99,6 +133,40 @@ fun GlassConfirmDialog(
             }
         }
     }
+}
+
+/**
+ * Named alias for [GlassConfirmDialog], matching the ALERT category name used across Operación
+ * Aniversario's popup taxonomy (ALERT/SHEET/POPOVER - see docs/OPERATION_ANNIVERSARY_STATUS.md).
+ * [GlassConfirmDialog] already was the ALERT implementation (confirmed by the popup inventory as
+ * "the one component that already best fits its category" before this alias existed) - this adds
+ * the expected name without a second implementation to keep in sync.
+ */
+@Composable
+fun GlassAlert(
+    visible: Boolean,
+    title: String,
+    message: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    confirmText: String = "Confirmar",
+    cancelText: String = "Cancelar",
+    confirmTint: Color = GlassTheme.tokens.error,
+    confirmTextColor: Color = GlassTheme.tokens.onError,
+    icon: ImageVector? = null,
+) {
+    GlassConfirmDialog(
+        visible = visible,
+        title = title,
+        message = message,
+        onConfirm = onConfirm,
+        onDismiss = onDismiss,
+        confirmText = confirmText,
+        cancelText = cancelText,
+        confirmTint = confirmTint,
+        confirmTextColor = confirmTextColor,
+        icon = icon,
+    )
 }
 
 @Composable

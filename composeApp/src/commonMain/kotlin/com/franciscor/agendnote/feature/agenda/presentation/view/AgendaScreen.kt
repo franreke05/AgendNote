@@ -50,12 +50,34 @@ fun AgendaScreen(
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var showTaskSheet by rememberSaveable { mutableStateOf(false) }
     var showSmartLists by rememberSaveable { mutableStateOf(false) }
+    var showCalendarPopover by rememberSaveable { mutableStateOf(false) }
     var pendingDeleteTaskId by rememberSaveable { mutableStateOf<String?>(null) }
     var showTaskDetailsTaskId by rememberSaveable { mutableStateOf<String?>(null) }
+    // Same "store the id, look it up in sourceTasks" pattern as showTaskDetailsTaskId/
+    // pendingDeleteTaskId above: it stays correct if the task's data changes underneath (e.g. a
+    // toggle-done elsewhere) instead of freezing a stale snapshot. "Editar" is only reachable
+    // from a task already in sourceTasks (the selected day), so its original date is always
+    // selectedDate at lookup time.
+    var editingTaskId by rememberSaveable { mutableStateOf<String?>(null) }
     val pendingDelete = pendingDeleteTaskId?.let { id ->
         sourceTasks.find { it.id == id }?.let { task -> PendingDelete(selectedDate, task) }
     }
     val showTaskDetails = showTaskDetailsTaskId?.let { id -> sourceTasks.find { it.id == id } }
+    // Bug 3 fix: snapshot the task being edited at the moment the sheet opens (keyed only on
+    // editingTaskId, not on sourceTasks) instead of re-resolving it against sourceTasks on every
+    // recomposition. sourceTasks can change while the sheet is open for reasons unrelated to this
+    // task (a background refresh, another device's edit, a toggle-done elsewhere) - re-resolving
+    // on every change meant the task briefly not being in the newly-fetched list (or the day's
+    // cache reloading) closed the sheet out from under the user with no warning and no chance to
+    // keep what they had typed.
+    val editingTask = remember(editingTaskId) {
+        editingTaskId?.let { id -> sourceTasks.find { it.id == id } }
+    }
+    val taskSheetMode = when {
+        editingTask != null -> TaskSheetMode.Edit(editingTask, selectedDate)
+        showTaskSheet -> TaskSheetMode.Create(selectedDate)
+        else -> null
+    }
     LaunchedEffect(Unit) {
         controller.handleAsync(AgendaAction.RefreshSelectedDate)
     }
@@ -91,6 +113,10 @@ fun AgendaScreen(
                     controller.handleAsync(AgendaAction.LoadMonth(currentMonth))
                     controller.handleAsync(AgendaAction.LoadMonth(currentMonth.plus(1, DateTimeUnit.MONTH)))
                     showSmartLists = true
+                },
+                onOpenCalendar = {
+                    controller.handleAsync(AgendaAction.LoadMonth(uiState.visibleMonth))
+                    showCalendarPopover = true
                 },
             )
 
@@ -130,7 +156,7 @@ fun AgendaScreen(
             )
         }
 
-        if (!showTaskSheet && showTaskDetails == null) {
+        if (!showTaskSheet && showTaskDetails == null && editingTask == null) {
             FloatingAddButton(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
@@ -143,19 +169,26 @@ fun AgendaScreen(
             )
         }
 
-        if (showTaskSheet) {
+        taskSheetMode?.let { mode ->
             NewTaskSheet(
-                date = selectedDate,
+                mode = mode,
                 labels = labels,
                 onCreateLabel = onCreateLabel,
                 templates = templates,
                 onSaveTemplate = onSaveTemplate,
-                onDismiss = { showTaskSheet = false },
+                onDismiss = {
+                    showTaskSheet = false
+                    editingTaskId = null
+                },
                 onSave = { targetDate, draft, onResult ->
                     controller.saveTaskAsync(targetDate, draft, onResult)
                 },
                 onSaveRecurring = { targetDate, draft, rule, end, onResult ->
                     controller.saveRecurringTaskAsync(targetDate, draft, rule, end, onResult)
+                },
+                onSaveEdit = { id, targetDate, draft, remindersTouched, onResult ->
+                    val originalDate = (mode as? TaskSheetMode.Edit)?.originalDate ?: selectedDate
+                    controller.updateTaskAsync(originalDate, id, targetDate, draft, remindersTouched, onResult)
                 },
             )
         }
@@ -183,6 +216,24 @@ fun AgendaScreen(
                     showTaskDetailsTaskId = null
                     pendingDeleteTaskId = task.id
                 },
+                onRequestEdit = {
+                    showTaskDetailsTaskId = null
+                    editingTaskId = task.id
+                },
+            )
+        }
+
+        if (showCalendarPopover) {
+            CalendarPopover(
+                selectedDate = selectedDate,
+                visibleMonth = uiState.visibleMonth,
+                tasksByDate = uiState.tasksByDate,
+                isLoading = uiState.isMonthLoading,
+                errorMessage = uiState.monthErrorMessage,
+                onSelectDate = { date -> controller.handleAsync(AgendaAction.SelectDate(date)) },
+                onVisibleMonthChange = { month -> controller.handleAsync(AgendaAction.LoadMonth(month)) },
+                onRetry = { controller.handleAsync(AgendaAction.LoadMonth(uiState.visibleMonth)) },
+                onDismiss = { showCalendarPopover = false },
             )
         }
 

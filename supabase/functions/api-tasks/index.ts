@@ -6,7 +6,7 @@ import { requireAppSecret } from "../_shared/auth.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("SB_URL");
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SERVICE_ROLE_KEY");
-const TASK_SELECT = "id,title,body,day,due_at,slot_end_at,deadline_at,is_done,order_index,created_at,updated_at,notified_at,source,booking_status,appointment_id,client_name,client_email,client_phone,series_id";
+const TASK_SELECT = "id,title,body,day,due_at,slot_end_at,deadline_at,is_done,order_index,created_at,updated_at,notified_at,series_id";
 const DEFAULT_LABEL_COLOR = "#8C94A6";
 
 if (!supabaseUrl || !serviceKey) {
@@ -64,16 +64,7 @@ function normalizeStringArray(value: unknown) {
   return normalized;
 }
 
-function resolveSource(body: Record<string, unknown>, appointmentId: string | null) {
-  if (hasField(body, "source")) {
-    return normalizeOptionalString(body.source) ?? "manual";
-  }
-  if (appointmentId) return "portfolio_booking";
-  return null;
-}
-
 function buildInsertPayload(body: Record<string, unknown>) {
-  const appointmentId = normalizeOptionalString(body.appointment_id);
   return {
     title: normalizeRequiredString(body.title, "title"),
     body: normalizeOptionalString(body.body),
@@ -83,19 +74,12 @@ function buildInsertPayload(body: Record<string, unknown>) {
     deadline_at: normalizeOptionalString(body.deadline_at),
     is_done: Boolean(body.is_done ?? false),
     order_index: Number(body.order_index ?? 0),
-    source: resolveSource(body, appointmentId) ?? "manual",
-    booking_status: normalizeOptionalString(body.booking_status),
-    appointment_id: appointmentId,
-    client_name: normalizeOptionalString(body.client_name),
-    client_email: normalizeOptionalString(body.client_email),
-    client_phone: normalizeOptionalString(body.client_phone),
     series_id: normalizeOptionalString(body.series_id),
   };
 }
 
-function buildUpdatePayload(body: Record<string, unknown>, options: { inferBookingSource?: boolean } = {}) {
+function buildUpdatePayload(body: Record<string, unknown>) {
   const updates: Record<string, unknown> = {};
-  const appointmentId = normalizeOptionalString(body.appointment_id);
 
   if (hasField(body, "title")) {
     updates.title = normalizeRequiredString(body.title, "title");
@@ -122,26 +106,6 @@ function buildUpdatePayload(body: Record<string, unknown>, options: { inferBooki
   }
   if (hasField(body, "order_index")) {
     updates.order_index = Number(body.order_index);
-  }
-  if (hasField(body, "source")) {
-    updates.source = resolveSource(body, appointmentId) ?? "manual";
-  } else if (options.inferBookingSource && appointmentId) {
-    updates.source = "portfolio_booking";
-  }
-  if (hasField(body, "booking_status")) {
-    updates.booking_status = normalizeOptionalString(body.booking_status);
-  }
-  if (hasField(body, "appointment_id")) {
-    updates.appointment_id = appointmentId;
-  }
-  if (hasField(body, "client_name")) {
-    updates.client_name = normalizeOptionalString(body.client_name);
-  }
-  if (hasField(body, "client_email")) {
-    updates.client_email = normalizeOptionalString(body.client_email);
-  }
-  if (hasField(body, "client_phone")) {
-    updates.client_phone = normalizeOptionalString(body.client_phone);
   }
 
   return updates;
@@ -233,17 +197,6 @@ async function attachTaskExtras(tasks: Array<Record<string, unknown>>) {
   const withLabels = await attachLabels(tasks);
   const withReminders = await attachReminders(withLabels);
   return attachSubtasks(withReminders);
-}
-
-async function fetchTaskByAppointmentId(appointmentId: string) {
-  const { data, error } = await supabase
-    .from("tasks")
-    .select(TASK_SELECT)
-    .eq("appointment_id", appointmentId)
-    .maybeSingle();
-
-  if (error) throw new Error(error.message);
-  return data as Record<string, unknown> | null;
 }
 
 async function fetchTaskById(taskId: string) {
@@ -446,37 +399,9 @@ serve(async (req) => {
       const body = await req.json();
       normalizeRequiredString(body?.title, "title");
       normalizeRequiredDay(body?.day);
-      const appointmentId = normalizeOptionalString(body?.appointment_id);
       const hasLabelSync = hasField(body, "label_ids") || hasField(body, "label_names");
       const hasReminderSync = hasField(body, "reminders");
       const hasSubtaskSync = hasField(body, "subtasks");
-
-      if (appointmentId) {
-        const existingTask = await fetchTaskByAppointmentId(appointmentId);
-        if (existingTask) {
-          const updates = buildUpdatePayload(body, { inferBookingSource: true });
-          const { data, error } = await supabase
-            .from("tasks")
-            .update(updates)
-            .eq("id", String(existingTask.id))
-            .select(TASK_SELECT)
-            .single();
-
-          if (error) return internalErrorResponse(error);
-          if (hasLabelSync) {
-            await syncTaskLabels(String(existingTask.id), body?.label_ids, body?.label_names);
-          }
-          if (hasReminderSync) {
-            await syncTaskReminders(String(existingTask.id), body?.reminders);
-          }
-          if (hasSubtaskSync) {
-            await syncTaskSubtasks(String(existingTask.id), body?.subtasks);
-          }
-
-          const tasksWithExtras = await attachTaskExtras([data as Record<string, unknown>]);
-          return jsonResponse({ task: tasksWithExtras[0] });
-        }
-      }
 
       const insertPayload = buildInsertPayload(body);
       const { data, error } = await supabase
@@ -502,14 +427,7 @@ serve(async (req) => {
 
     if (req.method === "PATCH") {
       const body = await req.json();
-      let taskId = normalizeOptionalString(body?.id);
-      if (!taskId) {
-        const appointmentId = normalizeOptionalString(body?.appointment_id);
-        if (appointmentId) {
-          const existingTask = await fetchTaskByAppointmentId(appointmentId);
-          taskId = existingTask ? String(existingTask.id) : null;
-        }
-      }
+      const taskId = normalizeOptionalString(body?.id);
       if (!taskId) return errorResponse("id is required", 400);
 
       const updates = buildUpdatePayload(body);

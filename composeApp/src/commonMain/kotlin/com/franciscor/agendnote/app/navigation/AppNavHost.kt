@@ -47,7 +47,7 @@ import com.franciscor.agendnote.feature.agenda.domain.buildTaskExportJson
 import com.franciscor.agendnote.feature.agenda.presentation.controller.AgendaController
 import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaAction
 import com.franciscor.agendnote.feature.agenda.presentation.view.AgendaScreen
-import com.franciscor.agendnote.feature.agenda.presentation.view.CalendarScreen
+import com.franciscor.agendnote.feature.agenda.presentation.view.DayScreen
 import com.franciscor.agendnote.feature.agenda.presentation.viewmodel.AgendaViewModel
 import com.franciscor.agendnote.feature.labels.presentation.controller.LabelsController
 import com.franciscor.agendnote.feature.labels.presentation.model.LabelsAction
@@ -229,11 +229,14 @@ fun AppNavHost(
                                 onSaveTemplate = { template -> saveTaskTemplate(template) },
                             )
                         }
-                        composable(AppRoute.Calendar.route) {
-                            CalendarRoute(
+                        composable(AppRoute.Day.route) {
+                            DayRoute(
                                 agendaViewModel = agendaViewModel,
                                 agendaController = agendaController,
-                                onNavigateToAgenda = { navigateToMainTab(MainTab.AGENDA) },
+                                labelsViewModel = labelsViewModel,
+                                labelsController = labelsController,
+                                templates = taskTemplates,
+                                onSaveTemplate = { template -> saveTaskTemplate(template) },
                             )
                         }
                         composable(AppRoute.Labels.route) {
@@ -384,15 +387,23 @@ private fun AgendaRoute(
 }
 
 @Composable
-private fun CalendarRoute(
+private fun DayRoute(
     agendaViewModel: AgendaViewModel,
     agendaController: AgendaController,
-    onNavigateToAgenda: () -> Unit,
+    labelsViewModel: LabelsViewModel,
+    labelsController: LabelsController,
+    templates: List<TaskTemplate>,
+    onSaveTemplate: suspend (TaskTemplate) -> Boolean,
 ) {
-    CalendarScreen(
+    DayScreen(
         viewModel = agendaViewModel,
         controller = agendaController,
-        onOpenInAgenda = onNavigateToAgenda,
+        labels = labelsViewModel.uiState.labels,
+        onCreateLabel = { name, colorHex ->
+            labelsController.createLabel(name, colorHex)
+        },
+        templates = templates,
+        onSaveTemplate = onSaveTemplate,
         modifier = Modifier.fillMaxSize(),
     )
 }

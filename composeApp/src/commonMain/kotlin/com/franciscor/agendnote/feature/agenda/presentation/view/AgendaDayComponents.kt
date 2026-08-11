@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.ChevronLeft
@@ -49,10 +51,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -80,6 +85,13 @@ internal fun AgendaHeader(
     onPreviousDay: () -> Unit,
     onNextDay: () -> Unit,
     onOpenSmartLists: () -> Unit = {},
+    // Operación Aniversario: the month calendar moved out of its own tab into a popover reached
+    // from here (see AgendaScreen's showCalendarPopover) - see docs/OPERATION_ANNIVERSARY_STATUS.md.
+    // TEMPORARY: this makes 4 icon buttons in one row, which the operation's own brief calls out
+    // as exactly what to avoid ("no mantengas tres icon buttons idénticos compitiendo"). Left as
+    // a functional-only placeholder pending the BATCH B visual pass once Glass design tokens land
+    // - documented here so it isn't mistaken for the intended final layout.
+    onOpenCalendar: () -> Unit = {},
 ) {
     val layout = AppLayout.metrics
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -101,6 +113,11 @@ internal fun AgendaHeader(
                     icon = Icons.Rounded.Checklist,
                     contentDescription = "Listas inteligentes",
                     onClick = onOpenSmartLists,
+                )
+                GlassIconButton(
+                    icon = Icons.Rounded.CalendarMonth,
+                    contentDescription = "Ver mes",
+                    onClick = onOpenCalendar,
                 )
                 GlassIconButton(
                     icon = Icons.Rounded.ChevronLeft,
@@ -289,8 +306,13 @@ private fun SwipeableTaskCard(
 ) {
     val layout = AppLayout.metrics
     val density = LocalDensity.current
+    val haptics = LocalHapticFeedback.current
     val maxOffset = with(density) { layout.width(108.dp, 88.dp).toPx() }
     val threshold = with(density) { layout.width(72.dp, 60.dp).toPx() }
+    // Same edge guard already used for the calendar month swipe (DatePickerOverlay) - a drag
+    // starting right at the screen edge (cards sit close to it, see AppNavHost's 4dp content
+    // margin) should not trigger complete/delete unintentionally.
+    val swipeEdgeGuard = layout.width(24.dp, 18.dp)
     var offsetX by remember { mutableStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
     var isPerformingAction by remember { mutableStateOf(false) }
@@ -310,14 +332,19 @@ private fun SwipeableTaskCard(
     val swipeModifier = if (isEditingEnabled) {
         Modifier.pointerInput(task.id, isPerformingAction) {
             if (isPerformingAction) return@pointerInput
+            val edgePx = swipeEdgeGuard.toPx()
+            var allowSwipe = true
             detectHorizontalDragGestures(
+                onDragStart = { offset ->
+                    allowSwipe = offset.x in edgePx..(size.width - edgePx)
+                },
                 onHorizontalDrag = { _, dragAmount ->
-                    if (isPerformingAction) return@detectHorizontalDragGestures
+                    if (isPerformingAction || !allowSwipe) return@detectHorizontalDragGestures
                     isDragging = true
                     offsetX = (offsetX + dragAmount).coerceIn(-maxOffset, maxOffset)
                 },
                 onDragEnd = {
-                    if (isPerformingAction) return@detectHorizontalDragGestures
+                    if (isPerformingAction || !allowSwipe) return@detectHorizontalDragGestures
                     isDragging = false
                     when {
                         offsetX > threshold -> {
@@ -326,6 +353,7 @@ private fun SwipeableTaskCard(
                             } else {
                                 offsetX = maxOffset
                                 isPerformingAction = true
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                 onToggleDone(true)
                                 isPerformingAction = false
                                 offsetX = 0f
@@ -334,6 +362,7 @@ private fun SwipeableTaskCard(
 
                         offsetX < -threshold -> {
                             offsetX = 0f
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             onRequestDelete()
                         }
 
@@ -440,6 +469,16 @@ private fun TaskCard(
 ) {
     val layout = AppLayout.metrics
     val alpha = if (task.isDone) 0.6f else 1f
+    // Merges the card's scattered child nodes (time chip, label chips, title, details) into one
+    // VoiceOver/TalkBack stop with a coherent description, instead of reading each fragment
+    // separately. TaskCardActions' own clickables (complete/delete) surface as accessibility
+    // custom actions on this merged node rather than disappearing - the standard Compose pattern
+    // for a row with a primary tap target plus secondary actions.
+    val accessibilityDescription = buildString {
+        append(task.title)
+        task.time?.let { append(", ${formatTime(it)}") }
+        if (task.isDone) append(", completada")
+    }
 
     GlassSurface(
         modifier = modifier
@@ -450,7 +489,10 @@ private fun TaskCard(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onTaskSelected,
-            ),
+            )
+            .semantics(mergeDescendants = true) {
+                contentDescription = accessibilityDescription
+            },
         shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
     ) {
         Column(
@@ -559,6 +601,7 @@ private fun TaskCardActions(
     onRequestDelete: () -> Unit,
 ) {
     val layout = AppLayout.metrics
+    val haptics = LocalHapticFeedback.current
     // REVIEW: icon controls were below the mobile accessibility minimum; completion and
     // destructive actions now expose a full 48 dp touch target.
     val controlSize = 48.dp
@@ -576,7 +619,15 @@ private fun TaskCardActions(
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = { onToggleDone(!isDone) },
+                    onClick = {
+                        // Only HapticFeedbackType.LongPress is confirmed bridged to iOS's
+                        // UIFeedbackGenerator by Compose Multiplatform as of this project's
+                        // version (see docs/OPERATION_ANNIVERSARY_STATUS.md) - using it uniformly
+                        // for both actions here rather than guessing at differentiated
+                        // intensity types that can't be verified without a device.
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onToggleDone(!isDone)
+                    },
                 ),
             contentAlignment = Alignment.Center,
         ) {
@@ -595,7 +646,10 @@ private fun TaskCardActions(
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = onRequestDelete,
+                    onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onRequestDelete()
+                    },
                 ),
             contentAlignment = Alignment.Center,
         ) {
@@ -673,27 +727,47 @@ internal fun FloatingAddButton(
     onClick: () -> Unit,
 ) {
     val layout = AppLayout.metrics
-    val tint = if (enabled) GlassTheme.tokens.glassFillStrong else GlassTheme.tokens.glassFill
-    val iconTint = if (enabled) GlassTheme.tokens.textPrimary else GlassTheme.tokens.textSecondary
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    // Operación Aniversario, prioridad P0 visual explícita: el FAB es la acción primaria de
+    // toda la app y hasta ahora era un círculo blanco plano indistinguible de un botón
+    // secundario. Pasa a cristal translúcido con tinte coral (en vez de glassFillStrong neutro)
+    // + borde + un ligero press-scale - ver el contrato de tokens Glass en
+    // docs/OPERATION_ANNIVERSARY_STATUS.md (GlassFloatingActionButton).
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.94f else 1f,
+        animationSpec = tween(durationMillis = 100),
+        label = "fabPressScale",
+    )
+    val tint = when {
+        !enabled -> GlassTheme.tokens.glassFill
+        isPressed -> GlassTheme.tokens.accent.copy(alpha = 0.34f)
+        else -> GlassTheme.tokens.accent.copy(alpha = 0.22f)
+    }
+    val strokeColor = if (enabled) {
+        GlassTheme.tokens.accentOnLight.copy(alpha = 0.45f)
+    } else {
+        GlassTheme.tokens.glassStroke
+    }
+    val iconTint = if (enabled) GlassTheme.tokens.accentOnLight else GlassTheme.tokens.textSecondary
     GlassSurface(
         modifier = modifier
             .size(layout.size(64.dp, 58.dp))
+            .scale(scale)
             .clip(CircleShape)
             .clickable(
                 enabled = enabled,
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick,
             ),
         shape = CircleShape,
         tint = tint,
-        shadowElevation = 12.dp,
+        strokeColor = strokeColor,
+        shadowElevation = 14.dp,
     ) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(CircleShape)
-                .background(tint),
+            modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center,
         ) {
             Icon(

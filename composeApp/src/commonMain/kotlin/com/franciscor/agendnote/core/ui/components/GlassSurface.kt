@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.franciscor.agendnote.core.ui.layout.AppLayout
+import com.franciscor.agendnote.core.ui.theme.GlassElevation
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
 
 @Composable
@@ -92,7 +93,7 @@ fun GlassIconButton(
         shape = CircleShape,
         tint = GlassTheme.tokens.glassFillStrong,
         strokeColor = GlassTheme.tokens.glassStroke,
-        shadowElevation = 6.dp,
+        shadowElevation = GlassElevation.floating,
     ) {
         Box(
             modifier = Modifier.fillMaxSize(),

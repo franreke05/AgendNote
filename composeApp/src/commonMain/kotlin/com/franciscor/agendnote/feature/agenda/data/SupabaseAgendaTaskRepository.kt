@@ -52,6 +52,10 @@ class SupabaseAgendaTaskRepository(
         return api.createTask(request).toTaskItem(timeZone)
     }
 
+    override suspend fun updateTask(id: String, date: LocalDate, draft: TaskDraft, remindersTouched: Boolean): TaskItem {
+        return api.updateTask(draft.toUpdateTaskRequest(id, date, timeZone, remindersTouched)).toTaskItem(timeZone)
+    }
+
     override suspend fun updateTaskDone(id: String, isDone: Boolean): TaskItem {
         val request = UpdateTaskRequest(
             id = id,
@@ -63,6 +67,49 @@ class SupabaseAgendaTaskRepository(
     override suspend fun deleteTask(id: String): Boolean = api.deleteTask(id)
 
     override suspend fun deleteAllTasks(): Boolean = api.deleteAllTasks()
+}
+
+/**
+ * Internal (not private) so [SupabaseAgendaTaskRepositoryMappingTest] can exercise it directly.
+ *
+ * Optional fields ([body], [due_at], [deadline_at]) are always sent as `""` rather than omitted
+ * when the draft has no value, never as `null`: the Ktor client's `Json` has `explicitNulls =
+ * false`, so a `null` field is dropped from the JSON entirely, and the Edge Function
+ * (`buildUpdatePayload` in supabase/functions/api-tasks/index.ts) only touches a column when its
+ * key is present in the body - an omitted key never clears the column. `""` travels as a present
+ * key and `normalizeOptionalString` on the server turns it back into `null` there.
+ *
+ * [reminders] is the one exception to that "always present" rule, on purpose. The edit sheet
+ * prefills [selectedReminderOffsetMinutes] from a heuristic match against the task's already-saved
+ * reminder instants (see `AgendaOverlays.kt`'s `LaunchedEffect(mode)`), which can legitimately fail
+ * to reconstruct the original selection (device timezone changed between edits, reminders that
+ * were never one of the four presets, etc.). If that happens and this function still sent
+ * `reminders = draft.reminders.map { ... }` unconditionally, an edit where the user never opened
+ * "Recordatorios" would submit a `reminders` key backed by an incomplete/empty reconstruction, and
+ * the Edge Function's `hasField(body, "reminders")` check would then wipe the task's real
+ * reminders - a silent, permanent data loss reported to the user as a successful save. So
+ * `reminders` is only ever included when [remindersTouched] says the user actually interacted with
+ * that section this session; otherwise it is left `null`/omitted so the server-side `hasField`
+ * check never sees the key and the column is left untouched.
+ */
+internal fun TaskDraft.toUpdateTaskRequest(
+    id: String,
+    date: LocalDate,
+    timeZone: TimeZone,
+    remindersTouched: Boolean,
+): UpdateTaskRequest {
+    val dueAt = time?.let { LocalDateTime(date, it).toInstant(timeZone).toString() } ?: ""
+    return UpdateTaskRequest(
+        id = id,
+        title = title,
+        body = details ?: "",
+        day = date.toString(),
+        due_at = dueAt,
+        deadline_at = deadline?.toString() ?: "",
+        label_ids = labels.map { it.id },
+        reminders = if (remindersTouched) reminders.map { it.toString() } else null,
+        subtasks = subtasks.mapIndexed { index, subtask -> subtask.toSubtaskDto().copy(order_index = index) },
+    )
 }
 
 /** Internal (not private) so [SupabaseAgendaTaskRepositoryMappingTest] can exercise it directly. */

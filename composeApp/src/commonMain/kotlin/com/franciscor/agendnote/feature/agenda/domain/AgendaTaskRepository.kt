@@ -11,6 +11,14 @@ interface AgendaTaskRepository {
 
     suspend fun createTask(date: LocalDate, draft: TaskDraft): TaskItem
 
+    /**
+     * [remindersTouched] indicates whether the user actively interacted with the "Recordatorios"
+     * section during this edit session. When `false`, implementations must leave the task's
+     * existing reminders untouched on the server rather than overwriting them with whatever the
+     * UI happened to prefill (see [com.franciscor.agendnote.feature.agenda.data.toUpdateTaskRequest]).
+     */
+    suspend fun updateTask(id: String, date: LocalDate, draft: TaskDraft, remindersTouched: Boolean): TaskItem
+
     suspend fun updateTaskDone(id: String, isDone: Boolean): TaskItem
 
     suspend fun deleteTask(id: String): Boolean

@@ -23,12 +23,6 @@ create table if not exists tasks (
   notified_at timestamptz,
   is_done boolean not null default false,
   order_index integer not null default 0,
-  source text not null default 'manual',
-  booking_status text,
-  appointment_id text,
-  client_name text,
-  client_email text,
-  client_phone text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -102,44 +96,10 @@ begin
   end if;
 end $$;
 
+-- Kept as an additive, idempotent statement (not folded into the CREATE TABLE above) for
+-- deployments that already had `tasks` before `slot_end_at` existed - same pattern the booking
+-- columns used to follow here before they were removed (2026-08-11, see
+-- supabase/migrations/20260811_remove_booking_portfolio_system.sql for the cleanup migration
+-- that drops them from an already-deployed database; this file only describes a fresh setup).
 alter table if exists tasks
-  add column if not exists source text not null default 'manual',
-  add column if not exists booking_status text,
-  add column if not exists client_name text,
-  add column if not exists client_email text,
-  add column if not exists client_phone text,
   add column if not exists slot_end_at timestamptz;
-
-do $$
-declare
-  appointment_id_type text;
-begin
-  if not exists (
-    select 1
-    from information_schema.tables
-    where table_schema = 'public'
-      and table_name = 'tasks'
-  ) then
-    return;
-  end if;
-
-  select c.data_type
-    into appointment_id_type
-  from information_schema.columns c
-  where c.table_schema = 'public'
-    and c.table_name = 'tasks'
-    and c.column_name = 'appointment_id';
-
-  if appointment_id_type is null then
-    alter table tasks add column appointment_id text;
-  elsif appointment_id_type <> 'text' then
-    drop index if exists idx_tasks_appointment_id;
-    alter table tasks
-      alter column appointment_id type text
-      using appointment_id::text;
-  end if;
-end $$;
-
-create unique index if not exists idx_tasks_appointment_id
-  on tasks(appointment_id)
-  where appointment_id is not null;

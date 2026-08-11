@@ -1,5 +1,6 @@
 package com.franciscor.agendnote.feature.agenda.presentation.view
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,8 +24,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -38,7 +39,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CalendarToday
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.DateRange
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.EventAvailable
+import androidx.compose.material.icons.rounded.HourglassEmpty
+import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -68,8 +75,6 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.franciscor.agendnote.core.model.LabelTag
 import com.franciscor.agendnote.core.model.Subtask
 import com.franciscor.agendnote.core.model.TaskDraft
@@ -83,12 +88,16 @@ import com.franciscor.agendnote.core.ui.components.GlassActionButton
 import com.franciscor.agendnote.core.ui.components.GlassConfirmDialog
 import com.franciscor.agendnote.core.ui.components.GlassEmptyState
 import com.franciscor.agendnote.core.ui.components.GlassIconButton
+import com.franciscor.agendnote.core.ui.components.GlassPopover
+import com.franciscor.agendnote.core.ui.components.GlassSheetScaffold
 import com.franciscor.agendnote.core.ui.components.GlassSurface
 import com.franciscor.agendnote.core.ui.components.GlassTextField
 import com.franciscor.agendnote.core.ui.components.colorFromHex
 import com.franciscor.agendnote.core.ui.components.labelColorPalette
 import com.franciscor.agendnote.core.ui.components.labelColorName
 import com.franciscor.agendnote.core.ui.layout.AppLayout
+import com.franciscor.agendnote.core.ui.theme.GlassElevation
+import com.franciscor.agendnote.core.ui.theme.GlassRadius
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
 import com.franciscor.agendnote.feature.agenda.domain.RecurrenceEnd
 import com.franciscor.agendnote.feature.agenda.domain.RecurrenceRule
@@ -147,6 +156,22 @@ private val SMART_LIST_LABELS: List<Pair<SmartList, String>> = listOf(
  * no es una consulta al backend, así que una tarea en un mes nunca visitado no aparece aquí
  * todavía).
  */
+private val SMART_LIST_ICONS: Map<SmartList, androidx.compose.ui.graphics.vector.ImageVector> = mapOf(
+    SmartList.Overdue to Icons.Rounded.ErrorOutline,
+    SmartList.Next7Days to Icons.Rounded.DateRange,
+    SmartList.WithoutTime to Icons.Rounded.HourglassEmpty,
+    SmartList.WithReminder to Icons.Rounded.NotificationsActive,
+    SmartList.Recurring to Icons.Rounded.Repeat,
+)
+
+/**
+ * Rediseño Operación Aniversario (P0 explícito del usuario - "el componente visual más débil de
+ * la app"): pasa de un `Dialog` centrado con un botón "Cerrar" protagonista a una sheet Glass de
+ * altura parcial anclada abajo, con grabber, esquinas solo superiores, y dos niveles - resumen
+ * (5 filas con icono + conteo) y drill-down a la lista de tareas de la categoría elegida.
+ * Contrato público sin cambios: [tasksByDate]/[today]/[onSelectDate]/[onDismiss] son los mismos
+ * de antes, así que el único llamador (`AgendaScreen.kt`) no necesita tocarse.
+ */
 @Composable
 internal fun SmartListsOverlay(
     tasksByDate: Map<LocalDate, List<TaskItem>>,
@@ -155,67 +180,116 @@ internal fun SmartListsOverlay(
     onDismiss: () -> Unit,
 ) {
     val layout = AppLayout.metrics
-    var selectedList by remember { mutableStateOf(SmartList.Overdue) }
-    val results = remember(selectedList, tasksByDate, today) {
-        smartListTasks(selectedList, tasksByDate, today)
+    var drilldownList by remember { mutableStateOf<SmartList?>(null) }
+    val counts = remember(tasksByDate, today) {
+        SmartList.entries.associateWith { smartListTasks(it, tasksByDate, today).size }
+    }
+    val results = remember(drilldownList, tasksByDate, today) {
+        drilldownList?.let { smartListTasks(it, tasksByDate, today) }.orEmpty()
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+    // Design System Freeze V1: chrome (Dialog/scrim/shape/grabber/drag-to-dismiss) now comes from
+    // the shared GlassSheetScaffold instead of a hand-rolled Dialog+scrim+GlassSurface - only the
+    // two-level content (summary <-> drill-down) below is specific to this overlay.
+    GlassSheetScaffold(
+        onDismiss = onDismiss,
+        maxHeightFraction = 0.82f,
     ) {
-        Box(modifier = Modifier.fillMaxSize().safeContentPadding()) {
-            Box(
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(layout.height(10.dp, 8.dp)),
+        ) {
+            Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(GlassTheme.tokens.scrim)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onDismiss,
-                    ),
-            )
-
-            GlassSurface(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(horizontal = layout.width(18.dp, 16.dp))
                     .fillMaxWidth()
-                    .heightIn(max = layout.height(560.dp, 520.dp)),
-                shape = RoundedCornerShape(layout.size(28.dp, 24.dp)),
-                tint = GlassTheme.tokens.modalFill,
+                    .padding(horizontal = layout.width(18.dp, 16.dp)),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(
-                    modifier = Modifier
-                        .padding(layout.size(18.dp, 16.dp))
-                        .fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 4.dp)),
                 ) {
-                    Text(
-                        text = "Listas inteligentes",
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontSize = layout.text(22.sp, 20.sp),
-                        ),
-                        color = GlassTheme.tokens.textPrimary,
-                    )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .selectableGroup()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 5.dp)),
-                    ) {
-                        SMART_LIST_LABELS.forEach { (list, label) ->
-                            RecurrenceOptionChip(
-                                text = label,
-                                selected = selectedList == list,
-                                onClick = { selectedList = list },
+                    if (drilldownList != null) {
+                        Box(
+                            modifier = Modifier
+                                .defaultMinSize(minWidth = 44.dp, minHeight = 44.dp)
+                                .clip(CircleShape)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = { drilldownList = null },
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.ChevronLeft,
+                                contentDescription = "Volver a listas inteligentes",
+                                tint = GlassTheme.tokens.textPrimary,
                             )
                         }
                     }
-                    Box(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = drilldownList?.let { SMART_LIST_LABELS.first { (l, _) -> l == it }.second }
+                            ?: "Listas inteligentes",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontSize = layout.text(20.sp, 18.sp),
+                        ),
+                        color = GlassTheme.tokens.textPrimary,
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                        .clip(CircleShape)
+                        .clickable(
+                            role = Role.Button,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onDismiss,
+                        )
+                        .semantics { contentDescription = "Cerrar listas inteligentes" },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = null,
+                        tint = GlassTheme.tokens.textSecondary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+
+            Crossfade(targetState = drilldownList, label = "smartListsLevel") { current ->
+                if (current == null) {
+                    Column(
+                        modifier = Modifier
+                            .padding(
+                                horizontal = layout.width(18.dp, 16.dp),
+                                vertical = layout.height(4.dp, 4.dp),
+                            )
+                            .padding(bottom = layout.height(16.dp, 14.dp)),
+                        verticalArrangement = Arrangement.spacedBy(layout.height(8.dp, 6.dp)),
+                    ) {
+                        SMART_LIST_LABELS.forEach { (list, label) ->
+                            SmartListSummaryRow(
+                                label = label,
+                                icon = SMART_LIST_ICONS.getValue(list),
+                                count = counts[list] ?: 0,
+                                isUrgent = list == SmartList.Overdue,
+                                onClick = { drilldownList = list },
+                            )
+                        }
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = layout.width(18.dp, 16.dp))
+                            .padding(bottom = layout.height(16.dp, 14.dp))
+                            .heightIn(min = layout.height(160.dp, 140.dp)),
+                    ) {
                         if (results.isEmpty()) {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                                 GlassEmptyState(
                                     icon = Icons.Rounded.EventAvailable,
                                     title = "Nada por aquí",
@@ -239,17 +313,90 @@ internal fun SmartListsOverlay(
                             }
                         }
                     }
-                    GlassActionButton(
-                        text = "Cerrar",
-                        tint = GlassTheme.tokens.glassFillStrong,
-                        textColor = GlassTheme.tokens.textPrimary,
-                        modifier = Modifier
-                            .align(Alignment.CenterHorizontally)
-                            .height(layout.height(48.dp, 46.dp)),
-                        onClick = onDismiss,
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SmartListSummaryRow(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    count: Int,
+    isUrgent: Boolean,
+    onClick: () -> Unit,
+) {
+    val layout = AppLayout.metrics
+    val hasItems = count > 0
+    GlassSurface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = layout.height(56.dp, 52.dp))
+            .alpha(if (hasItems) 1f else 0.55f)
+            .clickable(
+                role = Role.Button,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+        shape = RoundedCornerShape(GlassRadius.s()),
+        tint = GlassTheme.tokens.glassFill,
+        shadowElevation = GlassElevation.fused,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = layout.width(14.dp, 12.dp), vertical = layout.height(10.dp, 8.dp)),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(layout.size(32.dp, 28.dp))
+                    .clip(CircleShape)
+                    .background(GlassTheme.tokens.glassFillStrong),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = GlassTheme.tokens.textPrimary,
+                    modifier = Modifier.size(layout.size(16.dp, 14.dp)),
+                )
+            }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = GlassTheme.tokens.textPrimary,
+                modifier = Modifier.weight(1f),
+            )
+            if (hasItems) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(
+                            if (isUrgent) {
+                                GlassTheme.tokens.error.copy(alpha = 0.20f)
+                            } else {
+                                GlassTheme.tokens.glassFillStrong
+                            },
+                        )
+                        .padding(horizontal = layout.width(9.dp, 8.dp), vertical = layout.height(3.dp, 2.dp)),
+                ) {
+                    Text(
+                        text = count.toString(),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (isUrgent) GlassTheme.tokens.errorContent else GlassTheme.tokens.textPrimary,
                     )
                 }
             }
+            Icon(
+                imageVector = Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = GlassTheme.tokens.textSecondary,
+                modifier = Modifier.size(layout.size(18.dp, 16.dp)),
+            )
         }
     }
 }
@@ -315,20 +462,45 @@ private enum class RecurrenceEndOption {
     Never, OnDate, AfterOccurrences
 }
 
+/**
+ * Distinguishes "creating a brand-new task" from "editing one that already exists" for
+ * [NewTaskSheet]. Every branch below must switch on this sealed type explicitly - never infer
+ * edit-vs-create from whether a [TaskItem] happens to be null, so the creation flow can never be
+ * accidentally affected by edit-only logic.
+ */
+internal sealed interface TaskSheetMode {
+    data class Create(val date: LocalDate) : TaskSheetMode
+    data class Edit(val task: TaskItem, val originalDate: LocalDate) : TaskSheetMode
+}
+
+/**
+ * Local, UI-only mirror of a subtask being edited in the sheet. Unlike the plain
+ * `List<String>` this replaces, it keeps [isDone] so that editing an existing task's subtasks
+ * does not silently reset already-completed ones back to pending on save (see [TaskSheetMode.Edit]
+ * prefill below).
+ */
+private data class TaskSheetSubtask(val title: String, val isDone: Boolean = false)
+
 @Composable
 internal fun NewTaskSheet(
-    date: LocalDate,
+    mode: TaskSheetMode,
     labels: List<LabelTag>,
     onCreateLabel: suspend (String, String) -> LabelTag?,
     onDismiss: () -> Unit,
     onSave: (LocalDate, TaskDraft, (SaveResult) -> Unit) -> Unit,
     onSaveRecurring: (LocalDate, TaskDraft, RecurrenceRule, RecurrenceEnd, (SaveResult) -> Unit) -> Unit,
+    onSaveEdit: (String, LocalDate, TaskDraft, Boolean, (SaveResult) -> Unit) -> Unit = { _, _, _, _, _ -> },
     templates: List<TaskTemplate> = emptyList(),
     onSaveTemplate: suspend (TaskTemplate) -> Boolean = { false },
 ) {
     val layout = AppLayout.metrics
     val timeZone = remember { TimeZone.currentSystemDefault() }
     val today = remember { currentDate(timeZone) }
+    val date = when (mode) {
+        is TaskSheetMode.Create -> mode.date
+        is TaskSheetMode.Edit -> mode.originalDate
+    }
+    val editTask = (mode as? TaskSheetMode.Edit)?.task
     val palette = remember { labelColorPalette() }
     val usedColors = labels.map { it.colorHex.lowercase() }.toSet()
     val colorOptions = palette
@@ -336,20 +508,53 @@ internal fun NewTaskSheet(
         .distinct()
         .ifEmpty { palette.distinct() }
 
-    var title by remember { mutableStateOf("") }
-    var details by remember { mutableStateOf("") }
-    var selectedTime by remember { mutableStateOf<LocalTime?>(null) }
+    var title by remember(mode) { mutableStateOf(editTask?.title ?: "") }
+    var details by remember(mode) { mutableStateOf(editTask?.details ?: "") }
+    var selectedTime by remember(mode) { mutableStateOf(editTask?.time) }
     var errorText by remember { mutableStateOf<String?>(null) }
-    var selectedDate by remember(date, today) { mutableStateOf(if (date < today) today else date) }
+    // Editing never clamps to today: an already-overdue task must stay editable on its own date
+    // without the sheet silently moving it forward (see [TaskSheetMode.Edit] and the past-date
+    // validation below, which only blocks *actively* picking a different past date).
+    var selectedDate by remember(mode) {
+        mutableStateOf(
+            when (mode) {
+                is TaskSheetMode.Create -> if (mode.date < today) today else mode.date
+                is TaskSheetMode.Edit -> mode.originalDate
+            },
+        )
+    }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
-    var deadlineDate by remember { mutableStateOf<LocalDate?>(null) }
+    var deadlineDate by remember(mode) {
+        mutableStateOf(editTask?.deadline?.toLocalDateTime(timeZone)?.date)
+    }
     var showDeadlinePicker by remember { mutableStateOf(false) }
-    val selectedReminderOffsetMinutes = remember { mutableStateListOf<Long>() }
-    val subtaskTitles = remember { mutableStateListOf<String>() }
+    val selectedReminderOffsetMinutes = remember(mode) { mutableStateListOf<Long>() }
+    // Bug 1 fix: only true once the user actively taps a preset chip in the "Recordatorios"
+    // section below during *this* edit session - never set by the automatic prefill
+    // (LaunchedEffect(mode) further down) or by the create-mode preselect (LaunchedEffect
+    // (selectedTime), which only applies to TaskSheetMode.Create anyway). See onSaveEdit's call
+    // site for why this matters: the prefill heuristic can fail to reconstruct the saved
+    // reminders (timezone changes, reminders that were never one of the 4 presets, etc.), and if
+    // the request always sent `reminders`, saving an edit the user never touched that section on
+    // would silently wipe the task's real reminders on the server.
+    var remindersTouched by remember(mode) { mutableStateOf(false) }
+    // Preserves isDone on prefill (see TaskSheetSubtask) - ordered by orderIndex like
+    // TaskDetailsOverlay does, since the drafted list order becomes the new orderIndex on save.
+    val subtaskItems = remember(mode) {
+        mutableStateListOf<TaskSheetSubtask>().apply {
+            editTask?.subtasks?.sortedBy { it.orderIndex }?.forEach { subtask ->
+                add(TaskSheetSubtask(title = subtask.title, isDone = subtask.isDone))
+            }
+        }
+    }
     var newSubtaskTitle by remember { mutableStateOf("") }
     var isSavingTemplate by remember { mutableStateOf(false) }
-    val selectedLabelIds = remember { mutableStateListOf<String>() }
+    val selectedLabelIds = remember(mode) {
+        mutableStateListOf<String>().apply {
+            editTask?.labels?.forEach { add(it.id) }
+        }
+    }
     var newLabelName by remember { mutableStateOf("") }
     var isCreatingLabel by remember { mutableStateOf(false) }
     var selectedColor by remember { mutableStateOf(colorOptions.first()) }
@@ -374,8 +579,24 @@ internal fun NewTaskSheet(
         }
     }
 
-    val isPastSelected = selectedDate < today
+    // Creating is blocked on any past date. Editing only blocks *actively moving* the task to a
+    // different past date - a task that was already overdue on [originalDate] must stay
+    // editable without the sheet force-blocking the save just because nothing moved.
+    val isPastSelected = when (mode) {
+        is TaskSheetMode.Create -> selectedDate < today
+        is TaskSheetMode.Edit -> selectedDate < today && selectedDate != mode.originalDate
+    }
     val sheetBlur = if (showTimePicker) layout.size(14.dp, 10.dp) else 0.dp
+    val pastDateBannerText = if (mode is TaskSheetMode.Edit) {
+        "No se pueden mover tareas a fechas pasadas."
+    } else {
+        "No se pueden crear tareas en fechas pasadas."
+    }
+    val pastDateErrorText = if (mode is TaskSheetMode.Edit) {
+        "No se pueden mover tareas a fechas pasadas"
+    } else {
+        "No se pueden crear tareas en fechas pasadas"
+    }
 
     // Sugerencia de captura rapida: se recalcula en cada cambio de titulo, pero nunca aplica
     // nada por si sola - el usuario tiene que tocar "Aplicar" (ver docs/agendnote/
@@ -406,53 +627,54 @@ internal fun NewTaskSheet(
     // aparte. Si hay hora y todavía no se eligió ningún preset, se preselecciona "En el
     // momento" (visible y desmarcable, no un valor oculto que solo aparece al guardar).
     LaunchedEffect(selectedTime) {
-        if (selectedTime != null && selectedReminderOffsetMinutes.isEmpty()) {
+        if (mode is TaskSheetMode.Create && selectedTime != null && selectedReminderOffsetMinutes.isEmpty()) {
             selectedReminderOffsetMinutes.add(0L)
         }
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        Box(modifier = Modifier.fillMaxSize().safeContentPadding()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .blur(sheetBlur),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(GlassTheme.tokens.scrim)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onDismiss,
-                        ),
-                )
+    // Edit prefill: reconstruct which presets were chosen by comparing the task's saved
+    // reminder instants against what each preset would produce for the reference computed above
+    // (see reminderReferenceInstant). Runs once per sheet instance (keyed on mode, which does not
+    // change while this sheet stays open) so it never fights with the user unselecting a preset
+    // afterwards.
+    LaunchedEffect(mode) {
+        if (mode is TaskSheetMode.Edit) {
+            val reference = reminderReferenceInstant
+            if (reference != null && selectedReminderOffsetMinutes.isEmpty()) {
+                val matchedPresets = reminderOffsetPresets().mapNotNull { (minutes, _) ->
+                    val expectedMillis = reference.toEpochMilliseconds() - minutes * 60_000L
+                    val matches = mode.task.reminders.any { it.toEpochMilliseconds() == expectedMillis }
+                    minutes.takeIf { matches }
+                }
+                selectedReminderOffsetMinutes.addAll(matchedPresets)
+            }
+        }
+    }
 
-                GlassSurface(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(
-                            start = layout.width(18.dp, 16.dp),
-                            end = layout.width(18.dp, 16.dp),
-                            top = layout.height(16.dp, 14.dp),
-                            bottom = layout.height(16.dp, 14.dp),
-                        )
-                        .fillMaxWidth(),
-                    shape = RoundedCornerShape(layout.size(32.dp, 28.dp)),
-                    // REVIEW: regular glass is intentionally translucent, but a long form needs
-                    // an almost-opaque modal material so underlying task copy stays unreadable.
-                    tint = GlassTheme.tokens.modalFill,
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .padding(layout.size(16.dp, 14.dp))
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
-                    ) {
+    // Design System Freeze V1: the Dialog+scrim+GlassSurface chrome now comes from the shared
+    // GlassSheetScaffold. The form's own blur-when-time-picker-is-open effect (sheetBlur, defined
+    // above) moves from wrapping scrim+surface to wrapping just this scrollable content Column -
+    // GlassSheetScaffold doesn't expose a blur hook, and blurring a flat scrim color was never
+    // visible anyway (no spatial detail for a Gaussian blur to act on), so this preserves the same
+    // observable behavior: the form's text/fields blur while showTimePicker is true, nothing else
+    // changes. DatePickerOverlay/TimePickerOverlay are no longer nested inside this Dialog's tree
+    // (see the bottom of this function) - each now opens its own independent GlassPopover Dialog,
+    // which removes the previous double-scrim (this sheet's scrim stacked under the picker's own).
+    // dragToDismissEnabled = false: found by adversarial review of the GlassSheetScaffold
+    // migration (docs/OPERATION_ANNIVERSARY_STATUS.md) - the scaffold defaults to swipe-to-
+    // dismiss, which for a long create/edit form is a new, undocumented way to discard
+    // everything the user typed with an accidental downward drag and zero confirmation. Tap-
+    // outside-scrim dismiss (pre-existing, unchanged) stays available; only the drag gesture is
+    // disabled here. TaskDetailsOverlay (read-only) keeps drag-to-dismiss - no data-loss risk.
+    GlassSheetScaffold(onDismiss = onDismiss, dragToDismissEnabled = false) {
+        Column(
+            modifier = Modifier
+                .padding(layout.size(16.dp, 14.dp))
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .blur(sheetBlur),
+            verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
+        ) {
                         // REVIEW: the previous single horizontal header gave the title less than
                         // 90 dp after reserving two fixed-width buttons, so it wrapped one letter
                         // per line. Stacking the identity/date above a full-width action row is
@@ -462,7 +684,7 @@ internal fun NewTaskSheet(
                             verticalArrangement = Arrangement.spacedBy(layout.height(6.dp, 5.dp)),
                         ) {
                             Text(
-                                text = "Nueva tarea",
+                                text = if (mode is TaskSheetMode.Edit) "Editar tarea" else "Nueva tarea",
                                 style = MaterialTheme.typography.displayLarge.copy(
                                     fontSize = layout.text(30.sp, 27.sp),
                                     lineHeight = layout.text(32.sp, 29.sp),
@@ -512,7 +734,25 @@ internal fun NewTaskSheet(
                             }
                         }
 
-                        if (templates.isNotEmpty()) {
+                        // Non-blocking notice, same tone as ConfirmDeleteDialog's series warning:
+                        // editing a materialized occurrence never touches the rest of the series
+                        // (recurrence editing itself stays out of scope for this batch - see the
+                        // hidden "Repetir" section below).
+                        if (mode is TaskSheetMode.Edit && mode.task.seriesId != null) {
+                            Text(
+                                text = "Es parte de una tarea recurrente: editar esta aparición " +
+                                    "no afecta a las demás.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = GlassTheme.tokens.textSecondary,
+                            )
+                        }
+
+                        // Bug 2 fix: applying a template overwrites title/notes/labels/reminders/
+                        // subtasks (including already-completed subtasks' isDone) with zero
+                        // confirmation - fine for a blank draft in Create, destructive for a task
+                        // that already exists. Same guard as "Repetir" and "Guardar como
+                        // plantilla" below: templates are simply not offered while editing.
+                        if (mode is TaskSheetMode.Create && templates.isNotEmpty()) {
                             Row(
                                 modifier = Modifier.horizontalScroll(rememberScrollState()),
                                 horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 5.dp)),
@@ -530,8 +770,9 @@ internal fun NewTaskSheet(
                                             )
                                             selectedReminderOffsetMinutes.clear()
                                             selectedReminderOffsetMinutes.addAll(template.reminderOffsetMinutes)
-                                            subtaskTitles.clear()
-                                            subtaskTitles.addAll(template.subtaskTitles)
+                                            remindersTouched = true
+                                            subtaskItems.clear()
+                                            subtaskItems.addAll(template.subtaskTitles.map { TaskSheetSubtask(title = it) })
                                         },
                                     )
                                 }
@@ -564,8 +805,8 @@ internal fun NewTaskSheet(
                                         errorText = "Título requerido"
                                         return@GlassActionButton
                                     }
-                                    if (selectedDate < today) {
-                                        errorText = "No se pueden crear tareas en fechas pasadas"
+                                    if (isPastSelected) {
+                                        errorText = pastDateErrorText
                                         return@GlassActionButton
                                     }
                                     if (selectedRecurrence == RecurrenceOption.WeeklyDays && selectedWeekDays.isEmpty()) {
@@ -608,8 +849,8 @@ internal fun NewTaskSheet(
                                         labels = chosenLabels,
                                         deadline = deadlineInstant,
                                         reminders = reminderInstants,
-                                        subtasks = subtaskTitles.mapIndexed { index, subtaskTitle ->
-                                            Subtask(title = subtaskTitle, orderIndex = index)
+                                        subtasks = subtaskItems.mapIndexed { index, item ->
+                                            Subtask(title = item.title, isDone = item.isDone, orderIndex = index)
                                         },
                                     )
                                     val rule = when (selectedRecurrence) {
@@ -637,10 +878,21 @@ internal fun NewTaskSheet(
                                             errorText = result.errorMessage ?: "No se pudo guardar"
                                         }
                                     }
-                                    if (rule != null) {
-                                        onSaveRecurring(selectedDate, draft, rule, recurrenceEnd, onResult)
-                                    } else {
-                                        onSave(selectedDate, draft, onResult)
+                                    when (mode) {
+                                        is TaskSheetMode.Edit -> onSaveEdit(
+                                            mode.task.id,
+                                            selectedDate,
+                                            draft,
+                                            remindersTouched,
+                                            onResult,
+                                        )
+                                        is TaskSheetMode.Create -> {
+                                            if (rule != null) {
+                                                onSaveRecurring(selectedDate, draft, rule, recurrenceEnd, onResult)
+                                            } else {
+                                                onSave(selectedDate, draft, onResult)
+                                            }
+                                        }
                                     }
                                 },
                             )
@@ -892,6 +1144,7 @@ internal fun NewTaskSheet(
                                         role = Role.Checkbox,
                                         modifier = Modifier.weight(1f),
                                         onClick = {
+                                            remindersTouched = true
                                             if (selected) {
                                                 selectedReminderOffsetMinutes.remove(minutes)
                                             } else {
@@ -900,6 +1153,22 @@ internal fun NewTaskSheet(
                                         },
                                     )
                                 }
+                            }
+                            // The scheduler only fires the single nearest reminder per task today
+                            // (see core/notifications/ReminderResolution.kt) even though all
+                            // selected offsets are saved - decision documented in
+                            // docs/OPERATION_ANNIVERSARY_STATUS.md (Operación Aniversario,
+                            // reminders lane): tell the user the truth instead of letting the UI
+                            // promise more than the system does. Remove this notice once
+                            // multi-notification scheduling is implemented and device-verified.
+                            if (selectedReminderOffsetMinutes.size > 1) {
+                                Text(
+                                    text = "Por ahora solo se te avisará con el recordatorio " +
+                                        "más próximo; los demás quedan guardados pero no se " +
+                                        "disparan todavía.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = GlassTheme.tokens.textSecondary,
+                                )
                             }
                         }
                     }
@@ -912,16 +1181,21 @@ internal fun NewTaskSheet(
                             ),
                             color = GlassTheme.tokens.textSecondary,
                         )
-                        subtaskTitles.forEachIndexed { index, subtaskTitle ->
+                        subtaskItems.forEachIndexed { index, item ->
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
                             ) {
                                 Text(
-                                    text = subtaskTitle,
+                                    text = item.title,
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = GlassTheme.tokens.textPrimary,
+                                    color = if (item.isDone) {
+                                        GlassTheme.tokens.textSecondary
+                                    } else {
+                                        GlassTheme.tokens.textPrimary
+                                    },
+                                    textDecoration = if (item.isDone) TextDecoration.LineThrough else TextDecoration.None,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f),
@@ -934,7 +1208,7 @@ internal fun NewTaskSheet(
                                             onClickLabel = "Quitar subtarea",
                                             interactionSource = remember { MutableInteractionSource() },
                                             indication = null,
-                                            onClick = { subtaskTitles.removeAt(index) },
+                                            onClick = { subtaskItems.removeAt(index) },
                                         ),
                                     contentAlignment = Alignment.Center,
                                 ) {
@@ -969,41 +1243,50 @@ internal fun NewTaskSheet(
                                 onClick = {
                                     val trimmed = newSubtaskTitle.trim()
                                     if (trimmed.isEmpty()) return@GlassActionButton
-                                    subtaskTitles.add(trimmed)
+                                    subtaskItems.add(TaskSheetSubtask(title = trimmed))
                                     newSubtaskTitle = ""
                                 },
                             )
                         }
-                        GlassActionButton(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(layout.height(46.dp, 44.dp)),
-                            text = if (isSavingTemplate) "Guardando plantilla..." else "Guardar como plantilla",
-                            enabled = title.isNotBlank() && !isSavingTemplate,
-                            tint = GlassTheme.tokens.glassFill,
-                            textColor = GlassTheme.tokens.textSecondary,
-                            onClick = {
-                                val trimmedTitle = title.trim()
-                                if (trimmedTitle.isEmpty()) return@GlassActionButton
-                                isSavingTemplate = true
-                                scope.launch {
-                                    val template = TaskTemplate(
-                                        id = "",
-                                        name = trimmedTitle,
-                                        title = trimmedTitle,
-                                        details = details.trim().ifBlank { null },
-                                        labelIds = labels.filter { selectedLabelIds.contains(it.id) }.map { it.id },
-                                        reminderOffsetMinutes = selectedReminderOffsetMinutes.toList(),
-                                        subtaskTitles = subtaskTitles.toList(),
-                                    )
-                                    val success = onSaveTemplate(template)
-                                    isSavingTemplate = false
-                                    if (!success) errorText = "No se pudo guardar la plantilla"
-                                }
-                            },
-                        )
+                        // Saving as a template applies to freshly-composed drafts, not to a task
+                        // that already exists - out of scope for this batch, same as recurrence.
+                        if (mode is TaskSheetMode.Create) {
+                            GlassActionButton(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(layout.height(46.dp, 44.dp)),
+                                text = if (isSavingTemplate) "Guardando plantilla..." else "Guardar como plantilla",
+                                enabled = title.isNotBlank() && !isSavingTemplate,
+                                tint = GlassTheme.tokens.glassFill,
+                                textColor = GlassTheme.tokens.textSecondary,
+                                onClick = {
+                                    val trimmedTitle = title.trim()
+                                    if (trimmedTitle.isEmpty()) return@GlassActionButton
+                                    isSavingTemplate = true
+                                    scope.launch {
+                                        val template = TaskTemplate(
+                                            id = "",
+                                            name = trimmedTitle,
+                                            title = trimmedTitle,
+                                            details = details.trim().ifBlank { null },
+                                            labelIds = labels.filter { selectedLabelIds.contains(it.id) }.map { it.id },
+                                            reminderOffsetMinutes = selectedReminderOffsetMinutes.toList(),
+                                            subtaskTitles = subtaskItems.map { it.title },
+                                        )
+                                        val success = onSaveTemplate(template)
+                                        isSavingTemplate = false
+                                        if (!success) errorText = "No se pudo guardar la plantilla"
+                                    }
+                                },
+                            )
+                        }
                     }
 
+                    // Changing an already-materialized task's recurrence, or applying it
+                    // retroactively, is out of scope for this batch (see TaskSheetMode doc) -
+                    // hidden rather than adapted so there is no half-working "edit this and the
+                    // following" affordance to trip over.
+                    if (mode is TaskSheetMode.Create) {
                     Column(verticalArrangement = Arrangement.spacedBy(layout.height(8.dp, 6.dp))) {
                         Text(
                             text = "Repetir",
@@ -1178,10 +1461,11 @@ internal fun NewTaskSheet(
                             }
                         }
                     }
+                    }
 
                     if (isPastSelected) {
                         Text(
-                            text = "No se pueden crear tareas en fechas pasadas.",
+                            text = pastDateBannerText,
                             style = MaterialTheme.typography.bodyMedium,
                             color = GlassTheme.tokens.textSecondary,
                         )
@@ -1309,55 +1593,57 @@ internal fun NewTaskSheet(
                     }
                     }
                 }
-            }
 
-            if (showDatePicker) {
-                DatePickerOverlay(
-                    selectedDate = selectedDate,
-                    onSelect = {
-                        selectedDate = it
-                        monthDay = it.dayOfMonth
-                        showDatePicker = false
-                    },
-                    onDismiss = { showDatePicker = false },
-                )
-            }
+    // DatePickerOverlay/TimePickerOverlay each open their own GlassPopover Dialog now (see their
+    // definitions below) instead of being nested, Dialog-less, inside this sheet's own Dialog -
+    // that nesting used to stack this sheet's scrim underneath the picker's scrim (visible double
+    // darkening). As independent Dialogs they layer as separate windows instead, so the sheet
+    // behind stays exactly as visible/coherent as it was before either picker opened.
+    if (showDatePicker) {
+        DatePickerOverlay(
+            selectedDate = selectedDate,
+            onSelect = {
+                selectedDate = it
+                monthDay = it.dayOfMonth
+                showDatePicker = false
+            },
+            onDismiss = { showDatePicker = false },
+        )
+    }
 
-            if (showTimePicker) {
-                TimePickerOverlay(
-                    initialTime = selectedTime,
-                    onConfirm = {
-                        selectedTime = it
-                        showTimePicker = false
-                    },
-                    onDismiss = { showTimePicker = false },
-                )
-            }
+    if (showTimePicker) {
+        TimePickerOverlay(
+            initialTime = selectedTime,
+            onConfirm = {
+                selectedTime = it
+                showTimePicker = false
+            },
+            onDismiss = { showTimePicker = false },
+        )
+    }
 
-            if (showDeadlinePicker) {
-                DatePickerOverlay(
-                    selectedDate = deadlineDate ?: selectedDate,
-                    onSelect = {
-                        deadlineDate = it
-                        showDeadlinePicker = false
-                    },
-                    onClear = { deadlineDate = null },
-                    onDismiss = { showDeadlinePicker = false },
-                )
-            }
+    if (showDeadlinePicker) {
+        DatePickerOverlay(
+            selectedDate = deadlineDate ?: selectedDate,
+            onSelect = {
+                deadlineDate = it
+                showDeadlinePicker = false
+            },
+            onClear = { deadlineDate = null },
+            onDismiss = { showDeadlinePicker = false },
+        )
+    }
 
-            if (showRecurrenceEndDatePicker) {
-                DatePickerOverlay(
-                    selectedDate = recurrenceEndDate ?: selectedDate,
-                    onSelect = {
-                        recurrenceEndDate = it
-                        showRecurrenceEndDatePicker = false
-                    },
-                    onClear = { recurrenceEndDate = null },
-                    onDismiss = { showRecurrenceEndDatePicker = false },
-                )
-            }
-        }
+    if (showRecurrenceEndDatePicker) {
+        DatePickerOverlay(
+            selectedDate = recurrenceEndDate ?: selectedDate,
+            onSelect = {
+                recurrenceEndDate = it
+                showRecurrenceEndDatePicker = false
+            },
+            onClear = { recurrenceEndDate = null },
+            onDismiss = { showRecurrenceEndDatePicker = false },
+        )
     }
 }
 
@@ -1389,137 +1675,121 @@ private fun DatePickerOverlay(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(GlassTheme.tokens.scrim)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismiss,
-                ),
-        )
-
-        GlassSurface(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .padding(horizontal = layout.width(22.dp, 18.dp))
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(layout.size(28.dp, 24.dp)),
-            tint = GlassTheme.tokens.modalFill,
-        ) {
-            Column(
-                modifier = Modifier.padding(layout.size(18.dp, 16.dp)),
-                verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
+    // Design System Freeze V1: this used to render with no Dialog of its own, nested directly
+    // inside NewTaskSheet's Dialog tree - meaning its manual scrim stacked on top of NewTaskSheet's
+    // own scrim (visible double darkening). GlassPopover opens its own independent Dialog, so this
+    // is now a self-contained presentation regardless of caller.
+    GlassPopover(
+        onDismiss = onDismiss,
+        alignment = Alignment.Center,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp))) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    GlassIconButton(
-                        icon = Icons.Rounded.ChevronLeft,
-                        contentDescription = "Mes anterior",
-                        onClick = { visibleMonth = visibleMonth.plus(-1, DateTimeUnit.MONTH) },
-                    )
-                    Text(
-                        text = "${monthName(visibleMonth.month)} ${visibleMonth.year}",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = GlassTheme.tokens.textPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    GlassIconButton(
-                        icon = Icons.Rounded.ChevronRight,
-                        contentDescription = "Mes siguiente",
-                        onClick = { visibleMonth = visibleMonth.plus(1, DateTimeUnit.MONTH) },
-                    )
-                }
+                GlassIconButton(
+                    icon = Icons.Rounded.ChevronLeft,
+                    contentDescription = "Mes anterior",
+                    onClick = { visibleMonth = visibleMonth.plus(-1, DateTimeUnit.MONTH) },
+                )
+                Text(
+                    text = "${monthName(visibleMonth.month)} ${visibleMonth.year}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = GlassTheme.tokens.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                GlassIconButton(
+                    icon = Icons.Rounded.ChevronRight,
+                    contentDescription = "Mes siguiente",
+                    onClick = { visibleMonth = visibleMonth.plus(1, DateTimeUnit.MONTH) },
+                )
+            }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 4.dp)),
-                ) {
-                    weekDayLabels().forEach { label ->
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(vertical = layout.height(2.dp, 2.dp)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = label,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = GlassTheme.tokens.textSecondary,
-                            )
-                        }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 4.dp)),
+            ) {
+                weekDayLabels().forEach { label ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(vertical = layout.height(2.dp, 2.dp)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = GlassTheme.tokens.textSecondary,
+                        )
                     }
                 }
+            }
 
-                Column(verticalArrangement = Arrangement.spacedBy(layout.height(6.dp, 4.dp))) {
-                    dayCells.chunked(7).forEach { week ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 4.dp)),
-                        ) {
-                            week.forEach { day ->
-                                if (day == null) {
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .aspectRatio(1f),
-                                    )
-                                } else {
-                                    DatePickerDayCell(
-                                        date = day,
-                                        selectedDate = selectedDate,
-                                        today = today,
-                                        enabled = day >= today,
-                                        onSelect = onSelect,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .aspectRatio(1f),
-                                    )
-                                }
+            Column(verticalArrangement = Arrangement.spacedBy(layout.height(6.dp, 4.dp))) {
+                dayCells.chunked(7).forEach { week ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 4.dp)),
+                    ) {
+                        week.forEach { day ->
+                            if (day == null) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .aspectRatio(1f),
+                                )
+                            } else {
+                                DatePickerDayCell(
+                                    date = day,
+                                    selectedDate = selectedDate,
+                                    today = today,
+                                    enabled = day >= today,
+                                    onSelect = onSelect,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .aspectRatio(1f),
+                                )
                             }
                         }
                     }
                 }
+            }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                GlassActionButton(
+                    text = "Hoy",
+                    tint = GlassTheme.tokens.glassFill,
+                    textColor = GlassTheme.tokens.textPrimary,
+                    onClick = {
+                        onSelect(today)
+                        onDismiss()
+                    },
+                )
+                if (onClear != null) {
                     GlassActionButton(
-                        text = "Hoy",
+                        text = "Sin fecha",
                         tint = GlassTheme.tokens.glassFill,
                         textColor = GlassTheme.tokens.textPrimary,
                         onClick = {
-                            onSelect(today)
+                            onClear()
                             onDismiss()
                         },
                     )
-                    if (onClear != null) {
-                        GlassActionButton(
-                            text = "Sin fecha",
-                            tint = GlassTheme.tokens.glassFill,
-                            textColor = GlassTheme.tokens.textPrimary,
-                            onClick = {
-                                onClear()
-                                onDismiss()
-                            },
-                        )
-                    }
-                    GlassActionButton(
-                        text = "Cerrar",
-                        tint = GlassTheme.tokens.glassFillStrong,
-                        textColor = GlassTheme.tokens.textPrimary,
-                        onClick = onDismiss,
-                    )
                 }
+                GlassActionButton(
+                    text = "Cerrar",
+                    tint = GlassTheme.tokens.glassFillStrong,
+                    textColor = GlassTheme.tokens.textPrimary,
+                    onClick = onDismiss,
+                )
             }
         }
     }
@@ -1544,122 +1814,99 @@ private fun TimePickerOverlay(
         minuteIndex = base.minute
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(GlassTheme.tokens.scrim)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismiss,
-                ),
-        )
-
-        GlassSurface(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(
-                    start = layout.width(18.dp, 16.dp),
-                    end = layout.width(18.dp, 16.dp),
-                    top = layout.height(16.dp, 14.dp),
-                    bottom = layout.height(16.dp, 14.dp),
-                )
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(layout.size(28.dp, 24.dp)),
-            tint = GlassTheme.tokens.modalFill,
-            shadowElevation = 0.dp,
-        ) {
-            Column(
-                modifier = Modifier.padding(layout.size(18.dp, 16.dp)),
-                verticalArrangement = Arrangement.spacedBy(layout.height(16.dp, 14.dp)),
+    // Design System Freeze V1: same fix as DatePickerOverlay above - GlassPopover's own
+    // independent Dialog replaces the Dialog-less nesting that used to double the scrim under
+    // NewTaskSheet's.
+    GlassPopover(
+        onDismiss = onDismiss,
+        alignment = Alignment.BottomCenter,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(layout.height(16.dp, 14.dp))) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-                            .clickable(
-                                role = Role.Button,
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = onDismiss,
-                            ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "Cancelar",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = GlassTheme.tokens.textSecondary,
-                        )
-                    }
-                    Box(
-                        modifier = Modifier.weight(1f),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "Hora",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = GlassTheme.tokens.textPrimary,
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-                            .clickable(
-                                role = Role.Button,
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = { onConfirm(LocalTime(hourIndex, minuteIndex)) },
-                            ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "Listo",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = GlassTheme.tokens.textPrimary,
-                        )
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    WheelPicker(
-                        entries = hours,
-                        selectedIndex = hourIndex,
-                        label = "Hora",
-                        onIndexSelected = { hourIndex = it },
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        text = ":",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = GlassTheme.tokens.textSecondary,
-                        modifier = Modifier.padding(horizontal = layout.width(6.dp, 4.dp)),
-                    )
-                    WheelPicker(
-                        entries = minutes,
-                        selectedIndex = minuteIndex,
-                        label = "Minutos",
-                        onIndexSelected = { minuteIndex = it },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-
-                GlassActionButton(
-                    text = "Sin hora",
-                    tint = GlassTheme.tokens.glassFillStrong,
-                    textColor = GlassTheme.tokens.textPrimary,
+                Box(
                     modifier = Modifier
-                        .align(Alignment.CenterHorizontally),
-                    onClick = { onConfirm(null) },
+                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                        .clickable(
+                            role = Role.Button,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onDismiss,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "Cancelar",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = GlassTheme.tokens.textSecondary,
+                    )
+                }
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "Hora",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = GlassTheme.tokens.textPrimary,
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                        .clickable(
+                            role = Role.Button,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { onConfirm(LocalTime(hourIndex, minuteIndex)) },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "Listo",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = GlassTheme.tokens.textPrimary,
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                WheelPicker(
+                    entries = hours,
+                    selectedIndex = hourIndex,
+                    label = "Hora",
+                    onIndexSelected = { hourIndex = it },
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = ":",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = GlassTheme.tokens.textSecondary,
+                    modifier = Modifier.padding(horizontal = layout.width(6.dp, 4.dp)),
+                )
+                WheelPicker(
+                    entries = minutes,
+                    selectedIndex = minuteIndex,
+                    label = "Minutos",
+                    onIndexSelected = { minuteIndex = it },
+                    modifier = Modifier.weight(1f),
                 )
             }
+
+            GlassActionButton(
+                text = "Sin hora",
+                tint = GlassTheme.tokens.glassFillStrong,
+                textColor = GlassTheme.tokens.textPrimary,
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally),
+                onClick = { onConfirm(null) },
+            )
         }
     }
 }
@@ -1816,6 +2063,93 @@ private fun DatePickerDayCell(
                 text = date.dayOfMonth.toString(),
                 style = MaterialTheme.typography.bodyMedium,
                 color = textColor,
+            )
+        }
+    }
+}
+
+/**
+ * Popover presentation of [CalendarMonthView], reached from a header button in Agenda (Operación
+ * Aniversario: the month calendar is no longer its own tab - see
+ * docs/OPERATION_ANNIVERSARY_STATUS.md). Selecting a day both updates the selection and closes
+ * the popover in one action, matching what the standalone Calendario tab used to do (select ->
+ * close -> land back on the day view, except now there's no navigation involved, just dismissal).
+ */
+@Composable
+internal fun CalendarPopover(
+    selectedDate: LocalDate,
+    visibleMonth: LocalDate,
+    tasksByDate: Map<LocalDate, List<TaskItem>>,
+    isLoading: Boolean,
+    errorMessage: String?,
+    onSelectDate: (LocalDate) -> Unit,
+    onVisibleMonthChange: (LocalDate) -> Unit,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val layout = AppLayout.metrics
+    // Design System Freeze V1: was a full-screen Dialog ("indistinguishable from a full-screen
+    // dialog" per the Operación Aniversario audit) with a hand-rolled scrim - now the shared
+    // GlassPopover, centered, matching the product brief's POPOVER category for a brief
+    // contextual choice launched from the "Ver mes" header button in Agenda.
+    GlassPopover(
+        onDismiss = onDismiss,
+        alignment = Alignment.Center,
+        // Found by adversarial review: GlassPopover's own padding stacks with CalendarMonthView's
+        // internal padding, leaving the 7-column day grid noticeably narrower than before this
+        // migration - widened from the 0.9f default to compensate, not verified visually (no
+        // device in this environment), worth a look on a compact phone before trusting it.
+        maxWidthFraction = 0.96f,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(layout.height(10.dp, 8.dp))) {
+            if (errorMessage != null) {
+                GlassSurface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(layout.size(20.dp, 18.dp)),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(layout.size(14.dp, 12.dp)),
+                        verticalArrangement = Arrangement.spacedBy(layout.height(10.dp, 8.dp)),
+                    ) {
+                        Text(
+                            text = errorMessage,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = GlassTheme.tokens.errorContent,
+                        )
+                        GlassActionButton(
+                            text = "Reintentar",
+                            onClick = onRetry,
+                            tint = GlassTheme.tokens.glassFillStrong,
+                            textColor = GlassTheme.tokens.textPrimary,
+                        )
+                    }
+                }
+            } else if (isLoading) {
+                GlassSurface(
+                    shape = RoundedCornerShape(layout.size(14.dp, 12.dp)),
+                    tint = GlassTheme.tokens.glassFillStrong,
+                ) {
+                    Text(
+                        text = "Cargando...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = GlassTheme.tokens.textSecondary,
+                        modifier = Modifier.padding(
+                            horizontal = layout.width(14.dp, 12.dp),
+                            vertical = layout.height(8.dp, 7.dp),
+                        ),
+                    )
+                }
+            }
+            CalendarMonthView(
+                selectedDate = selectedDate,
+                visibleMonth = visibleMonth,
+                tasksByDate = tasksByDate,
+                onSelectDate = { date ->
+                    onSelectDate(date)
+                    onDismiss()
+                },
+                onVisibleMonthChange = onVisibleMonthChange,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
@@ -2137,7 +2471,11 @@ private fun CalendarDayCell(
                     lineHeight = layout.text(18.sp, 16.sp),
                 ),
                 color = dayColor,
-                textDecoration = if (isPast) TextDecoration.LineThrough else TextDecoration.None,
+                // Operación Aniversario: past days used to render with TextDecoration.LineThrough
+                // on top of the existing alpha dimming - it read as "cancelled"/"deleted", not
+                // "in the past" (confirmed against a real screenshot, not just a code-reading
+                // guess). The alpha dim above plus the "Fecha pasada" semantics.stateDescription
+                // already communicate "past" correctly on their own.
             )
             if (noteCount > 0) {
                 Spacer(modifier = Modifier.height(layout.height(2.dp, 2.dp)))
@@ -2208,46 +2546,22 @@ internal fun TaskDetailsOverlay(
     onDismiss: () -> Unit,
     onToggleDone: (Boolean) -> Unit,
     onRequestDelete: () -> Unit,
+    onRequestEdit: () -> Unit,
 ) {
     val layout = AppLayout.metrics
     val timeZone = remember { TimeZone.currentSystemDefault() }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        Box(
+    // Design System Freeze V1: Dialog+scrim+GlassSurface chrome now comes from the shared
+    // GlassSheetScaffold - the hardcoded shadowElevation = 12.dp is gone since the scaffold
+    // already applies GlassElevation.modal, the same token every other SHEET presentation uses.
+    GlassSheetScaffold(onDismiss = onDismiss) {
+        Column(
             modifier = Modifier
-                .fillMaxSize()
-                .safeContentPadding()
-                .background(GlassTheme.tokens.scrim)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismiss,
-                ),
+                .padding(layout.size(18.dp, 16.dp))
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
         ) {
-            GlassSurface(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(
-                        start = layout.width(18.dp, 16.dp),
-                        end = layout.width(18.dp, 16.dp),
-                        top = layout.height(16.dp, 14.dp),
-                        bottom = layout.height(16.dp, 14.dp),
-                    )
-                    .fillMaxWidth(),
-                shape = RoundedCornerShape(layout.size(28.dp, 24.dp)),
-                tint = GlassTheme.tokens.modalFill,
-                shadowElevation = 12.dp,
-            ) {
-                Column(
-                    modifier = Modifier
-                        .padding(layout.size(18.dp, 16.dp))
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
-                ) {
                     Text(
                     text = task.title,
                     style = MaterialTheme.typography.titleLarge.copy(
@@ -2377,16 +2691,21 @@ internal fun TaskDetailsOverlay(
 
                 Spacer(modifier = Modifier.height(layout.height(12.dp, 10.dp)))
 
+                // REVIEW: "Marcar como pendiente"/"Marcar como hecho" is the longest label in
+                // this overlay - cramming it into a third of the row alongside "Editar"/
+                // "Eliminar" (as a naive 3-way weight(1f) row would) wraps or truncates it on
+                // compact phones (same class of issue as the header split above). Short-label
+                // actions share a row; the long one gets full width on its own.
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp)),
                 ) {
                     GlassActionButton(
-                        text = if (task.isDone) "Marcar como pendiente" else "Marcar como hecho",
+                        text = "Editar",
                         modifier = Modifier.weight(1f),
                         tint = GlassTheme.tokens.glassFill,
                         textColor = GlassTheme.tokens.textPrimary,
-                        onClick = { onToggleDone(!task.isDone) },
+                        onClick = onRequestEdit,
                     )
                     GlassActionButton(
                         text = "Eliminar",
@@ -2398,6 +2717,14 @@ internal fun TaskDetailsOverlay(
                 }
 
                     GlassActionButton(
+                        text = if (task.isDone) "Marcar como pendiente" else "Marcar como hecho",
+                        modifier = Modifier.fillMaxWidth(),
+                        tint = GlassTheme.tokens.glassFill,
+                        textColor = GlassTheme.tokens.textPrimary,
+                        onClick = { onToggleDone(!task.isDone) },
+                    )
+
+                    GlassActionButton(
                         text = "Cerrar",
                         modifier = Modifier.fillMaxWidth(),
                         tint = GlassTheme.tokens.glassFillStrong,
@@ -2406,8 +2733,6 @@ internal fun TaskDetailsOverlay(
                     )
                 }
             }
-        }
-    }
 }
 
 private fun currentDate(timeZone: TimeZone): LocalDate {

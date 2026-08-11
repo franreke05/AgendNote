@@ -258,6 +258,43 @@ class AgendaViewModel(
             )
     }
 
+    /**
+     * Updates an existing task. [originalDate] is the day the task is currently filed under in
+     * [uiState.tasksByDate] and [targetDate] is the day [draft] wants it filed under - they
+     * differ when the user changed the task's day while editing. Always goes through
+     * [moveTask]/[setTasks]/[replaceTask], never a direct `uiState.copy(...)`, so that local
+     * notifications stay reconciled with the new state (see [setTasks]'s doc comment).
+     */
+    suspend fun updateTask(
+        originalDate: LocalDate,
+        id: String,
+        targetDate: LocalDate,
+        draft: TaskDraft,
+        remindersTouched: Boolean,
+    ): SaveResult {
+        val trimmedTitle = draft.title.trim()
+        if (trimmedTitle.isEmpty()) return SaveResult(false, "Título requerido")
+        val repository = repository ?: run {
+            setError(originalDate, remoteErrorMessage)
+            return SaveResult(false, remoteErrorMessage)
+        }
+
+        return runCatching {
+            repository.updateTask(id, targetDate, draft.copy(title = trimmedTitle), remindersTouched)
+        }
+            .onSuccess { updated ->
+                moveTask(originalDate, targetDate, updated)
+                setError(originalDate, null)
+            }
+            .onFailure { error ->
+                setError(originalDate, resolveServerError(error))
+            }
+            .fold(
+                onSuccess = { SaveResult(true) },
+                onFailure = { SaveResult(false, resolveServerError(it)) },
+            )
+    }
+
     suspend fun saveRecurringTask(
         date: LocalDate,
         draft: TaskDraft,
@@ -405,6 +442,19 @@ class AgendaViewModel(
         viewModelScope.launch { onResult(saveTask(date, draft)) }
     }
 
+    fun updateTaskAsync(
+        originalDate: LocalDate,
+        id: String,
+        targetDate: LocalDate,
+        draft: TaskDraft,
+        remindersTouched: Boolean,
+        onResult: (SaveResult) -> Unit = {},
+    ) {
+        viewModelScope.launch {
+            onResult(updateTask(originalDate, id, targetDate, draft, remindersTouched))
+        }
+    }
+
     fun saveRecurringTaskAsync(
         date: LocalDate,
         draft: TaskDraft,
@@ -498,6 +548,21 @@ class AgendaViewModel(
 
     private fun removeTask(date: LocalDate, taskId: String) {
         setTasks(date, tasksFor(date).filterNot { it.id == taskId })
+    }
+
+    /** Moves [task] from [fromDate] to [toDate] in [uiState.tasksByDate], going through
+     * [setTasks] on both ends so notifications stay reconciled. If [toDate] was never cached
+     * (e.g. the user has not visited that day yet), it is deliberately left uncached rather than
+     * seeded with just this one task. */
+    private fun moveTask(fromDate: LocalDate, toDate: LocalDate, task: TaskItem) {
+        if (fromDate == toDate) {
+            replaceTask(fromDate, task)
+            return
+        }
+        setTasks(fromDate, tasksFor(fromDate).filterNot { it.id == task.id })
+        if (uiState.tasksByDate.containsKey(toDate)) {
+            setTasks(toDate, tasksFor(toDate) + task)
+        }
     }
 }
 

@@ -1,9 +1,15 @@
 package com.franciscor.agendnote
 
+import com.franciscor.agendnote.core.model.LabelTag
+import com.franciscor.agendnote.core.model.Subtask
+import com.franciscor.agendnote.core.model.TaskDraft
 import com.franciscor.agendnote.core.network.SubtaskDto
 import com.franciscor.agendnote.core.network.TaskDto
 import com.franciscor.agendnote.feature.agenda.data.toTaskItem
+import com.franciscor.agendnote.feature.agenda.data.toUpdateTaskRequest
 import kotlinx.datetime.Instant
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -73,5 +79,131 @@ class SupabaseAgendaTaskRepositoryMappingTest {
             ),
             task.subtasks,
         )
+    }
+
+    @Test
+    fun `toUpdateTaskRequest sends due_at as empty string when time is null, never omitted`() {
+        val draft = TaskDraft(
+            title = "Sin hora",
+            details = "Detalles",
+            time = null,
+            labels = emptyList(),
+        )
+
+        val request = draft.toUpdateTaskRequest("t-1", LocalDate(2026, 3, 11), timeZone, remindersTouched = true)
+
+        assertEquals("", request.due_at)
+    }
+
+    @Test
+    fun `toUpdateTaskRequest sends deadline_at as empty string when deadline is null`() {
+        val draft = TaskDraft(
+            title = "Sin deadline",
+            details = "Detalles",
+            time = null,
+            labels = emptyList(),
+            deadline = null,
+        )
+
+        val request = draft.toUpdateTaskRequest("t-1", LocalDate(2026, 3, 11), timeZone, remindersTouched = true)
+
+        assertEquals("", request.deadline_at)
+    }
+
+    @Test
+    fun `toUpdateTaskRequest sends body as empty string when details is null`() {
+        val draft = TaskDraft(
+            title = "Sin detalles",
+            details = null,
+            time = null,
+            labels = emptyList(),
+        )
+
+        val request = draft.toUpdateTaskRequest("t-1", LocalDate(2026, 3, 11), timeZone, remindersTouched = true)
+
+        assertEquals("", request.body)
+    }
+
+    @Test
+    fun `toUpdateTaskRequest sends explicit empty lists for empty labels, reminders and subtasks when reminders were touched`() {
+        val draft = TaskDraft(
+            title = "Sin listas",
+            details = null,
+            time = null,
+            labels = emptyList(),
+            reminders = emptyList(),
+            subtasks = emptyList(),
+        )
+
+        val request = draft.toUpdateTaskRequest("t-1", LocalDate(2026, 3, 11), timeZone, remindersTouched = true)
+
+        assertEquals(emptyList(), request.label_ids)
+        assertEquals(emptyList(), request.reminders)
+        assertEquals(emptyList(), request.subtasks)
+    }
+
+    @Test
+    fun `toUpdateTaskRequest maps time, deadline, labels, reminders and subtasks when present`() {
+        val draft = TaskDraft(
+            title = "Con todo",
+            details = "Detalles",
+            time = LocalTime(9, 30),
+            labels = listOf(LabelTag(id = "l-1", name = "Trabajo", colorHex = "#FF0000")),
+            deadline = Instant.parse("2026-03-12T18:00:00Z"),
+            reminders = listOf(Instant.parse("2026-03-11T08:00:00Z")),
+            subtasks = listOf(Subtask(id = "s-1", title = "Primera", isDone = false, orderIndex = 5)),
+        )
+
+        val request = draft.toUpdateTaskRequest("t-1", LocalDate(2026, 3, 11), timeZone, remindersTouched = true)
+
+        assertEquals("t-1", request.id)
+        assertEquals("Con todo", request.title)
+        assertEquals("2026-03-11", request.day)
+        assertEquals("2026-03-11T09:30:00Z", request.due_at)
+        assertEquals("2026-03-12T18:00:00Z", request.deadline_at)
+        assertEquals(listOf("l-1"), request.label_ids)
+        assertEquals(listOf("2026-03-11T08:00:00Z"), request.reminders)
+        assertEquals(listOf("Primera"), request.subtasks?.map { it.title })
+        assertEquals(listOf(0), request.subtasks?.map { it.order_index })
+    }
+
+    // --- Bug 1 regression coverage -------------------------------------------------------
+    // Saving an edit where the user never touched "Recordatorios" must never overwrite the
+    // task's existing reminders on the server. The Edge Function wipes and replaces reminders
+    // the moment the `reminders` key is present in the PATCH body (hasField(body, "reminders")),
+    // regardless of its contents - so the request must omit the key entirely (reminders = null),
+    // never send an empty list and never send the draft's (possibly incompletely-prefilled) list.
+
+    @Test
+    fun `toUpdateTaskRequest sends reminders = null when remindersTouched is false, regardless of draft content`() {
+        val draft = TaskDraft(
+            title = "No tocado",
+            details = null,
+            time = LocalTime(9, 30),
+            labels = emptyList(),
+            reminders = listOf(
+                Instant.parse("2026-03-11T08:00:00Z"),
+                Instant.parse("2026-03-11T09:00:00Z"),
+            ),
+        )
+
+        val request = draft.toUpdateTaskRequest("t-1", LocalDate(2026, 3, 11), timeZone, remindersTouched = false)
+
+        assertNull(request.reminders)
+    }
+
+    @Test
+    fun `toUpdateTaskRequest sends reminders = null when remindersTouched is false even if draft reminders is empty`() {
+        val draft = TaskDraft(
+            title = "Sin recordatorios en el draft",
+            details = null,
+            time = null,
+            labels = emptyList(),
+            reminders = emptyList(),
+        )
+
+        val request = draft.toUpdateTaskRequest("t-1", LocalDate(2026, 3, 11), timeZone, remindersTouched = false)
+
+        assertNull(request.reminders)
     }
 }
