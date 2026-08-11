@@ -169,6 +169,33 @@ arriesgar los 54 call sites actuales a 4 días del plazo. Verificado: `BUILD SUC
 Build final consolidado: `androidApp:assembleDebug` → `BUILD SUCCESSFUL`, APK con absolutamente
 todo lo de esta directiva ampliada integrado.
 
+## COMPLETED (14) — pasada de UI/popups: base compartida congelada ("Design System Freeze V1")
+Commit `d03dff6`. Nueva directiva del usuario: unificar TODOS los popups/sheets/overlays de la
+app bajo una base común, con inventario reaprovechado de COMPLETED (10). Nuevo archivo
+`core/ui/components/GlassPresentation.kt`, único writer, congelado antes de que nadie lo
+consuma: `GlassScrim` (alpha por peso: alert > sheet > popover, derivado siempre de
+`GlassTheme.tokens.scrim`, nunca un color nuevo por popup), `GlassScrimLayer`, `GlassGrabber`,
+`GlassSheetScaffold` (categoría SHEET: anclado abajo, esquinas solo arriba, grabber,
+drag-to-dismiss - extraído del patrón ya probado en el rediseño de Listas Inteligentes),
+`GlassPopover` (categoría POPOVER: compacto, ajustado a contenido, scrim más ligero -
+**documentado honestamente que NO es un popover anclado de verdad**, sin posición medida del
+control que lo abre, eso es una feature mayor no abordada esta semana). `GlassConfirmDialog`
+gana ancho máximo (340dp, antes se estiraba sin límite) + alias `GlassAlert` (ya era la
+implementación correcta de ALERT según el inventario previo, solo le faltaba el nombre).
+Verificado: `BUILD SUCCESSFUL`, 101/101. **Aviso honesto**: nada de esto se ha visto en pantalla,
+solo compila y pasa tests - no hay herramienta de captura de pantalla en este entorno.
+
+## ACTIVE_AGENTS
+| Agente | Rol | Modo | Archivos | Estado |
+|---|---|---|---|---|
+| Software Architect | Migrar NewTaskSheet/TaskDetailsOverlay/SmartListsOverlay/CalendarPopover/DatePickerOverlay/TimePickerOverlay a `GlassSheetScaffold`/`GlassPopover` | Producer, ejecuta Gradle | `AgendaOverlays.kt` (único, para respetar "un archivo → un writer") | En curso |
+
+Pendiente para después (mismo `AgendaOverlays.kt`, no en paralelo): nada más - es el único
+archivo grande que quedaba. Pendiente en OTROS archivos, para una ronda posterior: selector de
+color de Etiquetas como `GlassPopover` (depende de la simplificación de Etiquetas, todavía sin
+hacer), QA de teclado/safe areas (checklist, no ejecutable en este entorno), Visual Red Team
+(requiere ver la app corriendo - no soy capaz de hacerlo yo mismo en este entorno).
+
 ## Gate B (core usability) — código-completo, revisado, **pendiente de QA en dispositivo**
 No se declara "cerrado" en sentido estricto (regla del propio prompt de operación: no declarar validación sin haberla hecho). Falta el recorrido manual real - ver `docs/agendnote/IOS_VERIFICATION_CHECKLIST.md` para iOS; falta un equivalente Android, pendiente de que el usuario lance un emulador (este entorno no tiene herramientas de interacción con UI de Android/iOS, solo puede compilar y ejecutar tests).
 
