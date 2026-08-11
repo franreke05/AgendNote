@@ -1,27 +1,41 @@
 package com.franciscor.agendnote.app.navigation
 
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeContentPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavBackStackEntry
 import com.franciscor.agendnote.app.di.AppServices
 import com.franciscor.agendnote.core.model.TaskSeries
 import com.franciscor.agendnote.core.model.TaskTemplate
@@ -44,6 +58,39 @@ import com.franciscor.agendnote.feature.settings.presentation.view.SettingsScree
 import com.franciscor.agendnote.feature.settings.presentation.viewmodel.SettingsViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+
+// REVIEW: se reutiliza la misma lógica para enter/popEnter y exit/popExit — la dirección se
+// calcula a partir del orden fijo de pestañas (tabSlideDirection), no de si la navegación es un
+// push o un pop, así que el resultado ya es correcto en ambos sentidos sin duplicar la lógica.
+private fun tabEnterTransition(
+    scope: AnimatedContentTransitionScope<NavBackStackEntry>,
+): EnterTransition {
+    return when (
+        tabSlideDirection(
+            fromRoute = scope.initialState.destination.route,
+            toRoute = scope.targetState.destination.route,
+        )
+    ) {
+        SwipeDirection.NEXT -> slideInHorizontally(initialOffsetX = { it }) + fadeIn()
+        SwipeDirection.PREVIOUS -> slideInHorizontally(initialOffsetX = { -it }) + fadeIn()
+        null -> fadeIn()
+    }
+}
+
+private fun tabExitTransition(
+    scope: AnimatedContentTransitionScope<NavBackStackEntry>,
+): ExitTransition {
+    return when (
+        tabSlideDirection(
+            fromRoute = scope.initialState.destination.route,
+            toRoute = scope.targetState.destination.route,
+        )
+    ) {
+        SwipeDirection.NEXT -> slideOutHorizontally(targetOffsetX = { -it }) + fadeOut()
+        SwipeDirection.PREVIOUS -> slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+        null -> fadeOut()
+    }
+}
 
 @Composable
 fun AppNavHost(
@@ -167,6 +214,10 @@ fun AppNavHost(
                         navController = navController,
                         startDestination = AppRoute.Agenda.route,
                         modifier = Modifier.fillMaxSize(),
+                        enterTransition = { tabEnterTransition(this) },
+                        exitTransition = { tabExitTransition(this) },
+                        popEnterTransition = { tabEnterTransition(this) },
+                        popExitTransition = { tabExitTransition(this) },
                     ) {
                         composable(AppRoute.Agenda.route) {
                             AgendaRoute(
@@ -229,6 +280,37 @@ fun AppNavHost(
                             )
                         }
                     }
+
+                    // REVIEW: franjas de solo-borde, no un gesto de pantalla completa — ver el
+                    // comentario en EdgeSwipeZone y AgendaScreen.kt:126-128 sobre por que un
+                    // swipe libre choca con el swipe de las tarjetas de tarea en Agenda.
+                    val edgeSwipeWidth = layout.width(12.dp, 10.dp)
+                    val edgeSwipeThresholdPx = with(LocalDensity.current) {
+                        layout.width(64.dp, 56.dp).toPx()
+                    }
+                    val onEdgeSwipe: (SwipeDirection) -> Unit = { direction ->
+                        val target = when (direction) {
+                            SwipeDirection.NEXT -> selectedTab.next()
+                            SwipeDirection.PREVIOUS -> selectedTab.previous()
+                        }
+                        target?.let { navigateToMainTab(it) }
+                    }
+                    EdgeSwipeZone(
+                        onSwipe = onEdgeSwipe,
+                        thresholdPx = edgeSwipeThresholdPx,
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .fillMaxHeight()
+                            .width(edgeSwipeWidth),
+                    )
+                    EdgeSwipeZone(
+                        onSwipe = onEdgeSwipe,
+                        thresholdPx = edgeSwipeThresholdPx,
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .fillMaxHeight()
+                            .width(edgeSwipeWidth),
+                    )
                 }
 
                 // REVIEW: navigation participates in layout instead of floating over content.
@@ -242,6 +324,41 @@ fun AppNavHost(
             }
         }
     }
+}
+
+/**
+ * Franja invisible pegada a un borde de la pantalla que reconoce un arrastre horizontal y
+ * dispara [onSwipe] al soltar si el arrastre acumulado supera [thresholdPx] en esa dirección.
+ * Deliberadamente angosta y solo en los bordes (ver Global Constraints del plan de swipe): las
+ * tarjetas de tarea en Agenda ya tienen su propio gesto de arrastre horizontal, y un intento
+ * previo de un gesto de pantalla completa chocó con él (ver AgendaScreen.kt).
+ */
+@Composable
+private fun EdgeSwipeZone(
+    onSwipe: (SwipeDirection) -> Unit,
+    thresholdPx: Float,
+    modifier: Modifier = Modifier,
+) {
+    val currentOnSwipe by rememberUpdatedState(onSwipe)
+    Box(
+        modifier = modifier.pointerInput(thresholdPx) {
+            var accumulatedDrag = 0f
+            detectHorizontalDragGestures(
+                onDragStart = { accumulatedDrag = 0f },
+                onHorizontalDrag = { _, dragAmount ->
+                    accumulatedDrag += dragAmount
+                },
+                onDragEnd = {
+                    when {
+                        accumulatedDrag <= -thresholdPx -> currentOnSwipe(SwipeDirection.NEXT)
+                        accumulatedDrag >= thresholdPx -> currentOnSwipe(SwipeDirection.PREVIOUS)
+                    }
+                    accumulatedDrag = 0f
+                },
+                onDragCancel = { accumulatedDrag = 0f },
+            )
+        },
+    )
 }
 
 @Composable
