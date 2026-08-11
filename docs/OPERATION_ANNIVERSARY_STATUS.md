@@ -190,11 +190,31 @@ solo compila y pasa tests - no hay herramienta de captura de pantalla en este en
 |---|---|---|---|---|
 | Code Reviewer | Revisión adversarial del commit `f411398` (migración de 6 presentaciones a la base Glass) | Solo lectura | `AgendaOverlays.kt` | En curso |
 
-Commit `f411398` (971 líneas, 1 archivo) entregado y **NO aceptado todavía**: el propio autor
-reportó dos intentos fallidos de llaves antes de dar con la estructura correcta en `NewTaskSheet`
-- compila, pero "compila" no es "semánticamente correcto" (ya nos pasó una vez hoy con un bug de
-pérdida de datos en este mismo archivo). Revisión adversarial en curso antes de dar el batch por
-cerrado.
+Ninguno.
+
+## COMPLETED (15) — migración de 6 presentaciones a la base compartida, revisada y corregida
+Commits `f411398` + `f10ceb8`. `NewTaskSheet`, `TaskDetailsOverlay`, `SmartListsOverlay` →
+`GlassSheetScaffold`; `DatePickerOverlay`, `TimePickerOverlay`, `CalendarPopover` →
+`GlassPopover`. Revisión adversarial independiente con chequeo automatizado de balance de
+llaves por función (no solo lectura del diff) dado el historial de esta sesión: **sin
+hallazgos críticos** - la lógica de negocio de `NewTaskSheet` (Create/Edit, `remindersTouched`,
+validaciones, routing de guardado) quedó intacta, y el doble-scrim de los pickers
+(estaban anidados sin `Dialog` propio dentro del de `NewTaskSheet`) se resolvió
+estructuralmente, no solo cosméticamente. 2 hallazgos medios corregidos:
+- `NewTaskSheet` heredó `dragToDismissEnabled=true` del scaffold por defecto - un formulario
+  largo no debe poder cerrarse con un arrastre accidental sin aviso. Desactivado solo ahí
+  (`TaskDetailsOverlay`, de solo lectura, lo conserva - sin riesgo de pérdida de datos).
+- `CalendarPopover`: el padding de `GlassPopover` se apilaba con el de `CalendarMonthView`,
+  estrechando la cuadrícula de 7 columnas. Compensado ensanchando el popover - **sin verificar
+  visualmente**, marcado explícitamente para revisar en un teléfono compacto.
+Verificado: `BUILD SUCCESSFUL`, 101/101 tests, ambas veces.
+
+**Lo que queda de la directiva de popups, sin hacer todavía**: selector de color de Etiquetas
+como `GlassPopover` (depende de simplificar Etiquetas primero, sin tocar); haptics en
+selección de fecha/color (sección 13 de la directiva); unificación de motion de entrada/salida
+de sheet/popover (sección 14); QA de teclado/safe areas real (solo verificable en
+dispositivo); Visual Red Team real (requiere ver la app corriendo, no soy capaz de hacerlo yo
+mismo en este entorno).
 
 Pendiente para después (mismo `AgendaOverlays.kt`, no en paralelo): nada más - es el único
 archivo grande que quedaba. Pendiente en OTROS archivos, para una ronda posterior: selector de
