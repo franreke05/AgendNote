@@ -284,22 +284,40 @@ Ver sección E de la respuesta operativa del 9 de agosto en el chat — se traer
 Ninguno todavía — los agentes de este primer batch son de investigación (solo lectura), sin escritura de código.
 
 ## KNOWN_RISKS
-0. **[CRÍTICO, 2026-08-11] La BD real de producción nunca recibió 3 migraciones ya escritas
-   desde julio/agosto**: `task_series`, `task_reminders`, `task_subtasks` no existen como
-   tablas; `tasks.deadline_at`/`slot_end_at`/`series_id` no existen como columnas. El usuario
-   pegó dos veces la fotografía real de la BD, confirmándolo. Consecuencia: deadline,
+0. **[RESUELTO 2026-08-11] La BD real de producción nunca recibió
+   3 migraciones ya escritas desde julio/agosto**: `task_series`, `task_reminders`,
+   `task_subtasks` no existen como tablas; `tasks.deadline_at`/`slot_end_at`/`series_id` no
+   existen como columnas. Verificado dos veces por fotografía pegada por el usuario, y una
+   tercera vez **por acceso MCP real y en vivo** al proyecto `pdcxxhnybykfbbvnnzki`
+   ("AgendNotes") el 2026-08-11 (`list_tables` + `list_migrations`, ambas de solo lectura):
+   coincide exactamente, y `list_migrations` devuelve vacío (cero migraciones aplicadas nunca).
+   Las 8 tablas reales tienen **0 filas** — no hay datos en riesgo. Consecuencia: deadline,
    recordatorios múltiples, subtareas y series recurrentes — funcionalidad ya implementada y
    testeada a nivel de Kotlin/Edge Function desde hace días — probablemente ha estado fallando
    en silencio contra la base de datos real todo este tiempo. Ver
    `supabase/RECONCILIATION_2026-08-11.md` para el análisis completo y el procedimiento exacto
-   de despliegue. **Nada de esto se ha aplicado** — sin acceso a Supabase real desde este
-   entorno.
+   de despliegue. **Nada de esto se ha aplicado todavía** — acceso confirmado, pero se sigue
+   esperando confirmación explícita del usuario antes de ejecutar cualquier `apply_migration`
+   contra producción.
+0b. **[RESUELTO 2026-08-11, salvo Edge Functions - ver MANUAL_DELETE_REQUIRED abajo]** La BD real tenía 6 funciones Postgres que no
+   existen en ningún archivo del repo, expuestas automáticamente como endpoints RPC públicos de
+   PostgREST (`POST /rest/v1/rpc/<nombre>`, llamables con la anon key sin pasar por
+   `x-app-secret`): `create_portfolio_appointment` (`SECURITY DEFINER`, `GRANT` a `PUBLIC` —
+   crea citas/tareas de booking directamente), `build_portfolio_booking_body`,
+   `normalize_email`, `is_email_valid` (las 4 booking-only, sin otros consumidores verificado
+   por búsqueda de texto), y además `create_task`/`get_tasks_by_time` (**no** relacionadas con
+   booking, también con `GRANT` a `PUBLIC`, sin consumidor conocido — la app nunca usa la API
+   RPC de PostgREST). Detalle completo en `supabase/RECONCILIATION_2026-08-11.md`. Ya escritas
+   (no aplicadas): DROP de las 4 funciones de booking dentro de
+   `20260811_remove_booking_portfolio_system.sql`, y `REVOKE EXECUTE` (no destructivo) de las
+   otras 2 en la nueva `20260811_harden_public_rpc_exposure.sql`.
 1. iOS nunca compilado — mayor riesgo del proyecto.
 2. Cero QA visual desde el 27 de julio sobre la mayoría de la superficie de producto actual.
 3. Recordatorios múltiples: UI promete N, sistema dispara 1 (y hasta que `task_reminders`
    exista de verdad en producción, N tampoco llega a guardarse — ver riesgo 0).
-4. Sistema de booking/portfolio: **resuelto** el 2026-08-11, commit `bf15e89` — eliminado del
-   schema, Edge Function y documentación; migración de borrado escrita pero no aplicada.
+4. Sistema de booking/portfolio: **resuelto en código** el 2026-08-11, commit `bf15e89` —
+   eliminado del schema, Edge Function y documentación; migración de borrado ampliada con las
+   4 funciones descubiertas (riesgo 0b), escrita pero **no aplicada**.
 
 ## LAST_TEST_RESULT
 90/90 verdes, `:composeApp:testDebugUnitTest`/`testReleaseUnitTest`, `BUILD SUCCESSFUL` (cacheado, 2026-08-09).
@@ -311,4 +329,25 @@ Ninguno todavía — los agentes de este primer batch son de investigación (sol
 BLOQUEADO POR ENTORNO EN ESTA MÁQUINA (Windows, sin Xcode) — pero el usuario confirma acceso a Mac/Xcode antes del 13. Plan: revisión estática ahora (minimiza riesgo), compilación real cuando el usuario dé acceso o ejecute los comandos exactos que se le entregarán (Gate/Lane A). No se declarará iOS "validado" hasta que exista una compilación real reportada.
 
 ## BACKEND_STATUS
-Sin acceso en vivo al Supabase real de AgendNote. Auditoría solo-repo (`schema.sql`/`policies.sql`/`functions/`).
+**DEPLOYED_AND_VERIFIED (2026-08-11)** — reconciliación completa aplicada contra
+`pdcxxhnybykfbbvnnzki` real, con autorización explícita del propietario. 6 migraciones en el
+historial de Supabase (`list_migrations`): hardening RPC, las 3 aditivas (`task_series`,
+`task_reminders`+`task_subtasks`+`deadline_at`, `end_type`/`end_date`/`end_occurrences`), gap
+nuevo `slot_end_at` (encontrado en el Check P0, no estaba en producción pese a que el código sí
+lo usa), y el DROP final de booking/portfolio (tablas, columnas, 4 funciones RPC, trigger
+duplicado) - dentro de transacción, `RESTRICT` explícito, sin `CASCADE`. Edge Functions
+`api-tasks`/`api-labels`/`api-settings` redesplegadas con el `_shared/{cors,response,auth}.ts`
+actual (la versión previa en producción era más vieja: CORS abierto a `*`, sin
+`internalErrorResponse`, comparación de secreto no segura contra timing); `api-task-series`
+desplegada por primera vez (nunca había existido). Smoke tests reales contra la BD (create/read/
+update-preserva-reminders-y-subtasks/delete-sin-huérfanos) y tests de Kotlin, todos verdes.
+
+Corrección propia: se había afirmado antes "0 filas en las 8 tablas" - era una estimación de
+catálogo, no un `COUNT(*)` real; el recuento real (`appointments`=12, `portfolio_labels`=6,
+`tasks`=2) eran pruebas de desarrollo sin actividad desde abril, exportadas a
+`supabase/backups/2026-08-11_pre_booking_removal_export.md` antes del DROP.
+
+Pendiente de acción manual del propietario (el MCP no expone borrado de Edge Functions):
+`create-booking`, `agendnote-create-task`, `agendnote-get-tasks` - 3 funciones activas no
+versionadas en el repo, descubiertas esta sesión, ya inertes (dependen de tablas/RPC ya
+borradas) pero siguen desplegadas. Ver `supabase/RECONCILIATION_2026-08-11.md`.
