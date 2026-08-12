@@ -28,6 +28,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -39,7 +40,6 @@ import androidx.navigation.NavBackStackEntry
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import com.franciscor.agendnote.app.di.AppServices
-import com.franciscor.agendnote.core.model.PersonalMessage
 import com.franciscor.agendnote.core.model.TaskSeries
 import com.franciscor.agendnote.core.model.TaskTemplate
 import com.franciscor.agendnote.core.network.RemoteConfigStatus
@@ -48,7 +48,6 @@ import com.franciscor.agendnote.core.notifications.NotificationRouter
 import com.franciscor.agendnote.core.ui.components.GlassBackground
 import com.franciscor.agendnote.core.ui.components.GlassModalState
 import com.franciscor.agendnote.core.ui.layout.AppLayout
-import com.franciscor.agendnote.feature.personal.presentation.view.PersonalMessageDetailOverlay
 import com.franciscor.agendnote.feature.agenda.domain.SeriesMaterializer
 import com.franciscor.agendnote.feature.agenda.domain.buildTaskExportJson
 import com.franciscor.agendnote.feature.agenda.presentation.controller.AgendaController
@@ -185,7 +184,6 @@ fun AppNavHost(
     // be active. A Task route also switches to the Agenda tab - AgendaScreen (via
     // pendingTaskRoute below) does the rest (select the right day, open that task's detail).
     var pendingTaskRoute by remember { mutableStateOf<NotificationRoute.Task?>(null) }
-    var openPersonalMessageId by remember { mutableStateOf<String?>(null) }
     val notificationRoute by NotificationRouter.pendingRoute.collectAsState()
     LaunchedEffect(notificationRoute) {
         when (val route = notificationRoute) {
@@ -196,25 +194,8 @@ fun AppNavHost(
                 // (onPendingTaskRouteConsumed below) - clearing it here instead would let a
                 // recomposition before AgendaScreen mounts silently drop the route.
             }
-            is NotificationRoute.PersonalMessage -> {
-                openPersonalMessageId = route.messageId
-                NotificationRouter.consume()
-            }
             null -> Unit
         }
-    }
-
-    var openPersonalMessage by remember { mutableStateOf<PersonalMessage?>(null) }
-    LaunchedEffect(openPersonalMessageId) {
-        val id = openPersonalMessageId ?: return@LaunchedEffect
-        val message = runCatching { AppServices.settingsRepository?.fetchPersonalMessages() }
-            .getOrNull()
-            ?.find { it.id == id }
-        openPersonalMessage = message
-        // Not found (deleted, or the id in an old delivered notification no longer exists) is not
-        // an error state worth its own dialog - there is simply nothing to show, so this quietly
-        // resets rather than opening an empty/broken sheet.
-        if (message == null) openPersonalMessageId = null
     }
 
     // Small, scale-aware outer margin — just enough to keep rounded card corners off the screen
@@ -225,8 +206,17 @@ fun AppNavHost(
     // Caps the main content/bottom bar width so wide windows (tablet/desktop/landscape) don't
     // stretch the UI edge-to-edge; content stays centered instead.
     val contentMaxWidth = 480.dp
+    val backdropModifier = if (GlassModalState.isBackdropBlurred) {
+        Modifier.blur(14.dp)
+    } else {
+        Modifier
+    }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .then(backdropModifier),
+    ) {
         GlassBackground(
             modifier = Modifier.fillMaxSize(),
             imageUrl = settingsViewModel.uiState.backgroundUrl.ifBlank { null },
@@ -381,7 +371,14 @@ fun AppNavHost(
                         modifier = Modifier
                             .align(Alignment.CenterEnd)
                             .fillMaxHeight()
-                            .width(edgeSwipeWidth),
+                            .width(edgeSwipeWidth)
+                            // Keep the edge gesture out of the header and bottom action area.
+                            // Those regions contain real controls in Agenda and Día; the gesture
+                            // zone must not win their pointer hit test.
+                            .padding(
+                                top = layout.height(84.dp, 72.dp),
+                                bottom = layout.height(84.dp, 72.dp),
+                            ),
                     )
                 }
 
@@ -396,17 +393,6 @@ fun AppNavHost(
             }
         }
 
-        // Mounted at the root, not inside any one tab's route content, so a personal-message
-        // notification opens this regardless of which tab was on screen (directive item 8).
-        openPersonalMessage?.let { message ->
-            PersonalMessageDetailOverlay(
-                message = message,
-                onDismiss = {
-                    openPersonalMessage = null
-                    openPersonalMessageId = null
-                },
-            )
-        }
     }
 }
 

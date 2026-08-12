@@ -49,6 +49,7 @@ import com.franciscor.agendnote.core.ui.components.colorFromHex
 import com.franciscor.agendnote.core.ui.components.labelColorPalette
 import com.franciscor.agendnote.core.ui.components.labelColorName
 import com.franciscor.agendnote.core.ui.layout.AppLayout
+import com.franciscor.agendnote.core.ui.theme.ControlHeight
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
 import com.franciscor.agendnote.feature.labels.presentation.controller.LabelsController
 import com.franciscor.agendnote.feature.labels.presentation.model.LabelsAction
@@ -103,12 +104,12 @@ fun LabelsScreen(
                     shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
                 ) {
                     Column(
-                        modifier = Modifier.padding(layout.size(20.dp, 18.dp)),
+                        modifier = Modifier.padding(layout.size(18.dp, 16.dp)),
                         verticalArrangement = Arrangement.spacedBy(layout.height(14.dp, 12.dp)),
                     ) {
                         Text(
                             text = "Crear etiqueta",
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleLarge,
                             color = GlassTheme.tokens.textPrimary,
                         )
                         Text(
@@ -123,6 +124,7 @@ fun LabelsScreen(
                                 placeholder = "Nombre",
                                 label = "Nombre de la etiqueta",
                                 modifier = Modifier.weight(1f),
+                                minHeight = ControlHeight.standard(),
                             )
                             GlassActionButton(
                                 text = "Agregar",
@@ -147,7 +149,7 @@ fun LabelsScreen(
                         // targets. Four predictable rows keep all 16 colors visible at 48 dp.
                         Column(
                             modifier = Modifier.selectableGroup(),
-                            verticalArrangement = Arrangement.spacedBy(layout.height(4.dp, 4.dp)),
+                            verticalArrangement = Arrangement.spacedBy(layout.height(8.dp, 6.dp)),
                         ) {
                             colorOptions.chunked(4).forEach { rowColors ->
                                 Row(
@@ -160,6 +162,7 @@ fun LabelsScreen(
                                             contentDescription = labelColorName(hex),
                                             selected = hex == selectedColor,
                                             onClick = { selectedColor = hex },
+                                            size = layout.size(26.dp, 24.dp),
                                         )
                                     }
                                 }
@@ -285,12 +288,12 @@ private fun LabelRow(
     val color = colorFromHex(label.colorHex)
     GlassSurface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
+        shape = RoundedCornerShape(layout.size(22.dp, 18.dp)),
     ) {
         Row(
             modifier = Modifier.padding(
-                horizontal = layout.width(18.dp, 16.dp),
-                vertical = layout.height(18.dp, 16.dp),
+                horizontal = layout.width(16.dp, 14.dp),
+                vertical = layout.height(14.dp, 12.dp),
             ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -302,7 +305,7 @@ private fun LabelRow(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(layout.size(12.dp, 10.dp))
+                        .size(layout.size(10.dp, 9.dp))
                         .clip(CircleShape)
                         .background(color),
                 )
@@ -318,7 +321,7 @@ private fun LabelRow(
                 shape = RoundedCornerShape(layout.size(14.dp, 12.dp)),
                 tint = GlassTheme.tokens.glassFill,
                 modifier = Modifier
-                    .defaultMinSize(minHeight = 48.dp)
+                    .defaultMinSize(minHeight = ControlHeight.standard())
                     .clip(RoundedCornerShape(layout.size(14.dp, 12.dp)))
                     .semantics(mergeDescendants = true) {}
                     .clickable(

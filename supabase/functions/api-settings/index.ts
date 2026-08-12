@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { errorResponse, internalErrorResponse, jsonResponse } from "../_shared/response.ts";
 import { requireAppSecret } from "../_shared/auth.ts";
+import { LIMITS, ValidationError, normalizeOptionalText, normalizeRequiredText, readJsonBody } from "../_shared/validation.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("SB_URL");
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SERVICE_ROLE_KEY");
@@ -49,11 +50,9 @@ serve(async (req) => {
     }
 
     if (req.method === "POST") {
-      const body = await req.json();
-      const key = String(body?.key ?? "").trim();
-      const value = String(body?.value ?? "");
-
-      if (!key) return errorResponse("key is required", 400);
+      const body = await readJsonBody(req) as Record<string, unknown>;
+      const key = normalizeRequiredText(body?.key, "key", LIMITS.settingsKey);
+      const value = normalizeOptionalText(body?.value, "value", LIMITS.settingsValue) ?? "";
 
       const { data, error } = await supabase
         .from("settings")
@@ -67,6 +66,7 @@ serve(async (req) => {
 
     return errorResponse("method not allowed", 405);
   } catch (error) {
+    if (error instanceof ValidationError) return errorResponse(error.message, 400);
     return internalErrorResponse(error);
   }
 });

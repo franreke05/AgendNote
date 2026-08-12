@@ -9,10 +9,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -77,6 +80,7 @@ fun GlassConfirmDialog(
                 .safeContentPadding()
                 .padding(horizontal = layout.width(24.dp, 20.dp))
                 .fillMaxWidth()
+                .heightIn(max = layout.height(620.dp, 560.dp))
                 // Operación Aniversario (Popup Inventory): an ALERT should read as a compact,
                 // deliberate card, not a form that happens to be short - fillMaxWidth() alone
                 // stretched edge-to-edge on wider viewports. Capped, not fixed, so it still
@@ -88,7 +92,9 @@ fun GlassConfirmDialog(
             shadowElevation = GlassElevation.modal,
         ) {
             Column(
-                modifier = Modifier.padding(layout.size(20.dp, 16.dp)),
+                modifier = Modifier
+                    .padding(layout.size(20.dp, 16.dp))
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(layout.height(14.dp, 12.dp)),
             ) {
                 if (icon != null) {

@@ -14,10 +14,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.delay
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.plus
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -115,12 +115,8 @@ fun AgendaScreen(
             AgendaHeader(
                 selectedDate = selectedDate,
                 isToday = selectedDate == viewModel.today(),
-                onPreviousDay = {
-                    controller.handleAsync(AgendaAction.MoveDay(-1))
-                },
-                onNextDay = {
-                    controller.handleAsync(AgendaAction.MoveDay(1))
-                },
+                onPreviousDay = { controller.handleAsync(AgendaAction.MoveDay(-1)) },
+                onNextDay = { controller.handleAsync(AgendaAction.MoveDay(1)) },
                 onOpenSmartLists = {
                     // Las listas inteligentes solo ven lo que ya esta cargado en tasksByDate
                     // (ver smartListTasks) - se piden el mes actual y el siguiente para que
@@ -132,7 +128,6 @@ fun AgendaScreen(
                     showSmartLists = true
                 },
                 onOpenCalendar = {
-                    controller.handleAsync(AgendaAction.LoadMonth(uiState.visibleMonth))
                     showCalendarPopover = true
                 },
             )

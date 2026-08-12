@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { errorResponse, internalErrorResponse, jsonResponse } from "../_shared/response.ts";
 import { requireAppSecret } from "../_shared/auth.ts";
+import { LIMITS, ValidationError, normalizeOptionalText, normalizeRequiredText, normalizeStringArray, readJsonBody } from "../_shared/validation.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("SB_URL");
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SERVICE_ROLE_KEY");
@@ -16,27 +17,10 @@ const supabase = createClient(supabaseUrl, serviceKey, {
   auth: { persistSession: false },
 });
 
-function normalizeOptionalString(value: unknown) {
-  if (value == null) return null;
-  const trimmed = String(value).trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function normalizeRequiredString(value: unknown, field: string) {
-  const normalized = normalizeOptionalString(value);
-  if (!normalized) throw new Error(`${field} is required`);
-  return normalized;
-}
-
 function normalizeDate(value: unknown, field: string) {
   const trimmed = String(value ?? "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) throw new Error(`${field} must be YYYY-MM-DD`);
   return trimmed;
-}
-
-function normalizeStringArray(value: unknown) {
-  if (!Array.isArray(value)) return [];
-  return value.map((item) => String(item).trim()).filter((item) => item.length > 0);
 }
 
 /**
@@ -50,8 +34,33 @@ function dayBefore(dateStr: string): string {
   return date.toISOString().slice(0, 10);
 }
 
+function normalizeWeekdays(value: unknown, recurrenceType: string) {
+  if (value == null) return null;
+  if (!Array.isArray(value) || value.length > 7) {
+    throw new ValidationError("days_of_week must contain at most 7 items");
+  }
+  const days = value.map(Number);
+  if (days.some((day) => !Number.isInteger(day) || day < 1 || day > 7)) {
+    throw new ValidationError("days_of_week values must be between 1 and 7");
+  }
+  if (recurrenceType === "weekly_days" && days.length === 0) {
+    throw new ValidationError("weekly_days requires at least one weekday");
+  }
+  return Array.from(new Set(days)).sort((a, b) => a - b);
+}
+
+function normalizeDayOfMonth(value: unknown, recurrenceType: string) {
+  if (value == null) return null;
+  const day = Number(value);
+  if (!Number.isInteger(day) || day < 1 || day > 31) {
+    throw new ValidationError("day_of_month must be between 1 and 31");
+  }
+  if (recurrenceType === "monthly") return day;
+  return null;
+}
+
 function buildEndFields(body: Record<string, unknown>, startDate: string) {
-  const endType = normalizeOptionalString(body.end_type) ?? "never";
+  const endType = normalizeOptionalText(body.end_type, "end_type", 32) ?? "never";
   if (!["never", "on_date", "after_occurrences"].includes(endType)) {
     throw new Error("end_type must be never, on_date, or after_occurrences");
   }
@@ -71,19 +80,19 @@ function buildEndFields(body: Record<string, unknown>, startDate: string) {
 }
 
 function buildInsertPayload(body: Record<string, unknown>) {
-  const recurrenceType = normalizeRequiredString(body.recurrence_type, "recurrence_type");
+  const recurrenceType = normalizeRequiredText(body.recurrence_type, "recurrence_type", 32);
   if (!["daily", "weekly_days", "monthly"].includes(recurrenceType)) {
     throw new Error("recurrence_type must be daily, weekly_days, or monthly");
   }
   const startDate = normalizeDate(body.start_date, "start_date");
   return {
-    title: normalizeRequiredString(body.title, "title"),
-    body: normalizeOptionalString(body.body),
-    time: normalizeOptionalString(body.time),
+    title: normalizeRequiredText(body.title, "title", LIMITS.seriesTitle),
+    body: normalizeOptionalText(body.body, "body", LIMITS.seriesBody),
+    time: normalizeOptionalText(body.time, "time", LIMITS.reminderLength),
     recurrence_type: recurrenceType,
-    days_of_week: Array.isArray(body.days_of_week) ? body.days_of_week.map(Number) : null,
-    day_of_month: body.day_of_month != null ? Number(body.day_of_month) : null,
-    label_ids: normalizeStringArray(body.label_ids),
+    days_of_week: normalizeWeekdays(body.days_of_week, recurrenceType),
+    day_of_month: normalizeDayOfMonth(body.day_of_month, recurrenceType),
+    label_ids: normalizeStringArray(body.label_ids, "label_ids", LIMITS.seriesLabelCount, LIMITS.reminderLength),
     start_date: startDate,
     is_active: true,
     materialized_until: dayBefore(startDate),
@@ -112,8 +121,8 @@ serve(async (req) => {
     }
 
     if (req.method === "POST") {
-      const body = await req.json();
-      const insertPayload = buildInsertPayload(body);
+      const body = await readJsonBody(req) as Record<string, unknown>;
+      const insertPayload = buildInsertPayload(body) as Record<string, unknown>;
 
       const { data, error } = await supabase
         .from("task_series")
@@ -126,8 +135,8 @@ serve(async (req) => {
     }
 
     if (req.method === "PATCH") {
-      const body = await req.json();
-      const id = normalizeRequiredString(body?.id, "id");
+      const body = await readJsonBody(req) as Record<string, unknown>;
+      const id = normalizeRequiredText(body?.id, "id", LIMITS.reminderLength);
       const updates: Record<string, unknown> = {};
 
       if (body?.materialized_until != null) {
@@ -175,6 +184,7 @@ serve(async (req) => {
 
     return errorResponse("method not allowed", 405);
   } catch (error) {
+    if (error instanceof ValidationError) return errorResponse(error.message, 400);
     return internalErrorResponse(error);
   }
 });

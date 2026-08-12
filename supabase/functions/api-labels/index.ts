@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { errorResponse, internalErrorResponse, jsonResponse } from "../_shared/response.ts";
 import { requireAppSecret } from "../_shared/auth.ts";
+import { LIMITS, ValidationError, normalizeRequiredText, readJsonBody, requireHexColor } from "../_shared/validation.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("SB_URL");
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SERVICE_ROLE_KEY");
@@ -35,12 +36,9 @@ serve(async (req) => {
     }
 
     if (req.method === "POST") {
-      const body = await req.json();
-      const name = String(body?.name ?? "").trim();
-      const colorHex = String(body?.color_hex ?? "").trim();
-
-      if (!name) return errorResponse("name is required", 400);
-      if (!colorHex) return errorResponse("color_hex is required", 400);
+      const body = await readJsonBody(req) as Record<string, unknown>;
+      const name = normalizeRequiredText(body?.name, "name", LIMITS.labelName);
+      const colorHex = requireHexColor(body?.color_hex, "color_hex");
 
       const { data, error } = await supabase
         .from("labels")
@@ -53,13 +51,13 @@ serve(async (req) => {
     }
 
     if (req.method === "PATCH") {
-      const body = await req.json();
+      const body = await readJsonBody(req) as Record<string, unknown>;
       const id = String(body?.id ?? "").trim();
       const updates: Record<string, unknown> = {};
 
       if (!id) return errorResponse("id is required", 400);
-      if (body?.name != null) updates.name = String(body.name).trim();
-      if (body?.color_hex != null) updates.color_hex = String(body.color_hex).trim();
+      if (body?.name != null) updates.name = normalizeRequiredText(body.name, "name", LIMITS.labelName);
+      if (body?.color_hex != null) updates.color_hex = requireHexColor(body.color_hex, "color_hex");
 
       const { data, error } = await supabase
         .from("labels")
@@ -98,6 +96,7 @@ serve(async (req) => {
 
     return errorResponse("method not allowed", 405);
   } catch (error) {
+    if (error instanceof ValidationError) return errorResponse(error.message, 400);
     return internalErrorResponse(error);
   }
 });

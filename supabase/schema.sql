@@ -5,8 +5,8 @@ create extension if not exists "pgcrypto";
 
 create table if not exists notes (
   id uuid primary key default gen_random_uuid(),
-  title text not null,
-  body text,
+  title text not null check (char_length(title) <= 200),
+  body text check (body is null or char_length(body) <= 8000),
   pinned boolean not null default false,
   order_index integer not null default 0,
   created_at timestamptz not null default now(),
@@ -15,8 +15,8 @@ create table if not exists notes (
 
 create table if not exists tasks (
   id uuid primary key default gen_random_uuid(),
-  title text not null,
-  body text,
+  title text not null check (char_length(title) <= 200),
+  body text check (body is null or char_length(body) <= 8000),
   day date not null,
   due_at timestamptz,
   slot_end_at timestamptz,
@@ -29,17 +29,10 @@ create table if not exists tasks (
 
 create table if not exists labels (
   id uuid primary key default gen_random_uuid(),
-  name text not null,
-  color_hex text not null,
+  name text not null check (char_length(name) <= 64),
+  color_hex text not null check (color_hex ~ '^#[0-9A-Fa-f]{6}$'),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
-);
-
-create table if not exists task_labels (
-  id uuid primary key default gen_random_uuid(),
-  task_id uuid not null references tasks(id) on delete cascade,
-  label_id uuid not null references labels(id) on delete cascade,
-  unique (task_id, label_id)
 );
 
 create table if not exists devices (
@@ -50,16 +43,21 @@ create table if not exists devices (
   unique (token)
 );
 
+create table if not exists task_labels (
+  id uuid primary key default gen_random_uuid(),
+  task_id uuid not null references tasks(id) on delete cascade,
+  label_id uuid not null references labels(id) on delete cascade,
+  unique (task_id, label_id)
+);
+
 create table if not exists settings (
   id uuid primary key default gen_random_uuid(),
   key text not null unique,
-  value text not null
+  value text not null check (char_length(key) <= 64 and char_length(value) <= 32768)
 );
 
 create index if not exists idx_tasks_day on tasks(day);
 create index if not exists idx_tasks_due_at on tasks(due_at);
-create index if not exists idx_tasks_updated_at on tasks(updated_at);
-create index if not exists idx_notes_updated_at on notes(updated_at);
 
 create or replace function set_updated_at()
 returns trigger as $$

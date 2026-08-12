@@ -61,10 +61,6 @@ class IosNotificationDelegate : NSObject(), UNUserNotificationCenterDelegateProt
                 val day = runCatching { LocalDate.parse(dayString) }.getOrNull() ?: return
                 NotificationRouter.route(NotificationRoute.Task(taskId, day))
             }
-            NotificationPayloadKeys.TYPE_PERSONAL_MESSAGE -> {
-                val messageId = userInfo[NotificationPayloadKeys.MESSAGE_ID] as? String ?: return
-                NotificationRouter.route(NotificationRoute.PersonalMessage(messageId))
-            }
             // Directive item 9: tapping a notification must never just fall back to "open Home"
             // silently - an unrecognized/missing payload is logged instead of pretending routing
             // succeeded, even though there is genuinely nowhere useful to send the user for a

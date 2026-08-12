@@ -9,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import com.franciscor.agendnote.core.notifications.AndroidNotificationService
+import com.franciscor.agendnote.core.platform.initializeThemeModeStore
 
 class MainActivity : ComponentActivity() {
     private val notificationPermissionLauncher = registerForActivityResult(
@@ -20,6 +21,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+
+        initializeThemeModeStore(applicationContext)
 
         AndroidNotificationService.initialize(
             activity = this,

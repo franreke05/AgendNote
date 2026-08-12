@@ -7,22 +7,22 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.MaterialTheme
@@ -35,23 +35,27 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.franciscor.agendnote.core.model.LabelTag
 import com.franciscor.agendnote.core.model.TaskItem
 import com.franciscor.agendnote.core.model.TaskTemplate
 import com.franciscor.agendnote.core.platform.currentTimeMillis
-import com.franciscor.agendnote.core.ui.components.GlassIconButton
 import com.franciscor.agendnote.core.ui.components.GlassSnackbar
 import com.franciscor.agendnote.core.ui.components.GlassSurface
 import com.franciscor.agendnote.core.ui.components.colorFromHex
 import com.franciscor.agendnote.core.ui.layout.AppLayout
+import com.franciscor.agendnote.core.ui.theme.ControlHeight
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
 import com.franciscor.agendnote.feature.agenda.presentation.controller.AgendaController
 import com.franciscor.agendnote.feature.agenda.presentation.model.AgendaAction
@@ -60,11 +64,13 @@ import com.franciscor.agendnote.feature.agenda.presentation.viewmodel.AgendaView
 import kotlinx.coroutines.delay
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import kotlin.math.roundToInt
 
 /**
- * "Día" tab (Operación Aniversario, replaces the old standalone Calendario tab - see
+ * "DÃ­a" tab (OperaciÃ³n Aniversario, replaces the old standalone Calendario tab - see
  * docs/OPERATION_ANNIVERSARY_STATUS.md). Shows the same selected day as Agenda
  * ([AgendaViewModel.uiState.selectedDate] is shared), but as an hour-by-hour timeline instead of
  * a task-card list. Reuses the exact same overlay-hosting pattern as [AgendaScreen] (task sheet
@@ -73,10 +79,8 @@ import kotlinx.datetime.toLocalDateTime
  * smart lists here; hourly grid instead of a card list) that a generic slot-based abstraction
  * would have cost more review risk under deadline than the small amount of duplicated wiring.
  *
- * Known scope cut, documented rather than hidden: tapping an empty hour opens task creation
- * prefilled with the day only, not that exact hour yet - extending [TaskSheetMode.Create] to
- * carry a preset time touches the same large, already-heavily-reviewed `NewTaskSheet` this
- * session; deferred to avoid stacking more risk on that file in the same pass.
+ * Tapping an empty hour opens task creation prefilled with the selected day and that hour;
+ * tapping the FAB opens the same creation sheet without a preset time.
  */
 @Composable
 fun DayScreen(
@@ -89,13 +93,14 @@ fun DayScreen(
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
-    val contentInset = layout.width(16.dp, 14.dp)
+    val contentInset = layout.width(4.dp, 4.dp)
     val uiState = viewModel.uiState
-    val isEditingEnabled = uiState.isRemoteAvailable
     val dayUiState = viewModel.selectedDayUiState()
     val selectedDate = uiState.selectedDate
+    var deviceToday by remember { mutableStateOf(currentDeviceDate()) }
     val sourceTasks = dayUiState.tasks
     var showTaskSheet by rememberSaveable { mutableStateOf(false) }
+    var requestedTaskTime by rememberSaveable { mutableStateOf<LocalTime?>(null) }
     var pendingDeleteTaskId by rememberSaveable { mutableStateOf<String?>(null) }
     var showTaskDetailsTaskId by rememberSaveable { mutableStateOf<String?>(null) }
     var editingTaskId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -111,12 +116,22 @@ fun DayScreen(
     }
     val taskSheetMode = when {
         editingTask != null -> TaskSheetMode.Edit(editingTask, selectedDate)
-        showTaskSheet -> TaskSheetMode.Create(selectedDate)
+        showTaskSheet -> TaskSheetMode.Create(selectedDate, requestedTaskTime)
         else -> null
     }
 
     LaunchedEffect(Unit) {
         controller.handleAsync(AgendaAction.RefreshSelectedDate)
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            val currentDate = currentDeviceDate()
+            if (currentDate != deviceToday) {
+                deviceToday = currentDate
+            }
+            delay(60_000)
+        }
     }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -131,33 +146,46 @@ fun DayScreen(
         ) {
             DayScreenHeader(
                 selectedDate = selectedDate,
-                isToday = selectedDate == viewModel.today(),
+                isToday = selectedDate == deviceToday,
                 onPreviousDay = { controller.handleAsync(AgendaAction.MoveDay(-1)) },
                 onNextDay = { controller.handleAsync(AgendaAction.MoveDay(1)) },
-                onGoToToday = { controller.handleAsync(AgendaAction.SelectDate(viewModel.today())) },
+                onGoToToday = {
+                    controller.handleAsync(AgendaAction.SelectDate(deviceToday))
+                },
             )
 
             DayTimeline(
                 selectedDate = selectedDate,
                 tasks = sourceTasks,
                 isLoading = dayUiState.isLoading,
-                isToday = selectedDate == viewModel.today(),
+                isToday = selectedDate == deviceToday,
                 onTaskSelected = { task -> showTaskDetailsTaskId = task.id },
-                onCreateRequested = { showTaskSheet = true },
-                modifier = Modifier.weight(1f),
+                onCreateRequested = { time ->
+                    requestedTaskTime = time
+                    showTaskSheet = true
+                },
+                // Reserve a visual dock below the timeline so the FAB floats on the screen,
+                // rather than appearing embedded in the temporal surface.
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(bottom = layout.height(68.dp, 60.dp)),
             )
         }
 
         if (!showTaskSheet && showTaskDetails == null && editingTask == null) {
-            FloatingAddButton(
+            DayFloatingAddButton(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
+                    .zIndex(2f)
                     .padding(
-                        end = layout.width(20.dp, 18.dp) + contentInset,
+                        end = layout.width(16.dp, 14.dp) + contentInset,
                         bottom = layout.height(16.dp, 12.dp),
                     ),
-                enabled = isEditingEnabled,
-                onClick = { showTaskSheet = true },
+                enabled = true,
+                onClick = {
+                    requestedTaskTime = null
+                    showTaskSheet = true
+                },
             )
         }
 
@@ -170,6 +198,7 @@ fun DayScreen(
                 onSaveTemplate = onSaveTemplate,
                 onDismiss = {
                     showTaskSheet = false
+                    requestedTaskTime = null
                     editingTaskId = null
                 },
                 onSave = { targetDate, draft, onResult ->
@@ -253,42 +282,52 @@ private fun DayScreenHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(modifier = Modifier.weight(1f, fill = false)) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
             Text(
                 text = "Día",
                 style = MaterialTheme.typography.displayLarge.copy(
-                    fontSize = layout.text(32.sp, 28.sp),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = layout.text(28.sp, 26.sp),
+                    lineHeight = layout.text(32.sp, 30.sp),
                 ),
                 color = GlassTheme.tokens.textPrimary,
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = formatFullDate(selectedDate),
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = layout.text(14.sp, 13.sp),
+                        lineHeight = layout.text(18.sp, 17.sp),
+                    ),
                     color = GlassTheme.tokens.textSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
                 if (!isToday) {
-                    Spacer(modifier = Modifier.width(layout.width(10.dp, 8.dp)))
+                    Spacer(modifier = Modifier.width(8.dp))
                     GlassSurface(
-                        shape = RoundedCornerShape(layout.size(16.dp, 14.dp)),
+                        modifier = Modifier
+                            .defaultMinSize(minHeight = ControlHeight.standard())
+                            .clickable(
+                                role = Role.Button,
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onGoToToday,
+                            ),
+                        shape = RoundedCornerShape(12.dp),
                         tint = GlassTheme.tokens.glassFillStrong,
                     ) {
                         Text(
                             text = "Hoy",
                             style = MaterialTheme.typography.labelMedium,
                             color = GlassTheme.tokens.textPrimary,
-                            modifier = Modifier
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = onGoToToday,
-                                )
-                                .padding(
-                                    horizontal = layout.width(14.dp, 12.dp),
-                                    vertical = layout.height(7.dp, 6.dp),
+                            modifier = Modifier.padding(
+                                    horizontal = 10.dp,
+                                    vertical = 4.dp,
                                 ),
                         )
                     }
@@ -296,12 +335,12 @@ private fun DayScreenHeader(
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp))) {
-            GlassIconButton(
+            DayNavigationButton(
                 icon = Icons.Rounded.ChevronLeft,
                 contentDescription = "Día anterior",
                 onClick = onPreviousDay,
             )
-            GlassIconButton(
+            DayNavigationButton(
                 icon = Icons.Rounded.ChevronRight,
                 contentDescription = "Día siguiente",
                 onClick = onNextDay,
@@ -310,11 +349,97 @@ private fun DayScreenHeader(
     }
 }
 
+@Composable
+private fun DayNavigationButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .zIndex(2f)
+            .clickable(
+                role = Role.Button,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        GlassSurface(
+            modifier = Modifier.size(40.dp),
+            shape = RoundedCornerShape(15.dp),
+            tint = GlassTheme.tokens.glassFillStrong,
+            strokeColor = GlassTheme.tokens.glassStroke,
+            shadowElevation = 2.dp,
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                androidx.compose.material3.Icon(
+                    imageVector = icon,
+                    contentDescription = contentDescription,
+                    tint = GlassTheme.tokens.textPrimary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DayFloatingAddButton(
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    GlassSurface(
+        modifier = modifier
+            .size(56.dp)
+            .clickable(
+                enabled = enabled,
+                role = Role.Button,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+        shape = RoundedCornerShape(18.dp),
+        tint = if (enabled) {
+            GlassTheme.tokens.accent.copy(alpha = 0.18f)
+        } else {
+            GlassTheme.tokens.glassFillDisabled
+        },
+        strokeColor = if (enabled) {
+            GlassTheme.tokens.accent.copy(alpha = 0.42f)
+        } else {
+            GlassTheme.tokens.glassStroke
+        },
+        shadowElevation = 2.dp,
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            androidx.compose.material3.Icon(
+                imageVector = Icons.Rounded.Add,
+                contentDescription = "Nueva tarea",
+                tint = if (enabled) GlassTheme.tokens.accent else GlassTheme.tokens.textSecondary,
+                modifier = Modifier.size(28.dp),
+            )
+        }
+    }
+}
+
 /**
- * Hour-by-hour breakdown of [selectedDate], one row per hour with tasks slotted into the hour
- * they start at, plus a thin current-time indicator when [isToday]. Adapted from a previously
- * unused `DayHourAgenda` composable that lived in CalendarScreen.kt (added 2026-07-25, never
- * wired to any navigation - confirmed by a zero-result grep before reusing it here).
+ * Time-based day canvas. The vertical axis is derived from real time:
+ *
+ *     y = topPadding + minutesFromMidnight * dpPerMinute
+ *
+ * The day is therefore never compressed to fit the viewport. The viewport scrolls over a
+ * stable 24-hour surface, which keeps hour markers, the current-time indicator and task cards
+ * on the same coordinate system.
  */
 @Composable
 private fun DayTimeline(
@@ -323,7 +448,7 @@ private fun DayTimeline(
     isLoading: Boolean,
     isToday: Boolean,
     onTaskSelected: (TaskItem) -> Unit,
-    onCreateRequested: () -> Unit,
+    onCreateRequested: (LocalTime?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
@@ -331,58 +456,185 @@ private fun DayTimeline(
     val timedTasks = tasks.filter { it.time != null }.sortedBy { it.time }
     val untimedTasks = tasks.filter { it.time == null }
     val tasksByHour = timedTasks.groupBy { it.time!!.hour }
-    val listState = rememberLazyListState()
+    val scrollState = rememberScrollState()
+    val density = LocalDensity.current
+
+    // A stable temporal scale: the viewport shows a slice of the day instead of squeezing all
+    // hours into whatever height happens to be available.
+    val hourHeight = layout.height(78.dp, 70.dp)
+    val minuteHeight = hourHeight / 60f
+    val timeColumnWidth = layout.width(44.dp, 40.dp)
+    val laneGap = layout.width(10.dp, 8.dp)
+    val topPadding = layout.height(18.dp, 16.dp)
+    val bottomPadding = layout.height(64.dp, 56.dp)
+    val timelineHeight = topPadding + (hourHeight * 24) + bottomPadding
+
     val now = if (isToday) {
         Instant.fromEpochMilliseconds(currentTimeMillis()).toLocalDateTime(timeZone)
     } else {
         null
     }
-    val currentHour = now?.hour
-    val currentMinuteFraction = now?.let { it.minute / 60f }
+    val currentMinutes = now?.let { it.hour * 60 + it.minute }
 
-    // Land on the first task of the day (or "now" for today) instead of forcing a scroll from
-    // midnight every time this day is opened.
-    LaunchedEffect(selectedDate, tasks) {
-        val targetHour = timedTasks.firstOrNull()?.time?.hour ?: currentHour ?: 8
-        listState.scrollToItem((targetHour - 1).coerceIn(0, 23))
+    // ScrollState.maxValue is 0 before the first measurement. Keying the effect with maxValue
+    // makes the initial positioning happen once the 24-hour canvas has actually been measured.
+    LaunchedEffect(selectedDate, tasks, isToday, scrollState.maxValue) {
+        if (scrollState.maxValue > 0) {
+            val targetHour = when {
+                isToday && now != null -> now.hour
+                timedTasks.isNotEmpty() -> timedTasks.first().time!!.hour
+                else -> 8
+            }
+            val hourToPlaceNearTop = (targetHour - 1).coerceIn(0, 23)
+            val targetDp = topPadding + (hourHeight * hourToPlaceNearTop)
+            scrollState.scrollTo(
+                with(density) {
+                    targetDp.toPx().roundToInt()
+                },
+            )
+        }
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            if (untimedTasks.isNotEmpty()) {
-                Row(
+        GlassSurface(
+            modifier = Modifier.fillMaxSize(),
+            shape = RoundedCornerShape(24.dp),
+            // Keep the alpha defined by the active theme. Replacing it here makes
+            // the dark-mode panel use a bright gray fill instead of a subtle glass surface.
+            tint = GlassTheme.tokens.glassFill,
+            strokeColor = GlassTheme.tokens.glassStroke,
+            shadowElevation = 1.dp,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(
+                        start = layout.width(12.dp, 10.dp),
+                        end = layout.width(12.dp, 10.dp),
+                        top = layout.height(10.dp, 8.dp),
+                        bottom = layout.height(10.dp, 8.dp),
+                    ),
+            ) {
+                if (untimedTasks.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        untimedTasks.forEach { task ->
+                            UntimedTaskChip(
+                                task = task,
+                                onClick = { onTaskSelected(task) },
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
+                        .weight(1f)
+                        .verticalScroll(scrollState),
                 ) {
-                    untimedTasks.forEach { task ->
-                        UntimedTaskChip(task = task, onClick = { onTaskSelected(task) })
-                    }
-                }
-                Spacer(modifier = Modifier.height(layout.height(10.dp, 8.dp)))
-            }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(timelineHeight),
+                    ) {
+                        // Layer 1: hour hit areas + hour labels + grid lines.
+                        repeat(24) { hour ->
+                            val hourY = topPadding + (hourHeight * hour)
 
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = layout.height(88.dp, 76.dp)),
-            ) {
-                items(24) { hour ->
-                    DayHourRow(
-                        hour = hour,
-                        tasks = tasksByHour[hour].orEmpty(),
-                        isCurrentHour = hour == currentHour,
-                        currentMinuteFraction = currentMinuteFraction.takeIf { hour == currentHour },
-                        onTaskSelected = onTaskSelected,
-                        onCreateRequested = onCreateRequested,
-                    )
+                            if (tasksByHour[hour].isNullOrEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = timeColumnWidth + laneGap)
+                                        .offset(y = hourY)
+                                        .height(hourHeight)
+                                        .clickable(
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null,
+                                            onClick = { onCreateRequested(LocalTime(hour, 0)) },
+                                        ),
+                                )
+                            }
+
+                            DayHourMarker(
+                                hour = hour,
+                                isCurrentHour = now?.hour == hour,
+                                timeColumnWidth = timeColumnWidth,
+                                laneGap = laneGap,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .offset(y = hourY - 12.dp),
+                            )
+                        }
+
+                        // Layer 2: current-time indicator. It shares the exact same temporal axis
+                        // as the event cards and hour markers.
+                        if (currentMinutes != null && now != null) {
+                            val currentY = topPadding + (minuteHeight * currentMinutes)
+                            DayCurrentTimeIndicator(
+                                label = formatTime(now.time),
+                                timeColumnWidth = timeColumnWidth,
+                                laneGap = laneGap,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .offset(y = currentY - 10.dp),
+                            )
+                        }
+
+                        // Layer 3: tasks. They are deliberately composed after grid/current-time
+                        // layers so their glass surface remains readable and grid lines never cut
+                        // through the content.
+                        timedTasks.forEach { task ->
+                            val start = task.time!!
+                            val startMinutes = start.hour * 60 + start.minute
+                            val taskY = topPadding + (minuteHeight * startMinutes)
+
+                            val durationMinutes = task.endTime?.let { endTime ->
+                                val end = endTime.hour * 60 + endTime.minute
+                                (if (end > startMinutes) {
+                                    end - startMinutes
+                                } else {
+                                    24 * 60 - startMinutes + end
+                                }).coerceIn(15, 180)
+                            }
+
+                            val naturalHeight = durationMinutes?.let { minutes ->
+                                minuteHeight * minutes
+                            } ?: layout.height(44.dp, 42.dp)
+
+                            val cardHeight = naturalHeight
+                                .coerceAtLeast(layout.height(44.dp, 42.dp))
+                                .coerceAtMost(hourHeight * 3)
+
+                            DayHourTaskCard(
+                                task = task,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(
+                                        start = timeColumnWidth + laneGap,
+                                        end = layout.width(4.dp, 3.dp),
+                                    )
+                                    .offset(y = taskY)
+                                    .height(cardHeight),
+                                onClick = { onTaskSelected(task) },
+                            )
+                        }
+                    }
                 }
             }
         }
+
         if (isLoading) {
             GlassSurface(
-                modifier = Modifier.align(Alignment.TopCenter),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 8.dp),
                 shape = RoundedCornerShape(layout.size(14.dp, 12.dp)),
                 tint = GlassTheme.tokens.glassFillStrong,
             ) {
@@ -400,155 +652,168 @@ private fun DayTimeline(
     }
 }
 
-private val DayRowMinHeight = 60.dp
-private val DayRowMinHeightCompact = 52.dp
-
 @Composable
-private fun DayHourRow(
+private fun DayHourMarker(
     hour: Int,
-    tasks: List<TaskItem>,
     isCurrentHour: Boolean,
-    currentMinuteFraction: Float?,
-    onTaskSelected: (TaskItem) -> Unit,
-    onCreateRequested: () -> Unit,
+    timeColumnWidth: Dp,
+    laneGap: Dp,
+    modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
-    val rowMinHeight = layout.height(DayRowMinHeight, DayRowMinHeightCompact)
-    val rowBackground = if (isCurrentHour) GlassTheme.tokens.glassFill else Color.Transparent
 
-    Box {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .defaultMinSize(minHeight = rowMinHeight)
-                .background(rowBackground)
-                .let { base ->
-                    // An hour with no tasks is a tap target for "create a task around this
-                    // time" - one with tasks is not (tapping a task card below opens its own
-                    // detail instead; adding a second create affordance in the same row would
-                    // be ambiguous about which the user meant).
-                    if (tasks.isEmpty()) {
-                        base.clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onCreateRequested,
-                        )
-                    } else {
-                        base
-                    }
-                },
+    Row(
+        modifier = modifier.height(24.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.width(timeColumnWidth),
+            contentAlignment = Alignment.CenterEnd,
         ) {
-            Box(
-                modifier = Modifier
-                    .width(layout.width(52.dp, 46.dp))
-                    .padding(top = layout.height(6.dp, 5.dp)),
-                contentAlignment = Alignment.TopCenter,
-            ) {
-                Text(
-                    text = "${hour.toString().padStart(2, '0')}:00",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (isCurrentHour) GlassTheme.tokens.textPrimary else GlassTheme.tokens.textSecondary,
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .width(layout.size(1.dp, 1.dp))
-                    .fillMaxHeight()
-                    .background(GlassTheme.tokens.divider),
-            )
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(
-                        start = layout.width(12.dp, 10.dp),
-                        top = layout.height(6.dp, 5.dp),
-                        bottom = layout.height(6.dp, 5.dp),
-                        end = layout.width(4.dp, 4.dp),
-                    ),
-                verticalArrangement = Arrangement.spacedBy(layout.height(6.dp, 5.dp)),
-            ) {
-                if (tasks.isEmpty()) {
-                    // Deliberately no placeholder text/icon here (e.g. "+ Agregar") - the whole
-                    // row already carries the create affordance, and a hint on every one of the
-                    // ~20 empty hours in a typical day would be more visual noise than help.
-                    Spacer(modifier = Modifier.height(layout.height(1.dp, 1.dp)))
+            Text(
+                text = "${hour.toString().padStart(2, '0')}:00",
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = if (isCurrentHour) FontWeight.SemiBold else FontWeight.Medium,
+                    fontSize = layout.text(12.sp, 11.sp),
+                ),
+                color = if (isCurrentHour) {
+                    GlassTheme.tokens.textPrimary
                 } else {
-                    tasks.forEach { task ->
-                        DayHourTaskCard(task = task, onClick = { onTaskSelected(task) })
-                    }
-                }
-            }
+                    GlassTheme.tokens.textSecondary
+                },
+            )
         }
+
+        Spacer(modifier = Modifier.width(laneGap))
+
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(layout.size(1.dp, 1.dp))
-                .padding(start = layout.width(52.dp, 46.dp))
-                .background(GlassTheme.tokens.divider.copy(alpha = 0.5f)),
+                .weight(1f)
+                .height(1.dp)
+                .background(
+                    GlassTheme.tokens.divider.copy(
+                        alpha = if (isCurrentHour) 0.78f else 0.48f,
+                    ),
+                ),
         )
-        if (currentMinuteFraction != null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = layout.width(52.dp, 46.dp))
-                    .height(layout.size(2.dp, 2.dp))
-                    .align(Alignment.TopStart)
-                    .padding(top = rowMinHeight * currentMinuteFraction)
-                    .background(GlassTheme.tokens.accent)
-                    .semantics { contentDescription = "Hora actual" },
-            )
-        }
     }
 }
 
 @Composable
-private fun DayHourTaskCard(task: TaskItem, onClick: () -> Unit) {
+private fun DayCurrentTimeIndicator(
+    label: String,
+    timeColumnWidth: Dp,
+    laneGap: Dp,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.height(20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Spacer(modifier = Modifier.width(timeColumnWidth + laneGap))
+
+        GlassSurface(
+            shape = RoundedCornerShape(8.dp),
+            tint = GlassTheme.tokens.accent.copy(alpha = 0.18f),
+            strokeColor = GlassTheme.tokens.accent.copy(alpha = 0.38f),
+            shadowElevation = 0.dp,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.SemiBold,
+                ),
+                color = GlassTheme.tokens.accent,
+                modifier = Modifier.padding(
+                    horizontal = 5.dp,
+                    vertical = 2.dp,
+                ),
+            )
+        }
+
+        Spacer(modifier = Modifier.width(6.dp))
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(1.dp)
+                .background(GlassTheme.tokens.accent.copy(alpha = 0.9f)),
+        )
+    }
+}
+
+@Composable
+private fun DayHourTaskCard(
+    task: TaskItem,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
     val layout = AppLayout.metrics
     val alpha = if (task.isDone) 0.55f else 1f
+    val timeText = task.endTime?.let { endTime ->
+        "${formatTime(task.time!!)}–${formatTime(endTime)}"
+    } ?: formatTime(task.time!!)
+
     GlassSurface(
         modifier = Modifier
-            .fillMaxWidth()
+            .then(modifier)
             .alpha(alpha)
             .clickable(
+                role = Role.Button,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick,
-            ),
-        shape = RoundedCornerShape(layout.size(14.dp, 12.dp)),
+            )
+            .semantics {
+                contentDescription = "$timeText, ${task.title}"
+            },
+        shape = RoundedCornerShape(13.dp),
         tint = GlassTheme.tokens.glassFillStrong,
+        strokeColor = GlassTheme.tokens.glassStroke,
+        shadowElevation = 1.dp,
     ) {
-        Row(
-            modifier = Modifier.padding(
-                horizontal = layout.width(12.dp, 10.dp),
-                vertical = layout.height(8.dp, 7.dp),
-            ),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(
+                    horizontal = layout.width(10.dp, 9.dp),
+                    vertical = layout.height(5.dp, 4.dp),
+                ),
+            verticalArrangement = Arrangement.Center,
         ) {
             Text(
-                text = formatTime(task.time!!),
-                style = MaterialTheme.typography.labelMedium,
-                color = GlassTheme.tokens.textSecondary,
-            )
-            Text(
                 text = task.title,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = layout.text(14.sp, 13.sp),
+                    lineHeight = layout.text(16.sp, 15.sp),
+                ),
                 color = GlassTheme.tokens.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
             )
-            task.labels.firstOrNull()?.let { label ->
-                Box(
-                    modifier = Modifier
-                        .padding(start = layout.width(2.dp, 2.dp)),
-                ) {
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = timeText,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = layout.text(11.sp, 10.sp),
+                    ),
+                    color = GlassTheme.tokens.textSecondary,
+                    maxLines = 1,
+                )
+
+                task.labels.firstOrNull()?.let { label ->
                     LabelDot(colorHex = label.colorHex)
                 }
             }
         }
     }
 }
+
 
 @Composable
 private fun LabelDot(colorHex: String) {
@@ -566,11 +831,13 @@ private fun LabelDot(colorHex: String) {
 private fun UntimedTaskChip(task: TaskItem, onClick: () -> Unit) {
     val layout = AppLayout.metrics
     GlassSurface(
-        modifier = Modifier.clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = null,
-            onClick = onClick,
-        ),
+        modifier = Modifier
+            .defaultMinSize(minHeight = ControlHeight.standard())
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
         shape = RoundedCornerShape(layout.size(14.dp, 12.dp)),
         tint = GlassTheme.tokens.glassFill,
         strokeColor = GlassTheme.tokens.glassStroke,
@@ -597,4 +864,11 @@ private fun UntimedTaskChip(task: TaskItem, onClick: () -> Unit) {
             )
         }
     }
+}
+
+private fun currentDeviceDate(): LocalDate {
+    return Instant
+        .fromEpochMilliseconds(currentTimeMillis())
+        .toLocalDateTime(TimeZone.currentSystemDefault())
+        .date
 }

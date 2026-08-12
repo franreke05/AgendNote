@@ -4,7 +4,8 @@ $projectRef = "pdcxxhnybykfbbvnnzki"
 $functions = @(
     "api-labels",
     "api-tasks",
-    "api-settings"
+    "api-settings",
+    "api-task-series"
 )
 
 if (-not (Get-Command supabase -ErrorAction SilentlyContinue)) {

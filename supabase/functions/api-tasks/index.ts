@@ -3,10 +3,18 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { errorResponse, internalErrorResponse, jsonResponse } from "../_shared/response.ts";
 import { requireAppSecret } from "../_shared/auth.ts";
+import {
+  LIMITS,
+  ValidationError,
+  normalizeOptionalText,
+  normalizeRequiredText,
+  normalizeStringArray,
+  readJsonBody,
+} from "../_shared/validation.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("SB_URL");
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SERVICE_ROLE_KEY");
-const TASK_SELECT = "id,title,body,day,due_at,slot_end_at,deadline_at,is_done,order_index,created_at,updated_at,notified_at,series_id";
+const TASK_SELECT = "id,title,body,day,due_at,slot_end_at,deadline_at,is_done,order_index,created_at,updated_at,series_id";
 const DEFAULT_LABEL_COLOR = "#8C94A6";
 
 if (!supabaseUrl || !serviceKey) {
@@ -27,20 +35,6 @@ function hasField(body: unknown, field: string) {
   return typeof body === "object" && body !== null && field in body;
 }
 
-function normalizeOptionalString(value: unknown) {
-  if (value == null) return null;
-  const trimmed = String(value).trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function normalizeRequiredString(value: unknown, field: string) {
-  const normalized = normalizeOptionalString(value);
-  if (!normalized) {
-    throw new Error(`${field} is required`);
-  }
-  return normalized;
-}
-
 function normalizeRequiredDay(value: unknown) {
   const day = parseDateParam(String(value ?? "").trim());
   if (!day) {
@@ -49,32 +43,25 @@ function normalizeRequiredDay(value: unknown) {
   return day;
 }
 
-function normalizeStringArray(value: unknown) {
-  if (!Array.isArray(value)) return null;
-  const seen = new Set<string>();
-  const normalized: string[] = [];
-
-  for (const item of value) {
-    const trimmed = normalizeOptionalString(item);
-    if (!trimmed || seen.has(trimmed)) continue;
-    seen.add(trimmed);
-    normalized.push(trimmed);
+function normalizeOrderIndex(value: unknown) {
+  const order = Number(value ?? 0);
+  if (!Number.isInteger(order) || order < 0 || order > 1_000_000) {
+    throw new ValidationError("order_index must be an integer between 0 and 1000000");
   }
-
-  return normalized;
+  return order;
 }
 
 function buildInsertPayload(body: Record<string, unknown>) {
   return {
-    title: normalizeRequiredString(body.title, "title"),
-    body: normalizeOptionalString(body.body),
+    title: normalizeRequiredText(body.title, "title", LIMITS.taskTitle),
+    body: normalizeOptionalText(body.body, "body", LIMITS.taskBody),
     day: normalizeRequiredDay(body.day),
-    due_at: normalizeOptionalString(body.due_at),
-    slot_end_at: normalizeOptionalString(body.slot_end_at),
-    deadline_at: normalizeOptionalString(body.deadline_at),
+    due_at: normalizeOptionalText(body.due_at, "due_at", LIMITS.reminderLength),
+    slot_end_at: normalizeOptionalText(body.slot_end_at, "slot_end_at", LIMITS.reminderLength),
+    deadline_at: normalizeOptionalText(body.deadline_at, "deadline_at", LIMITS.reminderLength),
     is_done: Boolean(body.is_done ?? false),
-    order_index: Number(body.order_index ?? 0),
-    series_id: normalizeOptionalString(body.series_id),
+    order_index: normalizeOrderIndex(body.order_index),
+    series_id: normalizeOptionalText(body.series_id, "series_id", LIMITS.reminderLength),
   };
 }
 
@@ -82,10 +69,10 @@ function buildUpdatePayload(body: Record<string, unknown>) {
   const updates: Record<string, unknown> = {};
 
   if (hasField(body, "title")) {
-    updates.title = normalizeRequiredString(body.title, "title");
+    updates.title = normalizeRequiredText(body.title, "title", LIMITS.taskTitle);
   }
   if (hasField(body, "body")) {
-    updates.body = normalizeOptionalString(body.body);
+    updates.body = normalizeOptionalText(body.body, "body", LIMITS.taskBody);
   }
   if (hasField(body, "day")) {
     const parsedDay = parseDateParam(String(body.day ?? "").trim());
@@ -93,19 +80,19 @@ function buildUpdatePayload(body: Record<string, unknown>) {
     updates.day = parsedDay;
   }
   if (hasField(body, "due_at")) {
-    updates.due_at = normalizeOptionalString(body.due_at);
+    updates.due_at = normalizeOptionalText(body.due_at, "due_at", LIMITS.reminderLength);
   }
   if (hasField(body, "slot_end_at")) {
-    updates.slot_end_at = normalizeOptionalString(body.slot_end_at);
+    updates.slot_end_at = normalizeOptionalText(body.slot_end_at, "slot_end_at", LIMITS.reminderLength);
   }
   if (hasField(body, "deadline_at")) {
-    updates.deadline_at = normalizeOptionalString(body.deadline_at);
+    updates.deadline_at = normalizeOptionalText(body.deadline_at, "deadline_at", LIMITS.reminderLength);
   }
   if (hasField(body, "is_done")) {
     updates.is_done = Boolean(body.is_done);
   }
   if (hasField(body, "order_index")) {
-    updates.order_index = Number(body.order_index);
+    updates.order_index = normalizeOrderIndex(body.order_index);
   }
 
   return updates;
@@ -125,10 +112,10 @@ async function attachLabels(tasks: Array<Record<string, unknown>>) {
   const labelMap = new Map<string, Array<Record<string, unknown>>>();
   for (const row of data ?? []) {
     const taskId = String(row.task_id);
-    const label = row.labels ? row.labels : null;
+    const label = Array.isArray(row.labels) ? row.labels[0] : row.labels;
     if (!label) continue;
     if (!labelMap.has(taskId)) labelMap.set(taskId, []);
-    labelMap.get(taskId)?.push(label as Record<string, unknown>);
+    labelMap.get(taskId)?.push(label as unknown as Record<string, unknown>);
   }
 
   return tasks.map((task) => ({
@@ -211,10 +198,10 @@ async function fetchTaskById(taskId: string) {
 }
 
 async function resolveLabelIds(labelIds: unknown, labelNames: unknown) {
-  const normalizedIds = normalizeStringArray(labelIds) ?? [];
+  const normalizedIds = normalizeStringArray(labelIds, "label_ids", LIMITS.labelCount, LIMITS.reminderLength);
   const normalizedNames: string[] = [];
   const seenNames = new Set<string>();
-  for (const name of normalizeStringArray(labelNames) ?? []) {
+  for (const name of normalizeStringArray(labelNames, "label_names", LIMITS.labelCount, LIMITS.labelName)) {
     const key = name.toLowerCase();
     if (seenNames.has(key)) continue;
     seenNames.add(key);
@@ -234,8 +221,8 @@ async function resolveLabelIds(labelIds: unknown, labelNames: unknown) {
 
   const labelIdByName = new Map<string, string>();
   for (const label of existingLabels ?? []) {
-    const name = normalizeOptionalString(label.name);
-    const id = normalizeOptionalString(label.id);
+    const name = normalizeOptionalText(label.name, "label name", LIMITS.labelName);
+    const id = normalizeOptionalText(label.id, "label id", LIMITS.reminderLength);
     if (!name || !id) continue;
     labelIdByName.set(name.toLowerCase(), id);
   }
@@ -254,8 +241,8 @@ async function resolveLabelIds(labelIds: unknown, labelNames: unknown) {
     if (createError) throw new Error(createError.message);
 
     for (const label of createdLabels ?? []) {
-      const name = normalizeOptionalString(label.name);
-      const id = normalizeOptionalString(label.id);
+      const name = normalizeOptionalText(label.name, "label name", LIMITS.labelName);
+      const id = normalizeOptionalText(label.id, "label id", LIMITS.reminderLength);
       if (!name || !id) continue;
       labelIdByName.set(name.toLowerCase(), id);
     }
@@ -290,7 +277,12 @@ async function syncTaskLabels(taskId: string, labelIds: unknown, labelNames: unk
 
 /** Replaces all reminders for a task with the given list of ISO instants (deduplicated). */
 async function syncTaskReminders(taskId: string, reminders: unknown) {
-  const normalized = normalizeStringArray(reminders) ?? [];
+  const normalized = normalizeStringArray(
+    reminders,
+    "reminders",
+    LIMITS.reminderCount,
+    LIMITS.reminderLength,
+  );
 
   const { error: deleteError } = await supabase
     .from("task_reminders")
@@ -315,17 +307,21 @@ interface SubtaskInput {
 }
 
 function normalizeSubtaskArray(value: unknown): SubtaskInput[] {
-  if (!Array.isArray(value)) return [];
+  if (value == null) return [];
+  if (!Array.isArray(value)) throw new ValidationError("subtasks must be an array");
+  if (value.length > LIMITS.subtaskCount) {
+    throw new ValidationError(`subtasks cannot contain more than ${LIMITS.subtaskCount} items`);
+  }
   const normalized: SubtaskInput[] = [];
   value.forEach((item, index) => {
     if (typeof item !== "object" || item === null) return;
     const record = item as Record<string, unknown>;
-    const title = normalizeOptionalString(record.title);
+    const title = normalizeOptionalText(record.title, "subtask title", LIMITS.subtaskTitle);
     if (!title) return;
     normalized.push({
       title,
       is_done: Boolean(record.is_done ?? false),
-      order_index: Number(record.order_index ?? index),
+      order_index: index,
     });
   });
   return normalized;
@@ -375,6 +371,13 @@ serve(async (req) => {
       const from = parseDateParam(url.searchParams.get("from"));
       const to = parseDateParam(url.searchParams.get("to"));
 
+      if (!day && (!from || !to)) {
+        return errorResponse("day or from/to is required", 400);
+      }
+      if (from && to && from > to) {
+        return errorResponse("from must be on or before to", 400);
+      }
+
       let query = supabase
         .from("tasks")
         .select(TASK_SELECT)
@@ -396,8 +399,8 @@ serve(async (req) => {
     }
 
     if (req.method === "POST") {
-      const body = await req.json();
-      normalizeRequiredString(body?.title, "title");
+      const body = await readJsonBody(req) as Record<string, unknown>;
+      normalizeRequiredText(body?.title, "title", LIMITS.taskTitle);
       normalizeRequiredDay(body?.day);
       const hasLabelSync = hasField(body, "label_ids") || hasField(body, "label_names");
       const hasReminderSync = hasField(body, "reminders");
@@ -411,14 +414,20 @@ serve(async (req) => {
         .single();
 
       if (error) return internalErrorResponse(error);
-      if (hasLabelSync) {
-        await syncTaskLabels(String(data.id), body?.label_ids, body?.label_names);
-      }
-      if (hasReminderSync) {
-        await syncTaskReminders(String(data.id), body?.reminders);
-      }
-      if (hasSubtaskSync) {
-        await syncTaskSubtasks(String(data.id), body?.subtasks);
+      try {
+        if (hasLabelSync) {
+          await syncTaskLabels(String(data.id), body?.label_ids, body?.label_names);
+        }
+        if (hasReminderSync) {
+          await syncTaskReminders(String(data.id), body?.reminders);
+        }
+        if (hasSubtaskSync) {
+          await syncTaskSubtasks(String(data.id), body?.subtasks);
+        }
+      } catch (syncError) {
+        // Avoid leaving a base task behind when one of its child collections fails.
+        await supabase.from("tasks").delete().eq("id", data.id);
+        throw syncError;
       }
 
       const tasksWithExtras = await attachTaskExtras([data as Record<string, unknown>]);
@@ -426,8 +435,8 @@ serve(async (req) => {
     }
 
     if (req.method === "PATCH") {
-      const body = await req.json();
-      const taskId = normalizeOptionalString(body?.id);
+      const body = await readJsonBody(req) as Record<string, unknown>;
+      const taskId = normalizeOptionalText(body?.id, "id", LIMITS.reminderLength);
       if (!taskId) return errorResponse("id is required", 400);
 
       const updates = buildUpdatePayload(body);
@@ -487,6 +496,7 @@ serve(async (req) => {
 
     return errorResponse("method not allowed", 405);
   } catch (error) {
+    if (error instanceof ValidationError) return errorResponse(error.message, 400);
     return internalErrorResponse(error);
   }
 });

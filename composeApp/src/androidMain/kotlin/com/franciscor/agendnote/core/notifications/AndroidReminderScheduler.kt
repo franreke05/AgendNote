@@ -9,8 +9,6 @@ internal const val ACTION_SHOW_TASK = "com.franciscor.agendnote.SHOW_TASK_NOTIFI
 internal const val EXTRA_TASK_ID = "task_id"
 internal const val EXTRA_TITLE = "task_title"
 internal const val EXTRA_DETAILS = "task_details"
-internal const val EXTRA_SOUND_ID = "sound_id"
-
 /**
  * Small local copy of each pending reminder.
  *
@@ -18,16 +16,12 @@ internal const val EXTRA_SOUND_ID = "sound_id"
  * notification payload lets [AndroidReminderRestoreReceiver] rebuild them without starting the
  * UI or depending on a network request during boot.
  *
- * @param soundId Which [NotificationSoundId] (hence which per-sound `NotificationChannel` - see
- * [AndroidNotificationReceiver]) this reminder should fire on. Null falls back to the default
- * channel/system sound - same "never block on a missing sound" contract as iOS.
  */
 internal data class StoredReminder(
     val taskId: String,
     val title: String,
     val details: String?,
     val triggerAtMillis: Long,
-    val soundId: NotificationSoundId? = null,
 )
 
 internal object AndroidReminderStore {
@@ -36,7 +30,6 @@ internal object AndroidReminderStore {
     private const val TRIGGER_PREFIX = "trigger:"
     private const val TITLE_PREFIX = "title:"
     private const val DETAILS_PREFIX = "details:"
-    private const val SOUND_PREFIX = "sound:"
 
     fun save(context: Context, reminder: StoredReminder) {
         val preferences = preferences(context)
@@ -47,7 +40,6 @@ internal object AndroidReminderStore {
             .putLong(TRIGGER_PREFIX + reminder.taskId, reminder.triggerAtMillis)
             .putString(TITLE_PREFIX + reminder.taskId, reminder.title)
             .putString(DETAILS_PREFIX + reminder.taskId, reminder.details)
-            .putString(SOUND_PREFIX + reminder.taskId, reminder.soundId?.name)
             .apply()
     }
 
@@ -60,7 +52,6 @@ internal object AndroidReminderStore {
             .remove(TRIGGER_PREFIX + taskId)
             .remove(TITLE_PREFIX + taskId)
             .remove(DETAILS_PREFIX + taskId)
-            .remove(SOUND_PREFIX + taskId)
             .apply()
     }
 
@@ -75,13 +66,11 @@ internal object AndroidReminderStore {
                     remove(context, taskId)
                     null
                 } else {
-                    val soundIdName = preferences.getString(SOUND_PREFIX + taskId, null)
                     StoredReminder(
                         taskId = taskId,
                         title = title,
                         details = preferences.getString(DETAILS_PREFIX + taskId, null),
                         triggerAtMillis = triggerAt,
-                        soundId = soundIdName?.let { runCatching { NotificationSoundId.valueOf(it) }.getOrNull() },
                     )
                 }
             }
@@ -106,31 +95,11 @@ internal object AndroidReminderScheduler {
             flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        // Exact alarms require a special user grant on Android 12+. The inexact fallback still
-        // delivers the reminder and avoids a SecurityException when that grant is unavailable.
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S &&
-            !alarmManager.canScheduleExactAlarms()
-        ) {
-            alarmManager.setAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                reminder.triggerAtMillis,
-                pendingIntent,
-            )
-        } else {
-            runCatching {
-                alarmManager.setExactAndAllowWhileIdle(
-                    AlarmManager.RTC_WAKEUP,
-                    reminder.triggerAtMillis,
-                    pendingIntent,
-                )
-            }.getOrElse {
-                alarmManager.setAndAllowWhileIdle(
-                    AlarmManager.RTC_WAKEUP,
-                    reminder.triggerAtMillis,
-                    pendingIntent,
-                )
-            }
-        }
+        alarmManager.setAndAllowWhileIdle(
+            AlarmManager.RTC_WAKEUP,
+            reminder.triggerAtMillis,
+            pendingIntent,
+        )
         AndroidReminderStore.save(appContext, reminder)
     }
 
@@ -173,7 +142,6 @@ internal object AndroidReminderScheduler {
             putExtra(EXTRA_TASK_ID, reminder.taskId)
             putExtra(EXTRA_TITLE, reminder.title)
             putExtra(EXTRA_DETAILS, reminder.details)
-            putExtra(EXTRA_SOUND_ID, reminder.soundId?.name)
         }
         return PendingIntent.getBroadcast(context, reminder.taskId.hashCode(), intent, flags)
     }
