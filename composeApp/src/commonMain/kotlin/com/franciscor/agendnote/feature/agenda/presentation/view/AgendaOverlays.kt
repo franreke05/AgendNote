@@ -64,6 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -100,6 +101,7 @@ import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.core.ui.theme.GlassElevation
 import com.franciscor.agendnote.core.ui.theme.GlassRadius
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
+import com.franciscor.agendnote.core.ui.theme.ControlHeight
 import com.franciscor.agendnote.feature.agenda.domain.RecurrenceEnd
 import com.franciscor.agendnote.feature.agenda.domain.RecurrenceRule
 import com.franciscor.agendnote.feature.agenda.domain.SmartList
@@ -195,6 +197,8 @@ internal fun SmartListsOverlay(
     GlassSheetScaffold(
         onDismiss = onDismiss,
         maxHeightFraction = 0.82f,
+        blurBehind = true,
+        scrimColor = Color.Transparent,
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -214,7 +218,10 @@ internal fun SmartListsOverlay(
                     if (drilldownList != null) {
                         Box(
                             modifier = Modifier
-                                .defaultMinSize(minWidth = 44.dp, minHeight = 44.dp)
+                                .defaultMinSize(
+                                    minWidth = ControlHeight.standard(),
+                                    minHeight = ControlHeight.standard(),
+                                )
                                 .clip(CircleShape)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
@@ -241,7 +248,10 @@ internal fun SmartListsOverlay(
                 }
                 Box(
                     modifier = Modifier
-                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                        .defaultMinSize(
+                            minWidth = ControlHeight.standard(),
+                            minHeight = ControlHeight.standard(),
+                        )
                         .clip(CircleShape)
                         .clickable(
                             role = Role.Button,
@@ -470,7 +480,10 @@ private enum class RecurrenceEndOption {
  * accidentally affected by edit-only logic.
  */
 internal sealed interface TaskSheetMode {
-    data class Create(val date: LocalDate) : TaskSheetMode
+    data class Create(
+        val date: LocalDate,
+        val initialTime: LocalTime? = null,
+    ) : TaskSheetMode
     data class Edit(val task: TaskItem, val originalDate: LocalDate) : TaskSheetMode
 }
 
@@ -511,7 +524,9 @@ internal fun NewTaskSheet(
 
     var title by remember(mode) { mutableStateOf(editTask?.title ?: "") }
     var details by remember(mode) { mutableStateOf(editTask?.details ?: "") }
-    var selectedTime by remember(mode) { mutableStateOf(editTask?.time) }
+    var selectedTime by remember(mode) {
+        mutableStateOf(editTask?.time ?: (mode as? TaskSheetMode.Create)?.initialTime)
+    }
     var errorText by remember { mutableStateOf<String?>(null) }
     // Editing never clamps to today: an already-overdue task must stay editable on its own date
     // without the sheet silently moving it forward (see [TaskSheetMode.Edit] and the past-date
@@ -667,7 +682,12 @@ internal fun NewTaskSheet(
     // everything the user typed with an accidental downward drag and zero confirmation. Tap-
     // outside-scrim dismiss (pre-existing, unchanged) stays available; only the drag gesture is
     // disabled here. TaskDetailsOverlay (read-only) keeps drag-to-dismiss - no data-loss risk.
-    GlassSheetScaffold(onDismiss = onDismiss, dragToDismissEnabled = false) {
+    GlassSheetScaffold(
+        onDismiss = onDismiss,
+        dragToDismissEnabled = false,
+        blurBehind = true,
+        scrimColor = Color.Transparent,
+    ) {
         Column(
             modifier = Modifier
                 .padding(layout.size(16.dp, 14.dp))
@@ -945,7 +965,10 @@ internal fun NewTaskSheet(
                                     )
                                     Box(
                                         modifier = Modifier
-                                            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                            .defaultMinSize(
+                                                minWidth = ControlHeight.standard(),
+                                                minHeight = ControlHeight.standard(),
+                                            )
                                             .clickable(
                                                 role = Role.Button,
                                                 onClickLabel = "Aplicar fecha y hora detectadas",
@@ -1203,7 +1226,10 @@ internal fun NewTaskSheet(
                                 )
                                 Box(
                                     modifier = Modifier
-                                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                        .defaultMinSize(
+                                            minWidth = ControlHeight.standard(),
+                                            minHeight = ControlHeight.standard(),
+                                        )
                                         .clickable(
                                             role = Role.Button,
                                             onClickLabel = "Quitar subtarea",
@@ -1680,9 +1706,10 @@ private fun DatePickerOverlay(
     // inside NewTaskSheet's Dialog tree - meaning its manual scrim stacked on top of NewTaskSheet's
     // own scrim (visible double darkening). GlassPopover opens its own independent Dialog, so this
     // is now a self-contained presentation regardless of caller.
-    GlassPopover(
+    GlassSheetScaffold(
         onDismiss = onDismiss,
-        alignment = Alignment.Center,
+        maxHeightFraction = 0.86f,
+        dragToDismissEnabled = false,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp))) {
             Row(
@@ -1829,7 +1856,10 @@ private fun TimePickerOverlay(
             ) {
                 Box(
                     modifier = Modifier
-                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                        .defaultMinSize(
+                            minWidth = ControlHeight.standard(),
+                            minHeight = ControlHeight.standard(),
+                        )
                         .clickable(
                             role = Role.Button,
                             interactionSource = remember { MutableInteractionSource() },
@@ -1856,7 +1886,10 @@ private fun TimePickerOverlay(
                 }
                 Box(
                     modifier = Modifier
-                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                        .defaultMinSize(
+                            minWidth = ControlHeight.standard(),
+                            minHeight = ControlHeight.standard(),
+                        )
                         .clickable(
                             role = Role.Button,
                             interactionSource = remember { MutableInteractionSource() },
@@ -2089,20 +2122,20 @@ internal fun CalendarPopover(
     onDismiss: () -> Unit,
 ) {
     val layout = AppLayout.metrics
-    // Design System Freeze V1: was a full-screen Dialog ("indistinguishable from a full-screen
+    // Inline glass calendar keeps the opening interaction deterministic on compact Android
     // dialog" per the Operación Aniversario audit) with a hand-rolled scrim - now the shared
     // GlassPopover, centered, matching the product brief's POPOVER category for a brief
-    // contextual choice launched from the "Ver mes" header button in Agenda.
     GlassPopover(
         onDismiss = onDismiss,
         alignment = Alignment.Center,
-        // Found by adversarial review: GlassPopover's own padding stacks with CalendarMonthView's
-        // internal padding, leaving the 7-column day grid noticeably narrower than before this
-        // migration - widened from the 0.9f default to compensate, not verified visually (no
-        // device in this environment), worth a look on a compact phone before trusting it.
-        maxWidthFraction = 0.96f,
+        maxWidthFraction = 0.94f,
+        blurBehind = true,
+        scrimColor = Color.Transparent,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(layout.height(10.dp, 8.dp))) {
+        Column(
+            modifier = Modifier.verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(layout.height(10.dp, 8.dp)),
+        ) {
             if (errorMessage != null) {
                 GlassSurface(
                     modifier = Modifier.fillMaxWidth(),
@@ -2227,7 +2260,10 @@ internal fun CalendarMonthView(
                 ) {
                     Box(
                         modifier = Modifier
-                            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                            .defaultMinSize(
+                                minWidth = ControlHeight.standard(),
+                                minHeight = ControlHeight.standard(),
+                            )
                             .clickable(
                                 role = Role.Button,
                                 onClickLabel = "Ir a hoy",
@@ -2248,7 +2284,7 @@ internal fun CalendarMonthView(
                     }
                     Box(
                         modifier = Modifier
-                            .size(48.dp)
+                            .size(ControlHeight.standard())
                             .clickable(
                                 role = Role.Button,
                                 interactionSource = remember { MutableInteractionSource() },
@@ -2266,7 +2302,7 @@ internal fun CalendarMonthView(
                     }
                     Box(
                         modifier = Modifier
-                            .size(48.dp)
+                            .size(ControlHeight.standard())
                             .clickable(
                                 role = Role.Button,
                                 interactionSource = remember { MutableInteractionSource() },
@@ -2509,7 +2545,7 @@ private fun LabelSelectableChip(
         tint = tint,
         strokeColor = stroke,
         modifier = Modifier
-            .defaultMinSize(minHeight = 48.dp)
+            .defaultMinSize(minHeight = ControlHeight.standard())
             .selectable(
                 selected = selected,
                 role = Role.Checkbox,

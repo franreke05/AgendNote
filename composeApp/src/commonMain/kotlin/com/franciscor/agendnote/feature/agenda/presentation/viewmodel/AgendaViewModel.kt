@@ -421,7 +421,10 @@ class AgendaViewModel(
     // wrapping the suspend functions above in `rememberCoroutineScope().launch { }`.
 
     fun moveDayAndLoad(delta: Int) {
-        val target = moveDay(delta)
+        // Update the selected date before starting the request so the screen never keeps
+        // rendering the previous day while the next/previous day is loading.
+        val target = uiState.selectedDate.plus(delta, DateTimeUnit.DAY)
+        selectDate(target)
         viewModelScope.launch { loadTasksForDate(target) }
     }
 

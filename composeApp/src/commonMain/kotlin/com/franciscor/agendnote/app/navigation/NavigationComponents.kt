@@ -144,7 +144,13 @@ private fun BottomBarItem(
     modifier: Modifier = Modifier,
 ) {
     val layout = AppLayout.metrics
-    val color = if (selected) GlassTheme.tokens.textPrimary else GlassTheme.tokens.textSecondary
+    // Keep inactive tabs readable against the dark glass surface while preserving a clear
+    // selected-state contrast.
+    val color = if (selected) {
+        GlassTheme.tokens.textPrimary
+    } else {
+        GlassTheme.tokens.textPrimary.copy(alpha = 0.72f)
+    }
     // Neutral wash behind the active tab (existing textPrimary token at low alpha) so the
     // selection reads at a glance, without introducing the accent color into navigation.
     val backgroundColor = if (selected) {

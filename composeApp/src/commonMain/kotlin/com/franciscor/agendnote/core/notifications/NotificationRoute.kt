@@ -16,7 +16,6 @@ import kotlinx.datetime.LocalDate
  */
 sealed interface NotificationRoute {
     data class Task(val taskId: String, val day: LocalDate) : NotificationRoute
-    data class PersonalMessage(val messageId: String) : NotificationRoute
 }
 
 /**

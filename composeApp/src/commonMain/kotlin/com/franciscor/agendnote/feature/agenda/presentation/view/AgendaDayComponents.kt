@@ -1,19 +1,15 @@
 package com.franciscor.agendnote.feature.agenda.presentation.view
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -48,23 +44,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.franciscor.agendnote.core.model.TaskItem
 import com.franciscor.agendnote.core.ui.components.GlassActionButton
 import com.franciscor.agendnote.core.ui.components.GlassEmptyState
-import com.franciscor.agendnote.core.ui.components.GlassIconButton
 import com.franciscor.agendnote.core.ui.components.GlassSearchBar
 import com.franciscor.agendnote.core.ui.components.GlassSurface
 import com.franciscor.agendnote.core.ui.components.colorFromHex
 import com.franciscor.agendnote.core.ui.layout.AppLayout
+import com.franciscor.agendnote.core.ui.theme.ControlHeight
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
@@ -73,85 +69,83 @@ import kotlinx.datetime.LocalTime
 internal fun AgendaHeader(
     selectedDate: LocalDate,
     isToday: Boolean,
-    onPreviousDay: () -> Unit,
-    onNextDay: () -> Unit,
+    onPreviousDay: () -> Unit = {},
+    onNextDay: () -> Unit = {},
     onOpenSmartLists: () -> Unit = {},
     // Operación Aniversario: the month calendar moved out of its own tab into a popover reached
-    // from here (see AgendaScreen's showCalendarPopover) - see docs/OPERATION_ANNIVERSARY_STATUS.md.
-    // TEMPORARY: this makes 4 icon buttons in one row, which the operation's own brief calls out
-    // as exactly what to avoid ("no mantengas tres icon buttons idénticos compitiendo"). Left as
-    // a functional-only placeholder pending the BATCH B visual pass once Glass design tokens land
-    // - documented here so it isn't mistaken for the intended final layout.
+    // from here (see AgendaScreen's showCalendarPopover). The date is the primary context;
+    // secondary tools and day navigation stay grouped in the right-side action grid.
     onOpenCalendar: () -> Unit = {},
 ) {
     val layout = AppLayout.metrics
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "Agenda",
-                style = MaterialTheme.typography.displayLarge.copy(
-                    fontSize = layout.text(36.sp, 32.sp),
-                    lineHeight = layout.text(38.sp, 34.sp),
-                ),
-                color = GlassTheme.tokens.textPrimary,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp))) {
-                GlassIconButton(
-                    icon = Icons.Rounded.Checklist,
-                    contentDescription = "Listas inteligentes",
-                    onClick = onOpenSmartLists,
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top,
+    ) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(top = layout.height(2.dp, 1.dp)),
+                verticalArrangement = Arrangement.spacedBy(layout.height(6.dp, 4.dp)),
+            ) {
+                Text(
+                    text = formatFullDate(selectedDate),
+                    style = MaterialTheme.typography.headlineSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = layout.text(28.sp, 25.sp),
+                        lineHeight = layout.text(32.sp, 29.sp),
+                    ),
+                    color = GlassTheme.tokens.textPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                GlassIconButton(
-                    icon = Icons.Rounded.CalendarMonth,
-                    contentDescription = "Ver mes",
-                    onClick = onOpenCalendar,
-                )
-                GlassIconButton(
-                    icon = Icons.Rounded.ChevronLeft,
-                    contentDescription = "Día anterior",
-                    onClick = onPreviousDay,
-                )
-                GlassIconButton(
-                    icon = Icons.Rounded.ChevronRight,
-                    contentDescription = "Día siguiente",
-                    onClick = onNextDay,
-                )
+                if (isToday) {
+                    GlassSurface(
+                        modifier = Modifier.clip(RoundedCornerShape(12.dp)),
+                        shape = RoundedCornerShape(12.dp),
+                        tint = GlassTheme.tokens.glassFillStrong,
+                    ) {
+                        Text(
+                            text = "Hoy",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = GlassTheme.tokens.textPrimary,
+                            modifier = Modifier.padding(
+                                horizontal = layout.width(10.dp, 9.dp),
+                                vertical = layout.height(4.dp, 3.dp),
+                            ),
+                        )
+                    }
+                }
             }
-        }
-        Spacer(modifier = Modifier.height(layout.height(6.dp, 4.dp)))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = formatFullDate(selectedDate),
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontSize = layout.text(16.sp, 15.sp),
-                ),
-                color = GlassTheme.tokens.textSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-            if (isToday) {
-                Spacer(modifier = Modifier.width(layout.width(10.dp, 8.dp)))
-                GlassSurface(
-                    shape = RoundedCornerShape(layout.size(16.dp, 14.dp)),
-                    tint = GlassTheme.tokens.glassFillStrong,
-                ) {
-                    Text(
-                        text = "Hoy",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = GlassTheme.tokens.textPrimary,
-                        modifier = Modifier.padding(
-                            horizontal = layout.width(14.dp, 12.dp),
-                            vertical = layout.height(7.dp, 6.dp),
-                        ),
+            Column(
+                verticalArrangement = Arrangement.spacedBy(layout.height(8.dp, 6.dp)),
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp))) {
+                    AgendaHeaderActionButton(
+                        icon = Icons.Rounded.Checklist,
+                        contentDescription = "Listas inteligentes",
+                        onClick = onOpenSmartLists,
+                    )
+                    AgendaHeaderActionButton(
+                        icon = Icons.Rounded.CalendarMonth,
+                        contentDescription = "Ver mes",
+                        onClick = onOpenCalendar,
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp))) {
+                    AgendaHeaderActionButton(
+                        icon = Icons.Rounded.ChevronLeft,
+                        contentDescription = "Día anterior",
+                        onClick = onPreviousDay,
+                    )
+                    AgendaHeaderActionButton(
+                        icon = Icons.Rounded.ChevronRight,
+                        contentDescription = "Día siguiente",
+                        onClick = onNextDay,
                     )
                 }
             }
-        }
     }
 }
 
@@ -166,6 +160,44 @@ internal fun AgendaSearchBar(
         onValueChange = onQueryChange,
         modifier = modifier,
     )
+}
+
+@Composable
+private fun AgendaHeaderActionButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .clickable(
+                role = Role.Button,
+                onClickLabel = contentDescription,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        GlassSurface(
+            modifier = Modifier.size(40.dp),
+            shape = RoundedCornerShape(15.dp),
+            tint = GlassTheme.tokens.glassFillStrong,
+            strokeColor = GlassTheme.tokens.glassStroke,
+            shadowElevation = 2.dp,
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = contentDescription,
+                    tint = GlassTheme.tokens.textPrimary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -261,7 +293,11 @@ internal fun DayAgenda(
         if (showEmptyState) {
             item {
                 Box(
-                    modifier = Modifier.fillParentMaxHeight(0.6f),
+                    // Keep the empty state visually connected to the search field and the FAB
+                    // instead of centering it in an oversized dead zone.
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillParentMaxHeight(0.5f),
                     contentAlignment = Alignment.Center,
                 ) {
                     GlassEmptyState(
@@ -317,7 +353,6 @@ private fun TaskCard(
     GlassSurface(
         modifier = modifier
             .fillMaxWidth()
-            .defaultMinSize(minHeight = layout.height(96.dp, 88.dp))
             .alpha(alpha)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -327,14 +362,17 @@ private fun TaskCard(
             .semantics(mergeDescendants = true) {
                 contentDescription = accessibilityDescription
             },
-        shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
+        shape = RoundedCornerShape(20.dp),
+        tint = GlassTheme.tokens.glassFill,
+        strokeColor = GlassTheme.tokens.glassStroke,
+        shadowElevation = 2.dp,
     ) {
         Column(
             modifier = Modifier.padding(
-                horizontal = layout.width(16.dp, 14.dp),
-                vertical = layout.height(12.dp, 10.dp),
+                horizontal = 16.dp,
+                vertical = 12.dp,
             ),
-            verticalArrangement = Arrangement.spacedBy(layout.height(8.dp, 6.dp)),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -343,7 +381,7 @@ private fun TaskCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 4.dp)),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     TimeChip(startTime = task.time, endTime = task.endTime)
                     if (task.seriesId != null) {
@@ -351,79 +389,89 @@ private fun TaskCard(
                             imageVector = Icons.Rounded.Repeat,
                             contentDescription = "Tarea recurrente",
                             tint = GlassTheme.tokens.textSecondary,
-                            modifier = Modifier.size(layout.size(16.dp, 14.dp)),
+                            modifier = Modifier.size(16.dp),
                         )
                     }
-                    if (task.subtasks.isNotEmpty()) {
-                        val doneCount = task.subtasks.count { it.isDone }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(layout.width(2.dp, 2.dp)),
-                            modifier = Modifier.semantics(mergeDescendants = true) {
-                                contentDescription = "$doneCount de ${task.subtasks.size} subtareas hechas"
-                            },
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Check,
-                                contentDescription = null,
-                                tint = GlassTheme.tokens.textSecondary,
-                                modifier = Modifier.size(layout.size(14.dp, 12.dp)),
-                            )
-                            Text(
-                                text = "$doneCount/${task.subtasks.size}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = GlassTheme.tokens.textSecondary,
-                            )
+                }
+                if (task.labels.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        task.labels.forEachIndexed { index, label ->
+                            if (index > 0) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                            }
+                            LabelChip(label = label)
                         }
                     }
                 }
+            }
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
                 Row(
-                    modifier = Modifier
-                        .weight(1f, fill = false)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 4.dp)),
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    task.labels.forEach { label ->
-                        LabelChip(label = label)
+                    Text(
+                        text = task.title,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = layout.text(16.sp, 15.sp),
+                            lineHeight = layout.text(20.sp, 19.sp),
+                        ),
+                        color = GlassTheme.tokens.textPrimary,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TaskCardActions(
+                        isDone = task.isDone,
+                        onToggleDone = onToggleDone,
+                        onRequestDelete = onRequestDelete,
+                    )
+                }
+
+                if (!task.details.isNullOrBlank()) {
+                    Text(
+                        text = task.details,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = layout.text(14.sp, 13.sp),
+                            lineHeight = layout.text(18.sp, 17.sp),
+                        ),
+                        color = GlassTheme.tokens.textSecondary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+
+                if (task.subtasks.isNotEmpty()) {
+                    val doneCount = task.subtasks.count { it.isDone }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        modifier = Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "$doneCount de ${task.subtasks.size} subtareas hechas"
+                        },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Check,
+                            contentDescription = null,
+                            tint = GlassTheme.tokens.textSecondary,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Text(
+                            text = "$doneCount/${task.subtasks.size}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = GlassTheme.tokens.textSecondary,
+                        )
                     }
                 }
             }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
-            ) {
-                Text(
-                    text = task.title,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontSize = layout.text(17.sp, 16.sp),
-                        lineHeight = layout.text(20.sp, 18.sp),
-                    ),
-                    color = GlassTheme.tokens.textPrimary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                // REVIEW: visible alternatives remain next to the task title, reducing card
-                // height without making completion/deletion depend on swipe gestures.
-                TaskCardActions(
-                    isDone = task.isDone,
-                    onToggleDone = onToggleDone,
-                    onRequestDelete = onRequestDelete,
-                )
-            }
-
-            if (!task.details.isNullOrBlank()) {
-                Text(
-                    text = task.details,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = GlassTheme.tokens.textSecondary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-
         }
     }
 }
@@ -434,11 +482,9 @@ private fun TaskCardActions(
     onToggleDone: (Boolean) -> Unit,
     onRequestDelete: () -> Unit,
 ) {
-    val layout = AppLayout.metrics
     val haptics = LocalHapticFeedback.current
-    // REVIEW: icon controls were below the mobile accessibility minimum; completion and
-    // destructive actions now expose a full 48 dp touch target.
-    val controlSize = 48.dp
+    // Keep the icon visually quiet while preserving the mobile accessibility target.
+    val controlSize = ControlHeight.standard()
     val doneColor = if (isDone) GlassTheme.tokens.success else GlassTheme.tokens.textSecondary
     val doneDescription = if (isDone) "Marcar como pendiente" else "Marcar como hecha"
 
@@ -469,10 +515,10 @@ private fun TaskCardActions(
                 imageVector = Icons.Rounded.Check,
                 contentDescription = doneDescription,
                 tint = doneColor,
-                modifier = Modifier.size(layout.size(20.dp, 18.dp)),
+                modifier = Modifier.size(18.dp),
             )
         }
-        Spacer(modifier = Modifier.width(layout.width(4.dp, 4.dp)))
+        Spacer(modifier = Modifier.width(4.dp))
         Box(
             modifier = Modifier
                 .size(controlSize)
@@ -491,7 +537,7 @@ private fun TaskCardActions(
                 imageVector = Icons.Rounded.Delete,
                 contentDescription = "Eliminar tarea",
                 tint = GlassTheme.tokens.errorContent,
-                modifier = Modifier.size(layout.size(20.dp, 18.dp)),
+                modifier = Modifier.size(18.dp),
             )
         }
     }
@@ -499,7 +545,6 @@ private fun TaskCardActions(
 
 @Composable
 private fun TimeChip(startTime: LocalTime?, endTime: LocalTime?) {
-    val layout = AppLayout.metrics
     val text = when {
         startTime != null && endTime != null -> "${formatTime(startTime)}-${formatTime(endTime)}"
         startTime != null -> formatTime(startTime)
@@ -507,7 +552,7 @@ private fun TimeChip(startTime: LocalTime?, endTime: LocalTime?) {
     }
     val tint = GlassTheme.tokens.glassFillStrong
     GlassSurface(
-        shape = RoundedCornerShape(layout.size(16.dp, 14.dp)),
+        shape = RoundedCornerShape(14.dp),
         tint = tint,
     ) {
         Text(
@@ -515,8 +560,8 @@ private fun TimeChip(startTime: LocalTime?, endTime: LocalTime?) {
             style = MaterialTheme.typography.labelMedium,
             color = GlassTheme.tokens.textPrimary,
             modifier = Modifier.padding(
-                horizontal = layout.width(14.dp, 12.dp),
-                vertical = layout.height(8.dp, 7.dp),
+                horizontal = 12.dp,
+                vertical = 6.dp,
             ),
         )
     }
@@ -524,24 +569,23 @@ private fun TimeChip(startTime: LocalTime?, endTime: LocalTime?) {
 
 @Composable
 private fun LabelChip(label: com.franciscor.agendnote.core.model.LabelTag) {
-    val layout = AppLayout.metrics
     val color = colorFromHex(label.colorHex)
     GlassSurface(
-        shape = RoundedCornerShape(layout.size(16.dp, 14.dp)),
+        shape = RoundedCornerShape(13.dp),
         tint = GlassTheme.tokens.glassFillStrong,
         strokeColor = GlassTheme.tokens.glassStroke,
     ) {
         Row(
             modifier = Modifier.padding(
-                horizontal = layout.width(12.dp, 10.dp),
-                vertical = layout.height(7.dp, 6.dp),
+                horizontal = 10.dp,
+                vertical = 5.dp,
             ),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(layout.width(6.dp, 5.dp)),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Box(
                 modifier = Modifier
-                    .size(layout.size(8.dp, 7.dp))
+                    .size(6.dp)
                     .clip(CircleShape)
                     .background(color),
             )
@@ -560,45 +604,34 @@ internal fun FloatingAddButton(
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
-    val layout = AppLayout.metrics
     val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
     // Operación Aniversario, prioridad P0 visual explícita: el FAB es la acción primaria de
     // toda la app y hasta ahora era un círculo blanco plano indistinguible de un botón
     // secundario. Pasa a cristal translúcido con tinte coral (en vez de glassFillStrong neutro)
     // + borde + un ligero press-scale - ver el contrato de tokens Glass en
     // docs/OPERATION_ANNIVERSARY_STATUS.md (GlassFloatingActionButton).
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.94f else 1f,
-        animationSpec = tween(durationMillis = 100),
-        label = "fabPressScale",
-    )
-    val tint = when {
-        !enabled -> GlassTheme.tokens.glassFill
-        isPressed -> GlassTheme.tokens.accent.copy(alpha = 0.34f)
-        else -> GlassTheme.tokens.accent.copy(alpha = 0.22f)
-    }
-    val strokeColor = if (enabled) {
-        GlassTheme.tokens.accentOnLight.copy(alpha = 0.45f)
-    } else {
-        GlassTheme.tokens.glassStroke
-    }
-    val iconTint = if (enabled) GlassTheme.tokens.accentOnLight else GlassTheme.tokens.textSecondary
     GlassSurface(
         modifier = modifier
-            .size(layout.size(64.dp, 58.dp))
-            .scale(scale)
-            .clip(CircleShape)
+            .size(56.dp)
             .clickable(
                 enabled = enabled,
+                role = Role.Button,
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick,
             ),
-        shape = CircleShape,
-        tint = tint,
-        strokeColor = strokeColor,
-        shadowElevation = 14.dp,
+        shape = RoundedCornerShape(18.dp),
+        tint = if (enabled) {
+            GlassTheme.tokens.accent.copy(alpha = 0.18f)
+        } else {
+            GlassTheme.tokens.glassFillDisabled
+        },
+        strokeColor = if (enabled) {
+            GlassTheme.tokens.accent.copy(alpha = 0.42f)
+        } else {
+            GlassTheme.tokens.glassStroke
+        },
+        shadowElevation = 2.dp,
     ) {
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -607,8 +640,8 @@ internal fun FloatingAddButton(
             Icon(
                 imageVector = Icons.Rounded.Add,
                 contentDescription = "Nueva tarea",
-                tint = iconTint,
-                modifier = Modifier.size(layout.size(28.dp, 24.dp)),
+                tint = if (enabled) GlassTheme.tokens.accent else GlassTheme.tokens.textSecondary,
+                modifier = Modifier.size(28.dp),
             )
         }
     }

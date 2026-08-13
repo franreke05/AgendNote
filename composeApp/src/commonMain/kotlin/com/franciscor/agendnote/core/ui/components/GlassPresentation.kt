@@ -97,13 +97,18 @@ fun GlassScrimLayer(
  */
 object GlassModalState {
     private val openCount = mutableIntStateOf(0)
+    private val backdropBlurCount = mutableIntStateOf(0)
     val isAnyModalOpen: Boolean
         @Composable get() = openCount.intValue > 0
-    internal fun increment() {
+    val isBackdropBlurred: Boolean
+        @Composable get() = backdropBlurCount.intValue > 0
+    internal fun increment(blurBehind: Boolean) {
         openCount.intValue += 1
+        if (blurBehind) backdropBlurCount.intValue += 1
     }
-    internal fun decrement() {
+    internal fun decrement(blurBehind: Boolean) {
         openCount.intValue = (openCount.intValue - 1).coerceAtLeast(0)
+        if (blurBehind) backdropBlurCount.intValue = (backdropBlurCount.intValue - 1).coerceAtLeast(0)
     }
 }
 
@@ -130,11 +135,12 @@ object GlassModalState {
 internal fun GlassDialogHost(
     onDismiss: () -> Unit,
     scrimColor: Color,
+    blurBehind: Boolean = false,
     content: @Composable BoxWithConstraintsScope.() -> Unit,
 ) {
-    DisposableEffect(Unit) {
-        GlassModalState.increment()
-        onDispose { GlassModalState.decrement() }
+    DisposableEffect(blurBehind) {
+        GlassModalState.increment(blurBehind)
+        onDispose { GlassModalState.decrement(blurBehind) }
     }
     Dialog(
         onDismissRequest = onDismiss,
@@ -178,10 +184,16 @@ fun GlassSheetScaffold(
     maxHeightFraction: Float = 0.9f,
     dragToDismissEnabled: Boolean = true,
     showGrabber: Boolean = true,
+    blurBehind: Boolean = false,
+    scrimColor: Color = GlassScrim.sheet,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val layout = AppLayout.metrics
-    GlassDialogHost(onDismiss = onDismiss, scrimColor = GlassScrim.sheet) {
+    GlassDialogHost(
+        onDismiss = onDismiss,
+        scrimColor = scrimColor,
+        blurBehind = blurBehind,
+    ) {
         // Safe-area padding lives here, on the sheet's own positioning - NOT on the scrim drawn
         // by GlassDialogHost above, which must stay unpadded to cover the real window edge to
         // edge. maxHeight below still comes from the unpadded BoxWithConstraints (a few dp taller
@@ -257,10 +269,16 @@ fun GlassPopover(
     modifier: Modifier = Modifier,
     alignment: Alignment = Alignment.Center,
     maxWidthFraction: Float = 0.9f,
+    blurBehind: Boolean = false,
+    scrimColor: Color = GlassScrim.popover,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val layout = AppLayout.metrics
-    GlassDialogHost(onDismiss = onDismiss, scrimColor = GlassScrim.popover) {
+    GlassDialogHost(
+        onDismiss = onDismiss,
+        scrimColor = scrimColor,
+        blurBehind = blurBehind,
+    ) {
         GlassSurface(
             modifier = modifier
                 .align(alignment)

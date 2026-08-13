@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Search
@@ -34,6 +35,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.franciscor.agendnote.core.ui.layout.AppLayout
@@ -53,6 +56,8 @@ fun GlassTextField(
     singleLine: Boolean = true,
     maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
     textStyle: TextStyle = MaterialTheme.typography.bodyLarge,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    minHeight: Dp = ControlHeight.large(),
 ) {
     val layout = AppLayout.metrics
     val tokens = GlassTheme.tokens
@@ -78,6 +83,7 @@ fun GlassTextField(
         enabled = enabled,
         singleLine = singleLine,
         maxLines = maxLines,
+        keyboardOptions = keyboardOptions,
         textStyle = textStyle.copy(color = tokens.textPrimary),
         cursorBrush = SolidColor(tokens.accent),
         interactionSource = interactionSource,
@@ -85,7 +91,7 @@ fun GlassTextField(
             GlassSurface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .defaultMinSize(minHeight = ControlHeight.large()),
+                    .defaultMinSize(minHeight = minHeight),
                 shape = RoundedCornerShape(GlassRadius.s()),
                 tint = containerTint,
                 strokeColor = strokeColor,
@@ -160,6 +166,8 @@ fun GlassActionButton(
                     fontSize = layout.text(15.sp, 14.sp),
                 ),
                 color = textColor,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -171,6 +179,7 @@ fun GlassSearchBar(
     onValueChange: (String) -> Unit,
     placeholder: String = "Buscar",
     modifier: Modifier = Modifier,
+    trailingContent: (@Composable () -> Unit)? = null,
 ) {
     val layout = AppLayout.metrics
     val tokens = GlassTheme.tokens
@@ -218,7 +227,7 @@ fun GlassSearchBar(
                 Spacer(modifier = Modifier.width(layout.width(4.dp, 4.dp)))
                 Box(
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(ControlHeight.standard())
                         .clip(RoundedCornerShape(layout.size(14.dp, 12.dp)))
                         .clickable(
                             role = Role.Button,
@@ -237,6 +246,7 @@ fun GlassSearchBar(
                     )
                 }
             }
+            trailingContent?.invoke()
         }
     }
 }

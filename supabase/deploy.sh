@@ -13,5 +13,6 @@ supabase link --project-ref "${PROJECT_REF}"
 supabase functions deploy api-labels --no-verify-jwt
 supabase functions deploy api-tasks --no-verify-jwt
 supabase functions deploy api-settings --no-verify-jwt
+supabase functions deploy api-task-series --no-verify-jwt
 
 echo "Done."

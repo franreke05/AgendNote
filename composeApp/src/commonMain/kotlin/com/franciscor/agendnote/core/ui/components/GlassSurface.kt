@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.franciscor.agendnote.core.ui.layout.AppLayout
@@ -86,6 +87,7 @@ fun GlassIconButton(
         modifier = modifier
             .size(buttonSize)
             .clickable(
+                role = Role.Button,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = indication,
                 onClick = onClick,

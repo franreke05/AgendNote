@@ -37,7 +37,7 @@ fun GlassEmptyState(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = GlassTheme.tokens.textSecondary.copy(alpha = 0.5f),
+            tint = GlassTheme.tokens.textSecondary.copy(alpha = 0.58f),
             modifier = Modifier.size(layout.size(72.dp, 60.dp)),
         )
         Text(
@@ -50,7 +50,7 @@ fun GlassEmptyState(
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodyMedium,
-                color = GlassTheme.tokens.textSecondary.copy(alpha = 0.7f),
+                color = GlassTheme.tokens.textSecondary.copy(alpha = 0.82f),
                 textAlign = TextAlign.Center,
             )
         }

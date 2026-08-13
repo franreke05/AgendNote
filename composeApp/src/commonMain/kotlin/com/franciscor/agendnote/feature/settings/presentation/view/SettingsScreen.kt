@@ -1,72 +1,75 @@
 package com.franciscor.agendnote.feature.settings.presentation.view
 
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.Notifications
-import androidx.compose.material.icons.rounded.Wallpaper
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.franciscor.agendnote.app.navigation.SectionHeader
 import com.franciscor.agendnote.core.model.TaskSeries
-import com.franciscor.agendnote.core.model.PersonalMessage
 import com.franciscor.agendnote.core.network.AppConfig
-import com.franciscor.agendnote.core.notifications.NotificationPermissionStatus
-import com.franciscor.agendnote.core.notifications.NotificationServiceProvider
-import com.franciscor.agendnote.core.notifications.NotificationSoundId
-import com.franciscor.agendnote.core.notifications.VoiceMessageId
-import com.franciscor.agendnote.core.platform.isDebugBuild
 import com.franciscor.agendnote.core.ui.components.GlassActionButton
 import com.franciscor.agendnote.core.ui.components.GlassConfirmDialog
+import com.franciscor.agendnote.core.ui.components.GlassIconButton
 import com.franciscor.agendnote.core.ui.components.GlassSelectableChip
 import com.franciscor.agendnote.core.ui.components.GlassSurface
-import com.franciscor.agendnote.core.ui.components.GlassTextField
 import com.franciscor.agendnote.core.ui.layout.AppLayout
 import com.franciscor.agendnote.core.ui.theme.GlassTheme
 import com.franciscor.agendnote.feature.agenda.domain.RecurrenceRule
-import com.franciscor.agendnote.feature.personal.presentation.view.PersonalMessageDetailOverlay
 import com.franciscor.agendnote.feature.settings.presentation.controller.SettingsController
 import com.franciscor.agendnote.feature.settings.presentation.model.SettingsAction
 import com.franciscor.agendnote.feature.settings.presentation.model.SettingsBulkAction
 import com.franciscor.agendnote.feature.settings.presentation.viewmodel.SettingsViewModel
-import kotlinx.coroutines.launch
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.isoDayNumber
-import kotlin.time.Clock
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.ExperimentalTime
 
-@OptIn(ExperimentalTime::class)
+private enum class SettingsPage {
+    HOME,
+    APPEARANCE,
+    DATA,
+    RECURRING,
+    DANGER,
+    ABOUT,
+}
+
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
@@ -78,453 +81,66 @@ fun SettingsScreen(
     onDeleteSeries: (TaskSeries) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val layout = AppLayout.metrics
-    val contentInset = layout.width(16.dp, 14.dp)
     val uiState = viewModel.uiState
     val isEditingEnabled = uiState.isRemoteAvailable
+    var page by remember { mutableStateOf(SettingsPage.HOME) }
     var seriesPendingDelete by remember { mutableStateOf<TaskSeries?>(null) }
-    val clipboardManager = LocalClipboardManager.current
     var exportCopiedMessage by remember { mutableStateOf<String?>(null) }
-    // Debug-only (directive: "para pruebas implementalo tambien en android") - opens
-    // PersonalMessageDetailOverlay directly with a synthetic message, since there is no
-    // real "create personal message" screen yet to reach it through.
-    var debugAudioPreview by remember { mutableStateOf<PersonalMessage?>(null) }
+    val clipboardManager = LocalClipboardManager.current
 
-    LazyColumn(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = contentInset),
-        verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
-        contentPadding = PaddingValues(
-            bottom = layout.height(24.dp, 20.dp),
-            top = layout.height(12.dp, 10.dp),
-        ),
-    ) {
-        item {
-            SectionHeader("Ajustes", "Personaliza la app y gestiona tus datos")
-        }
+    val openPage: (SettingsPage) -> Unit = { target -> page = target }
+    val goHome: () -> Unit = { page = SettingsPage.HOME }
 
-        item {
-            GlassSurface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
-            ) {
-                Column(
-                    modifier = Modifier.padding(layout.size(16.dp, 14.dp)),
-                    verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
-                ) {
-                    Text(
-                        text = "Modo de color",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = GlassTheme.tokens.textPrimary,
-                    )
-                    // Suppressed when the remote is unavailable: that error text is always
-                    // identical to the app-wide RemoteStatusBanner already shown above the tab
-                    // content (AppNavHost), so repeating it here would just be redundant.
-                    if (uiState.errorMessage != null && isEditingEnabled) {
-                        Text(
-                            text = uiState.errorMessage,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = GlassTheme.tokens.errorContent,
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.selectableGroup(),
-                        horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp)),
-                    ) {
-                        GlassSelectableChip(
-                            text = "Claro",
-                            selected = !uiState.isDarkMode,
-                            enabled = isEditingEnabled,
-                            onClick = { controller.handle(SettingsAction.SetTheme(false)) },
-                            modifier = Modifier.weight(1f),
-                        )
-                        GlassSelectableChip(
-                            text = "Oscuro",
-                            selected = uiState.isDarkMode,
-                            enabled = isEditingEnabled,
-                            onClick = { controller.handle(SettingsAction.SetTheme(true)) },
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                }
-            }
-        }
+    when (page) {
+        SettingsPage.HOME -> SettingsHomePage(
+            uiState = uiState,
+            seriesCount = seriesList.size,
+            onOpenPage = openPage,
+            modifier = modifier,
+        )
 
-        item {
-            GlassSurface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
-            ) {
-                Column(
-                    modifier = Modifier.padding(layout.size(16.dp, 14.dp)),
-                    verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Wallpaper,
-                            contentDescription = null,
-                            tint = GlassTheme.tokens.textSecondary,
-                            modifier = Modifier.size(layout.size(20.dp, 18.dp)),
-                        )
-                        Text(
-                            text = "Fondo",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = GlassTheme.tokens.textPrimary,
-                        )
-                    }
-                    Text(
-                        text = "Pega la URL de una imagen para personalizar el fondo de la app.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = GlassTheme.tokens.textSecondary,
-                    )
-                    var backgroundUrlInput by remember(uiState.backgroundUrl) {
-                        mutableStateOf(uiState.backgroundUrl)
-                    }
-                    val normalizedBackgroundUrl = backgroundUrlInput.trim()
-                    val isBackgroundUrlValid = normalizedBackgroundUrl.isBlank() ||
-                        normalizedBackgroundUrl.startsWith("https://", ignoreCase = true) ||
-                        normalizedBackgroundUrl.startsWith("http://", ignoreCase = true)
-                    Text(
-                        text = "URL de la imagen",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = GlassTheme.tokens.textSecondary,
-                    )
-                    GlassTextField(
-                        value = backgroundUrlInput,
-                        onValueChange = { backgroundUrlInput = it },
-                        placeholder = "https://...",
-                        label = "URL de la imagen de fondo",
-                        modifier = Modifier.fillMaxWidth(),
-                        textStyle = MaterialTheme.typography.bodyMedium,
-                    )
-                    if (!isBackgroundUrlValid) {
-                        Text(
-                            text = "Introduce una dirección que empiece por https:// o http://",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = GlassTheme.tokens.errorContent,
-                        )
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(layout.width(10.dp, 8.dp))) {
-                        GlassActionButton(
-                            text = "Guardar",
-                            enabled = isEditingEnabled &&
-                                isBackgroundUrlValid &&
-                                normalizedBackgroundUrl != uiState.backgroundUrl,
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                controller.handle(SettingsAction.SetBackgroundUrl(normalizedBackgroundUrl))
-                            },
-                        )
-                        val canClearBackground = isEditingEnabled && uiState.backgroundUrl.isNotBlank()
-                        GlassActionButton(
-                            text = "Quitar",
-                            enabled = canClearBackground,
-                            tint = if (canClearBackground) GlassTheme.tokens.glassFillStrong else GlassTheme.tokens.glassFill,
-                            textColor = if (canClearBackground) GlassTheme.tokens.textPrimary else GlassTheme.tokens.textSecondary,
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                backgroundUrlInput = ""
-                                controller.handle(SettingsAction.SetBackgroundUrl(""))
-                            },
-                        )
-                    }
-                }
-            }
-        }
+        SettingsPage.APPEARANCE -> SettingsAppearancePage(
+            uiState = uiState,
+            isEditingEnabled = isEditingEnabled,
+            onBack = goHome,
+            onSetTheme = { isDark -> controller.handle(SettingsAction.SetTheme(isDark)) },
+            modifier = modifier,
+        )
 
-        item {
-            GlassSurface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
-            ) {
-                Column(
-                    modifier = Modifier.padding(layout.size(16.dp, 14.dp)),
-                    verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Notifications,
-                            contentDescription = null,
-                            tint = GlassTheme.tokens.textSecondary,
-                            modifier = Modifier.size(layout.size(20.dp, 18.dp)),
-                        )
-                        Text(
-                            text = "Notificaciones",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = GlassTheme.tokens.textPrimary,
-                        )
-                    }
-                    Text(
-                        text = "Concede los permisos de notificación y hora exacta para recibir cada aviso cuando corresponde.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = GlassTheme.tokens.textSecondary,
-                    )
-                    val notificationScope = rememberCoroutineScope()
-                    // "no inventes falsas opciones si iOS controla la autorización": this reads
-                    // the real OS-level state, never assumes anything from a locally-cached flag.
-                    var permissionStatus by remember { mutableStateOf<NotificationPermissionStatus?>(null) }
-                    LaunchedEffect(Unit) {
-                        permissionStatus = runCatching {
-                            NotificationServiceProvider.getNotificationService().checkPermissionStatus()
-                        }.getOrNull()
-                    }
-                    permissionStatus?.let { status ->
-                        Text(
-                            text = "Estado actual: " + when (status) {
-                                NotificationPermissionStatus.AUTHORIZED -> "autorizadas"
-                                NotificationPermissionStatus.DENIED ->
-                                    "denegadas - actívalas desde los Ajustes del sistema"
-                                NotificationPermissionStatus.PROVISIONAL -> "silenciosas (provisional)"
-                                NotificationPermissionStatus.NOT_DETERMINED -> "todavía no solicitadas"
-                            },
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (status == NotificationPermissionStatus.DENIED) {
-                                GlassTheme.tokens.errorContent
-                            } else {
-                                GlassTheme.tokens.textSecondary
-                            },
-                        )
-                    }
-                    GlassActionButton(
-                        text = "Configurar recordatorios",
-                        tint = GlassTheme.tokens.glassFillStrong,
-                        textColor = GlassTheme.tokens.textPrimary,
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = {
-                            notificationScope.launch {
-                                NotificationServiceProvider.getNotificationService().requestPermissions()
-                                permissionStatus = NotificationServiceProvider.getNotificationService()
-                                    .checkPermissionStatus()
-                            }
-                        },
-                    )
-                    // Development-only QA affordance (directive item 13) - never shown in a
-                    // release build (isDebugBuild is a compile-time constant per platform, so
-                    // this branch doesn't even exist in a release binary, not just hidden by a
-                    // runtime check).
-                    if (isDebugBuild) {
-                        GlassActionButton(
-                            text = "Probar notificación (+10s)",
-                            tint = GlassTheme.tokens.glassFill,
-                            textColor = GlassTheme.tokens.textPrimary,
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = {
-                                notificationScope.launch {
-                                    NotificationServiceProvider.getNotificationService()
-                                        .schedulePersonalMessageNotification(
-                                            PersonalMessage(
-                                                id = "debug_test_${Clock.System.now().toEpochMilliseconds()}",
-                                                title = "Prueba de notificación",
-                                                body = "Si ves esto, las notificaciones funcionan.",
-                                                scheduledAt = Clock.System.now() + 10.seconds,
-                                                notificationSoundId = NotificationSoundId.REMINDER_GENERAL,
-                                            ),
-                                        )
-                                }
-                            },
-                        )
-                        GlassActionButton(
-                            text = "Probar audio largo",
-                            tint = GlassTheme.tokens.glassFill,
-                            textColor = GlassTheme.tokens.textPrimary,
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = {
-                                debugAudioPreview = PersonalMessage(
-                                    id = "debug_audio_preview",
-                                    title = "Mensaje de prueba",
-                                    body = "Esto es un mensaje de prueba para escuchar el reproductor " +
-                                        "de audio largo.",
-                                    scheduledAt = Clock.System.now(),
-                                    voiceMessageId = VoiceMessageId.ENCOURAGEMENT,
-                                )
-                            },
-                        )
-                    }
-                }
-            }
-        }
+        SettingsPage.DATA -> SettingsDataPage(
+            onBack = goHome,
+            copiedMessage = exportCopiedMessage,
+            onExport = {
+                clipboardManager.setText(AnnotatedString(onExportRequested()))
+                exportCopiedMessage = "Copiado al portapapeles"
+            },
+            modifier = modifier,
+        )
 
-        item {
-            GlassSurface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
-            ) {
-                Column(
-                    modifier = Modifier.padding(layout.size(16.dp, 14.dp)),
-                    verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
-                ) {
-                    Text(
-                        text = "Datos",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = GlassTheme.tokens.textPrimary,
-                    )
-                    Text(
-                        text = "Copia tus tareas y etiquetas visibles como JSON al portapapeles. " +
-                            "Solo incluye lo que ya está cargado (los días y meses que visitaste), " +
-                            "no exporta la nube entera.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = GlassTheme.tokens.textSecondary,
-                    )
-                    GlassActionButton(
-                        text = "Exportar mis datos",
-                        tint = GlassTheme.tokens.glassFillStrong,
-                        textColor = GlassTheme.tokens.textPrimary,
-                        onClick = {
-                            val json = onExportRequested()
-                            clipboardManager.setText(AnnotatedString(json))
-                            exportCopiedMessage = "Copiado al portapapeles"
-                        },
-                    )
-                    exportCopiedMessage?.let { message ->
-                        Text(
-                            text = message,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = GlassTheme.tokens.textSecondary,
-                        )
-                    }
-                }
-            }
-        }
+        SettingsPage.RECURRING -> SettingsRecurringPage(
+            seriesList = seriesList,
+            isEditingEnabled = isEditingEnabled,
+            onBack = goHome,
+            onDeleteSeries = { seriesPendingDelete = it },
+            modifier = modifier,
+        )
 
-        item {
-            GlassSurface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
-            ) {
-                Column(
-                    modifier = Modifier.padding(layout.size(16.dp, 14.dp)),
-                    verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
-                ) {
-                    Text(
-                        text = "Zona de peligro",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = GlassTheme.tokens.textPrimary,
-                    )
-                    Text(
-                        text = "Estas acciones borran datos en la nube.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = GlassTheme.tokens.textSecondary,
-                    )
-                    GlassActionButton(
-                        text = "Borrar todas las tareas",
-                        enabled = isEditingEnabled,
-                        tint = GlassTheme.tokens.error.copy(alpha = 0.18f),
-                        textColor = GlassTheme.tokens.errorContent,
-                        onClick = {
-                            controller.handle(
-                                SettingsAction.RequestBulkAction(SettingsBulkAction.DELETE_NOTES),
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    GlassActionButton(
-                        text = "Borrar todas las etiquetas",
-                        enabled = isEditingEnabled,
-                        tint = GlassTheme.tokens.error.copy(alpha = 0.18f),
-                        textColor = GlassTheme.tokens.errorContent,
-                        onClick = {
-                            controller.handle(
-                                SettingsAction.RequestBulkAction(SettingsBulkAction.DELETE_LABELS),
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            }
-        }
+        SettingsPage.DANGER -> SettingsDangerPage(
+            isEditingEnabled = isEditingEnabled,
+            onBack = goHome,
+            onDeleteAllNotes = {
+                controller.handle(SettingsAction.RequestBulkAction(SettingsBulkAction.DELETE_NOTES))
+            },
+            onDeleteAllLabels = {
+                controller.handle(SettingsAction.RequestBulkAction(SettingsBulkAction.DELETE_LABELS))
+            },
+            modifier = modifier,
+        )
 
-        if (seriesList.isNotEmpty()) {
-            item {
-                GlassSurface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(layout.size(16.dp, 14.dp)),
-                        verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
-                    ) {
-                        Text(
-                            text = "Tareas recurrentes",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = GlassTheme.tokens.textPrimary,
-                        )
-                        seriesList.forEach { series ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = series.title,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = GlassTheme.tokens.textPrimary,
-                                    )
-                                    Text(
-                                        text = describeRecurrence(series.rule),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = GlassTheme.tokens.textSecondary,
-                                    )
-                                }
-                                GlassActionButton(
-                                    text = "Borrar",
-                                    enabled = isEditingEnabled,
-                                    tint = GlassTheme.tokens.error.copy(alpha = 0.18f),
-                                    textColor = GlassTheme.tokens.errorContent,
-                                    onClick = { seriesPendingDelete = series },
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
-            GlassSurface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
-            ) {
-                Column(
-                    modifier = Modifier.padding(layout.size(16.dp, 14.dp)),
-                    verticalArrangement = Arrangement.spacedBy(layout.height(6.dp, 5.dp)),
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(layout.width(8.dp, 6.dp)),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Info,
-                            contentDescription = null,
-                            tint = GlassTheme.tokens.textSecondary,
-                            modifier = Modifier.size(layout.size(20.dp, 18.dp)),
-                        )
-                        Text(
-                            text = "Acerca de",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = GlassTheme.tokens.textPrimary,
-                        )
-                    }
-                    Text(
-                        text = "AgendNote · v${AppConfig.APP_VERSION}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = GlassTheme.tokens.textSecondary,
-                    )
-                    Text(
-                        text = "Tu agenda de tareas con etiquetas y series recurrentes.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = GlassTheme.tokens.textSecondary.copy(alpha = 0.8f),
-                    )
-                }
-            }
-        }
+        SettingsPage.ABOUT -> SettingsAboutPage(
+            onBack = goHome,
+            modifier = modifier,
+        )
     }
 
     val pendingBulkAction = uiState.pendingBulkAction
@@ -570,18 +186,470 @@ fun SettingsScreen(
             onDismiss = { seriesPendingDelete = null },
         )
     }
+}
 
-    debugAudioPreview?.let { message ->
-        PersonalMessageDetailOverlay(
-            message = message,
-            onDismiss = { debugAudioPreview = null },
+@Composable
+private fun SettingsHomePage(
+    uiState: com.franciscor.agendnote.feature.settings.presentation.model.SettingsUiState,
+    seriesCount: Int,
+    onOpenPage: (SettingsPage) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    SettingsListContainer(modifier = modifier) {
+        item {
+            SectionHeader("Ajustes", "Todo lo importante, en un solo lugar")
+        }
+        item {
+            SettingsMenuCard {
+                SettingsMenuRow(
+                    icon = Icons.Rounded.Palette,
+                    title = "Apariencia",
+                    subtitle = "Tema ${if (uiState.isDarkMode) "oscuro" else "claro"}",
+                    onClick = { onOpenPage(SettingsPage.APPEARANCE) },
+                )
+                SettingsMenuRow(
+                    icon = Icons.Rounded.FileDownload,
+                    title = "Datos",
+                    subtitle = "Exporta una copia de tus tareas y etiquetas",
+                    onClick = { onOpenPage(SettingsPage.DATA) },
+                )
+                if (seriesCount > 0) {
+                    SettingsMenuRow(
+                        icon = Icons.Rounded.Repeat,
+                        title = "Tareas recurrentes",
+                        subtitle = "$seriesCount ${if (seriesCount == 1) "serie activa" else "series activas"}",
+                        onClick = { onOpenPage(SettingsPage.RECURRING) },
+                    )
+                }
+                SettingsMenuRow(
+                    icon = Icons.Rounded.DeleteSweep,
+                    title = "Zona de peligro",
+                    subtitle = "Acciones para borrar datos de la nube",
+                    onClick = { onOpenPage(SettingsPage.DANGER) },
+                )
+                SettingsMenuRow(
+                    icon = Icons.Rounded.Info,
+                    title = "Acerca de",
+                    subtitle = "Información de AgendNote",
+                    onClick = { onOpenPage(SettingsPage.ABOUT) },
+                    showDivider = false,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsAppearancePage(
+    uiState: com.franciscor.agendnote.feature.settings.presentation.model.SettingsUiState,
+    isEditingEnabled: Boolean,
+    onBack: () -> Unit,
+    onSetTheme: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    SettingsSubpageContainer(
+        title = "Apariencia",
+        subtitle = "Elige cómo quieres ver AgendNote",
+        onBack = onBack,
+        modifier = modifier,
+    ) {
+        item {
+            SettingsCard {
+                Text(
+                    text = "Modo de color",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = GlassTheme.tokens.textPrimary,
+                )
+                Text(
+                    text = "La aplicación se adapta al estilo que prefieras.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = GlassTheme.tokens.textSecondary,
+                )
+                if (uiState.errorMessage != null && isEditingEnabled) {
+                    Text(
+                        text = uiState.errorMessage,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = GlassTheme.tokens.errorContent,
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(AppLayout.metrics.width(10.dp, 8.dp)),
+                ) {
+                    GlassSelectableChip(
+                        text = "Claro",
+                        selected = !uiState.isDarkMode,
+                        enabled = isEditingEnabled,
+                        onClick = { onSetTheme(false) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    GlassSelectableChip(
+                        text = "Oscuro",
+                        selected = uiState.isDarkMode,
+                        enabled = isEditingEnabled,
+                        onClick = { onSetTheme(true) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsDataPage(
+    onBack: () -> Unit,
+    copiedMessage: String?,
+    onExport: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    SettingsSubpageContainer(
+        title = "Datos",
+        subtitle = "Lleva contigo una copia de tu información",
+        onBack = onBack,
+        modifier = modifier,
+    ) {
+        item {
+            SettingsCard {
+                Text(
+                    text = "Exportar tus datos",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = GlassTheme.tokens.textPrimary,
+                )
+                Text(
+                    text = "Copia tus tareas y etiquetas visibles como JSON al portapapeles. Solo incluye lo que ya está cargado, no exporta la nube entera.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = GlassTheme.tokens.textSecondary,
+                )
+                GlassActionButton(
+                    text = "Exportar mis datos",
+                    tint = GlassTheme.tokens.glassFillStrong,
+                    textColor = GlassTheme.tokens.textPrimary,
+                    onClick = onExport,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                copiedMessage?.let { message ->
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = GlassTheme.tokens.textSecondary,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsRecurringPage(
+    seriesList: List<TaskSeries>,
+    isEditingEnabled: Boolean,
+    onBack: () -> Unit,
+    onDeleteSeries: (TaskSeries) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val destructiveTint = if (isEditingEnabled) {
+        GlassTheme.tokens.error.copy(alpha = 0.18f)
+    } else {
+        GlassTheme.tokens.glassFillDisabled
+    }
+    val destructiveTextColor = if (isEditingEnabled) {
+        GlassTheme.tokens.errorContent
+    } else {
+        GlassTheme.tokens.textDisabled
+    }
+    SettingsSubpageContainer(
+        title = "Tareas recurrentes",
+        subtitle = "Revisa y organiza tus series activas",
+        onBack = onBack,
+        modifier = modifier,
+    ) {
+        item {
+            SettingsCard {
+                seriesList.forEachIndexed { index, series ->
+                    if (index > 0) {
+                        Spacer(modifier = Modifier.height(AppLayout.metrics.height(10.dp, 8.dp)))
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(AppLayout.metrics.width(10.dp, 8.dp)),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = series.title,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = GlassTheme.tokens.textPrimary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = describeRecurrence(series.rule),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = GlassTheme.tokens.textSecondary,
+                            )
+                        }
+                        GlassActionButton(
+                            text = "Borrar",
+                            enabled = isEditingEnabled,
+                            tint = destructiveTint,
+                            textColor = destructiveTextColor,
+                            onClick = { onDeleteSeries(series) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsDangerPage(
+    isEditingEnabled: Boolean,
+    onBack: () -> Unit,
+    onDeleteAllNotes: () -> Unit,
+    onDeleteAllLabels: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val destructiveTint = if (isEditingEnabled) {
+        GlassTheme.tokens.error.copy(alpha = 0.18f)
+    } else {
+        GlassTheme.tokens.glassFillDisabled
+    }
+    val destructiveTextColor = if (isEditingEnabled) {
+        GlassTheme.tokens.errorContent
+    } else {
+        GlassTheme.tokens.textDisabled
+    }
+    SettingsSubpageContainer(
+        title = "Zona de peligro",
+        subtitle = "Acciones permanentes sobre tus datos",
+        onBack = onBack,
+        modifier = modifier,
+    ) {
+        item {
+            SettingsCard {
+                Text(
+                    text = "Borrar datos",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = GlassTheme.tokens.textPrimary,
+                )
+                Text(
+                    text = "Estas acciones eliminan información guardada en la nube y no se pueden deshacer.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = GlassTheme.tokens.textSecondary,
+                )
+                GlassActionButton(
+                    text = "Borrar todas las tareas",
+                    enabled = isEditingEnabled,
+                    tint = destructiveTint,
+                    textColor = destructiveTextColor,
+                    onClick = onDeleteAllNotes,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                GlassActionButton(
+                    text = "Borrar todas las etiquetas",
+                    enabled = isEditingEnabled,
+                    tint = destructiveTint,
+                    textColor = destructiveTextColor,
+                    onClick = onDeleteAllLabels,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsAboutPage(
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    SettingsSubpageContainer(
+        title = "Acerca de",
+        subtitle = "Conoce un poco más sobre AgendNote",
+        onBack = onBack,
+        modifier = modifier,
+    ) {
+        item {
+            SettingsCard {
+                Text(
+                    text = "AgendNote · v${AppConfig.APP_VERSION}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = GlassTheme.tokens.textPrimary,
+                )
+                Text(
+                    text = "Tu agenda de tareas con etiquetas y series recurrentes.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = GlassTheme.tokens.textSecondary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsListContainer(
+    modifier: Modifier,
+    content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit,
+) {
+    val layout = AppLayout.metrics
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = layout.width(16.dp, 14.dp)),
+        verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
+        contentPadding = PaddingValues(
+            top = layout.height(12.dp, 10.dp),
+            bottom = layout.height(24.dp, 20.dp),
+        ),
+        content = content,
+    )
+}
+
+@Composable
+private fun SettingsSubpageContainer(
+    title: String,
+    subtitle: String,
+    onBack: () -> Unit,
+    modifier: Modifier,
+    content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit,
+) {
+    SettingsListContainer(modifier = modifier) {
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(AppLayout.metrics.width(10.dp, 8.dp)),
+            ) {
+                GlassIconButton(
+                    icon = Icons.Rounded.ArrowBack,
+                    contentDescription = "Volver a Ajustes",
+                    onClick = onBack,
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = GlassTheme.tokens.textPrimary,
+                    )
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = GlassTheme.tokens.textSecondary,
+                    )
+                }
+            }
+        }
+        content()
+    }
+}
+
+@Composable
+private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
+    val layout = AppLayout.metrics
+    GlassSurface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
+    ) {
+        Column(
+            modifier = Modifier.padding(layout.size(18.dp, 16.dp)),
+            verticalArrangement = Arrangement.spacedBy(layout.height(12.dp, 10.dp)),
+            content = content,
         )
     }
 }
 
-// Claro/Oscuro used to be a local ModeToggleButton here, near-duplicating
-// AgendaOverlays.kt's RecurrenceOptionChip - both replaced by the shared
-// GlassSelectableChip (core/ui/components/GlassButtons.kt).
+@Composable
+private fun SettingsMenuCard(content: @Composable ColumnScope.() -> Unit) {
+    val layout = AppLayout.metrics
+    GlassSurface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(layout.size(24.dp, 20.dp)),
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = layout.height(4.dp, 2.dp)),
+            content = content,
+        )
+    }
+}
+
+@Composable
+private fun SettingsMenuRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    showDivider: Boolean = true,
+) {
+    val layout = AppLayout.metrics
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(
+                    role = Role.Button,
+                    onClick = onClick,
+                )
+                .semantics(mergeDescendants = true) {}
+                .padding(
+                    horizontal = layout.width(16.dp, 14.dp),
+                    vertical = layout.height(12.dp, 10.dp),
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(layout.width(12.dp, 10.dp)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(layout.size(42.dp, 38.dp))
+                    .clip(CircleShape)
+                    .background(GlassTheme.tokens.glassFillStrong),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = GlassTheme.tokens.textPrimary,
+                    modifier = Modifier.size(layout.size(21.dp, 19.dp)),
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = GlassTheme.tokens.textPrimary,
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = GlassTheme.tokens.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Icon(
+                imageVector = Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = GlassTheme.tokens.textSecondary,
+                modifier = Modifier.size(layout.size(22.dp, 20.dp)),
+            )
+        }
+        if (showDivider) {
+            GlassSurfaceDivider()
+        }
+    }
+}
+
+@Composable
+private fun GlassSurfaceDivider() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppLayout.metrics.width(16.dp, 14.dp))
+            .height(AppLayout.metrics.height(1.dp, 1.dp))
+            .background(GlassTheme.tokens.glassStroke.copy(alpha = 0.55f)),
+    )
+}
 
 private fun describeRecurrence(rule: RecurrenceRule): String {
     return when (rule) {
@@ -603,4 +671,3 @@ private fun describeRecurrence(rule: RecurrenceRule): String {
         is RecurrenceRule.Monthly -> "El día ${rule.dayOfMonth} de cada mes"
     }
 }
-

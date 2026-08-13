@@ -4,6 +4,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.franciscor.agendnote.core.network.AppConfig
+import com.franciscor.agendnote.core.platform.ThemeModeStore
+import com.franciscor.agendnote.core.platform.createThemeModeStore
 import com.franciscor.agendnote.feature.settings.domain.SettingsRepository
 import com.franciscor.agendnote.feature.settings.presentation.model.SettingsBulkAction
 import com.franciscor.agendnote.feature.settings.presentation.model.SettingsUiState
@@ -18,6 +20,7 @@ class SettingsViewModel(
     private val repository: SettingsRepository?,
     private val fallbackBackgroundUrl: String = AppConfig.BACKGROUND_URL.trim(),
     private val remoteUnavailableMessage: String? = null,
+    private val themeModeStore: ThemeModeStore = createThemeModeStore(),
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val hasRemoteAccess = repository != null
@@ -26,8 +29,11 @@ class SettingsViewModel(
         ?.takeIf { it.isNotBlank() }
         ?: "Configuración remota incompleta. No se puede conectar con la BD."
 
+    private val storedThemeMode = runCatching { themeModeStore.read() }.getOrNull()
+
     var uiState by mutableStateOf(
         SettingsUiState(
+            isDarkMode = storedThemeMode ?: false,
             backgroundUrl = fallbackBackgroundUrl,
             isRemoteAvailable = hasRemoteAccess,
         ),
@@ -35,7 +41,11 @@ class SettingsViewModel(
         private set
 
     fun loadSettings() {
-        uiState = uiState.copy(isLoading = true, errorMessage = null)
+        uiState = uiState.copy(
+            isDarkMode = storedThemeMode ?: uiState.isDarkMode,
+            isLoading = true,
+            errorMessage = null,
+        )
 
         val repository = repository ?: run {
             uiState = uiState.copy(
@@ -53,7 +63,9 @@ class SettingsViewModel(
             }
 
             uiState = uiState.copy(
-                isDarkMode = themeModeResult.getOrNull() ?: uiState.isDarkMode,
+                // A choice already made on this device must not be silently replaced by a stale
+                // remote value after a restart. The server only seeds the preference once.
+                isDarkMode = storedThemeMode ?: themeModeResult.getOrNull() ?: uiState.isDarkMode,
                 backgroundUrl = backgroundUrlResult.getOrNull()?.takeUnless { it.isBlank() } ?: uiState.backgroundUrl,
                 isLoading = false,
                 errorMessage = if (themeModeResult.isFailure || backgroundUrlResult.isFailure) {
@@ -62,27 +74,36 @@ class SettingsViewModel(
                     null
                 },
             )
+
+            if (storedThemeMode == null) {
+                themeModeResult.getOrNull()?.let { remoteTheme ->
+                    runCatching { themeModeStore.write(remoteTheme) }
+                }
+            }
         }
     }
 
     fun setTheme(isDark: Boolean) {
-        val repository = repository ?: run {
-            uiState = uiState.copy(errorMessage = remoteErrorMessage)
-            return
-        }
-
         val previousTheme = uiState.isDarkMode
         if (previousTheme == isDark) return
-        uiState = uiState.copy(isDarkMode = isDark, errorMessage = null)
+        uiState = uiState.copy(
+            isDarkMode = isDark,
+            errorMessage = if (repository == null) remoteErrorMessage else null,
+        )
 
         scope.launch {
-            val result = runCatching { repository.updateThemeMode(isDark) }
-            if (result.isFailure && uiState.isDarkMode == isDark) {
-                // REVIEW: optimistic updates need rollback or the UI claims a setting was saved
-                // even though the server rejected it.
+            val localResult = runCatching { themeModeStore.write(isDark) }
+            val remoteResult = repository?.let { settingsRepository ->
+                runCatching { settingsRepository.updateThemeMode(isDark) }
+            }
+            if (localResult.isFailure && uiState.isDarkMode == isDark) {
                 uiState = uiState.copy(
                     isDarkMode = previousTheme,
-                    errorMessage = "No se pudo guardar el tema",
+                    errorMessage = "No se pudo guardar el tema en este dispositivo",
+                )
+            } else if (remoteResult?.isFailure == true && uiState.isDarkMode == isDark) {
+                uiState = uiState.copy(
+                    errorMessage = "Tema guardado en este dispositivo; no se pudo sincronizar",
                 )
             }
         }
